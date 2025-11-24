@@ -16,7 +16,8 @@ class PDFProcessor:
         self.pdf_document = None
         self.fitz_document = None  # PyMuPDF文档对象
         self.current_page = 0  # 当前页码（从0开始）
-        self.zoom_factor = 1.0  # 缩放因子
+        self.zoom_factor = 3.0  # 缩放因子（设置为3.0，即300%作为新的100%基准）
+        self.base_zoom = 3.0  # 基准缩放因子（用户看到的100%实际是300%）
         self.file_size = 0  # 文件大小（字节）
         self.load_time = 0  # 加载时间（秒）
         self.last_error = ""  # 最后错误信息
@@ -25,6 +26,10 @@ class PDFProcessor:
         self.continuous_mode = True  # 是否启用连续浏览模式
         self.pages_per_view = 3  # 连续模式下每次显示的页面数
         self.page_spacing = 20  # 页面间距（像素）
+        
+        # 渲染缓存
+        self.render_cache = {}  # 页面渲染缓存
+        self.cache_max_size = 10  # 最大缓存页面数
         
     def open_pdf(self, file_path):
         """打开PDF文件 - 提供稳定可靠的PDF文件打开功能"""
@@ -55,7 +60,7 @@ class PDFProcessor:
             # 重置状态
             self.current_file = file_path
             self.current_page = 0
-            self.zoom_factor = 1.0
+            self.zoom_factor = self.base_zoom  # 重置为基准缩放（300%作为100%基准）
             self.last_error = ""
             
             # 计算加载时间
@@ -278,21 +283,32 @@ class PDFProcessor:
                 return False, "已经是第一页"
     
     def set_zoom(self, zoom_factor):
-        """设置缩放比例"""
-        if 0.25 <= zoom_factor <= 4.0:  # 限制缩放范围在25%-400%
-            self.zoom_factor = zoom_factor
+        """设置缩放比例 - 基于新的基准缩放（用户看到的100%实际是300%）"""
+        # 将用户的缩放值转换为实际缩放值
+        actual_zoom = zoom_factor * self.base_zoom
+        
+        # 限制实际缩放范围在75%-1200%（对应用户看到的25%-400%）
+        if 0.25 <= zoom_factor <= 4.0:
+            self.zoom_factor = actual_zoom
+            # 清除渲染缓存，因为缩放级别已更改
+            self.clear_render_cache()
             return True, f"缩放比例已设置为{int(zoom_factor * 100)}%"
         else:
             return False, "缩放比例必须在25%-400%之间"
     
     def get_zoom(self):
-        """获取当前缩放比例"""
-        return self.zoom_factor
+        """获取当前缩放比例（返回用户看到的相对值）"""
+        return self.zoom_factor / self.base_zoom
     
     def render_page(self, width=800, height=1000):
         """渲染当前页面为高质量图像 - 优化显示效果和性能"""
         if not self.fitz_document:
             return None
+        
+        # 检查缓存
+        cache_key = (self.current_page, self.zoom_factor, width, height)
+        if cache_key in self.render_cache:
+            return self.render_cache[cache_key]
         
         try:
             # 获取页面
@@ -301,21 +317,22 @@ class PDFProcessor:
             # 创建变换矩阵进行缩放
             mat = fitz.Matrix(self.zoom_factor, self.zoom_factor)
             
-            # 渲染页面为图像 - 使用高质量渲染参数
+            # 渲染页面为图像 - 使用优化的渲染参数
             pix = page.get_pixmap(
                 matrix=mat,
                 alpha=False,  # 不使用alpha通道，提高性能
                 colorspace=fitz.csRGB,  # 使用RGB色彩空间
-                annots=True  # 包含注释
+                annots=True,  # 包含注释
+                clip=page.rect  # 限定渲染区域
             )
             
             # 获取图像尺寸
             img_width = pix.width
             img_height = pix.height
             
-            # 转换为QImage - 使用更可靠的方法
+            # 直接创建QPixmap，避免中间转换步骤，提升性能
             if hasattr(pix, 'samples') and pix.samples is not None:
-                # 使用像素数据直接创建QImage
+                # 使用像素数据直接创建QImage然后转换为QPixmap
                 image = QImage(
                     pix.samples, 
                     img_width, 
@@ -323,21 +340,21 @@ class PDFProcessor:
                     img_width * 3,  # RGB每个像素3字节
                     QImage.Format_RGB888
                 )
+                pixmap = QPixmap.fromImage(image)
             else:
-                # 备用方法：转换为PNG格式
-                img_data = pix.tobytes("png")
-                image = QImage.fromData(img_data)
+                # 备用方法：直接转换为QPixmap
+                img_data = pix.tobytes("ppm")  # 使用PPM格式更快
+                pixmap = QPixmap()
+                pixmap.loadFromData(img_data)
             
-            # 缩放图像到指定尺寸，保持宽高比
-            if image.width() > width or image.height() > height:
-                image = image.scaled(
-                    width, 
-                    height, 
-                    Qt.KeepAspectRatio, 
-                    Qt.SmoothTransformation
-                )
+            # 缓存结果
+            if len(self.render_cache) >= self.cache_max_size:
+                # 移除最旧的缓存项
+                oldest_key = next(iter(self.render_cache))
+                del self.render_cache[oldest_key]
+            self.render_cache[cache_key] = pixmap
             
-            return QPixmap.fromImage(image)
+            return pixmap
             
         except Exception as e:
             print(f"渲染页面失败: {e}")
@@ -361,7 +378,7 @@ class PDFProcessor:
             
             # 创建垂直布局的图像容器
             total_height = 0
-            page_images = []
+            page_pixmaps = []
             
             # 创建变换矩阵进行缩放
             mat = fitz.Matrix(self.zoom_factor, self.zoom_factor)
@@ -370,15 +387,16 @@ class PDFProcessor:
             for page_num in range(start_page, end_page):
                 page = self.fitz_document[page_num]
                 
-                # 渲染页面
+                # 渲染页面 - 使用优化参数
                 pix = page.get_pixmap(
                     matrix=mat,
                     alpha=False,
                     colorspace=fitz.csRGB,
-                    annots=True
+                    annots=True,
+                    clip=page.rect  # 限定渲染区域
                 )
                 
-                # 转换为QImage
+                # 直接转换为QPixmap，避免中间步骤
                 if hasattr(pix, 'samples') and pix.samples is not None:
                     image = QImage(
                         pix.samples,
@@ -387,38 +405,42 @@ class PDFProcessor:
                         pix.width * 3,
                         QImage.Format_RGB888
                     )
+                    pixmap = QPixmap.fromImage(image)
                 else:
-                    img_data = pix.tobytes("png")
-                    image = QImage.fromData(img_data)
+                    # 备用方法：直接转换为QPixmap
+                    img_data = pix.tobytes("ppm")
+                    pixmap = QPixmap()
+                    pixmap.loadFromData(img_data)
                 
                 # 调整页面宽度以适应显示区域
-                scaled_image = image.scaledToWidth(
-                    width - 40,  # 留出边距
-                    Qt.SmoothTransformation
-                )
+                if pixmap.width() > width - 40:  # 留出边距
+                    pixmap = pixmap.scaledToWidth(
+                        width - 40,  # 留出边距
+                        Qt.SmoothTransformation
+                    )
                 
-                page_images.append(scaled_image)
-                total_height += scaled_image.height()
+                page_pixmaps.append(pixmap)
+                total_height += pixmap.height()
                 
                 # 添加页面间距
                 if page_num < end_page - 1:
                     total_height += self.page_spacing
             
             # 创建组合图像
-            combined_image = QImage(width, total_height, QImage.Format_RGB888)
-            combined_image.fill(Qt.white)
+            combined_pixmap = QPixmap(width, total_height)
+            combined_pixmap.fill(Qt.white)
             
             # 绘制各页面到组合图像
-            painter = QPainter(combined_image)
+            painter = QPainter(combined_pixmap)
             y_offset = 20  # 顶部边距
             
-            for i, page_image in enumerate(page_images):
-                x_offset = (width - page_image.width()) // 2  # 居中
-                painter.drawImage(x_offset, y_offset, page_image)
-                y_offset += page_image.height()
+            for i, page_pixmap in enumerate(page_pixmaps):
+                x_offset = (width - page_pixmap.width()) // 2  # 居中
+                painter.drawPixmap(x_offset, y_offset, page_pixmap)
+                y_offset += page_pixmap.height()
                 
                 # 添加页面分隔线（除了最后一页）
-                if i < len(page_images) - 1:
+                if i < len(page_pixmaps) - 1:
                     painter.setPen(Qt.gray)
                     painter.drawLine(20, y_offset + self.page_spacing // 2, 
                                  width - 20, y_offset + self.page_spacing // 2)
@@ -426,7 +448,7 @@ class PDFProcessor:
             
             painter.end()
             
-            return QPixmap.fromImage(combined_image)
+            return combined_pixmap
             
         except Exception as e:
             print(f"连续页面渲染失败: {e}")
@@ -654,6 +676,10 @@ class PDFProcessor:
             print(f"清除高亮失败: {e}")
             return False
     
+    def clear_render_cache(self):
+        """清除渲染缓存"""
+        self.render_cache.clear()
+    
     def get_text_from_rect(self, page_num, rect):
         """从指定矩形区域提取文本"""
         if not self.fitz_document:
@@ -676,3 +702,5 @@ class PDFProcessor:
         self.current_file = None
         self.current_page = 0
         self.zoom_factor = 1.0
+        # 清除渲染缓存
+        self.clear_render_cache()
