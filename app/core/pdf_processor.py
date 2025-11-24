@@ -481,6 +481,69 @@ class PDFProcessor:
         except:
             return None
     
+    def render_page_at(self, page_num, width=800, height=1000):
+        """渲染指定页面为高质量图像 - 优化显示效果和性能"""
+        if not self.fitz_document or page_num < 0 or page_num >= len(self.fitz_document):
+            return None
+        
+        # 检查缓存
+        cache_key = (page_num, self.zoom_factor, width, height)
+        if cache_key in self.render_cache:
+            return self.render_cache[cache_key]
+        
+        try:
+            # 获取页面
+            page = self.fitz_document[page_num]
+            
+            # 创建变换矩阵进行缩放
+            mat = fitz.Matrix(self.zoom_factor, self.zoom_factor)
+            
+            # 渲染页面为图像 - 使用优化的渲染参数
+            pix = page.get_pixmap(
+                matrix=mat,
+                alpha=False,  # 不使用alpha通道，提高性能
+                colorspace=fitz.csRGB,  # 使用RGB色彩空间
+                annots=True,  # 包含注释
+                clip=page.rect  # 限定渲染区域
+            )
+            
+            # 获取图像尺寸
+            img_width = pix.width
+            img_height = pix.height
+            
+            # 直接创建QPixmap，避免中间转换步骤，提升性能
+            if hasattr(pix, 'samples') and pix.samples is not None:
+                # 使用像素数据直接创建QImage然后转换为QPixmap
+                image = QImage(
+                    pix.samples, 
+                    img_width, 
+                    img_height, 
+                    img_width * 3,  # RGB每个像素3字节
+                    QImage.Format_RGB888
+                )
+                pixmap = QPixmap.fromImage(image)
+            else:
+                # 备用方法：直接转换为QPixmap
+                img_data = pix.tobytes("ppm")  # 使用PPM格式更快
+                pixmap = QPixmap()
+                pixmap.loadFromData(img_data)
+            
+            # 缓存结果
+            if len(self.render_cache) >= self.cache_max_size:
+                # 移除最旧的缓存项
+                oldest_key = next(iter(self.render_cache))
+                del self.render_cache[oldest_key]
+            self.render_cache[cache_key] = pixmap
+            
+            return pixmap
+            
+        except Exception as e:
+            print(f"渲染页面失败: {e}")
+            # 返回错误提示图像
+            error_pixmap = QPixmap(width, height)
+            error_pixmap.fill(Qt.lightGray)
+            return error_pixmap
+    
     def render_thumbnail(self, page_num, width=100, height=150):
         """渲染指定页面的缩略图"""
         if not self.fitz_document or page_num < 0 or page_num >= len(self.fitz_document):

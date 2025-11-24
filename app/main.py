@@ -19,6 +19,7 @@ from PyQt5.QtGui import QFont, QIcon, QPixmap, QPainter, QColor
 from app.config.settings import AppSettings
 from app.ui.styles import AppStyles
 from app.core.pdf_processor import PDFProcessor
+from app.core.thumbnail_manager import ThumbnailManager
 
 class AuroraPDF(QMainWindow):
     """极灵PDF主窗口 - 现代化PDF阅读器界面"""
@@ -102,7 +103,7 @@ class AuroraPDF(QMainWindow):
         
     def create_thumbnail_area(self, main_layout):
         """创建缩略图区域"""
-        from PyQt5.QtWidgets import QDockWidget, QListWidget, QListWidgetItem
+        from PyQt5.QtWidgets import QDockWidget
         
         # 创建停靠窗口作为缩略图区域
         self.thumbnail_dock = QDockWidget("缩略图", self)
@@ -113,42 +114,13 @@ class AuroraPDF(QMainWindow):
         self.thumbnail_dock.setMinimumWidth(300)
         self.thumbnail_dock.resize(400, self.thumbnail_dock.height())
         
-        # 创建缩略图列表
-        self.thumbnail_list = QListWidget()
-        self.thumbnail_list.setIconSize(QSize(350, 260))  # 适当减小尺寸
-        self.thumbnail_list.setSpacing(10)
-        self.thumbnail_list.setMovement(QListWidget.Static)
-        self.thumbnail_list.setViewMode(QListWidget.IconMode)  # 改为图标模式
-        self.thumbnail_list.setFlow(QListWidget.LeftToRight)  # 从左到右排列
-        self.thumbnail_list.setResizeMode(QListWidget.Adjust)
-        self.thumbnail_list.setWrapping(True)  # 允许换行
+        # 创建缩略图管理器
+        self.thumbnail_list = ThumbnailManager(self)
+        self.thumbnail_list.set_pdf_processor(self.pdf_processor)
         
-        # 设置缩略图样式，居中显示
-        self.thumbnail_list.setStyleSheet("""
-            QListWidget {
-                background-color: #FFFFFF;
-                border: none;
-            }
-            QListWidget::item {
-                border: 2px solid #CCCCCC;
-                border-radius: 4px;
-                padding: 10px;
-                margin: 5px;
-                text-align: left;
-            }
-            QListWidget::item:selected {
-                border: 2px solid #FF0000;  /* 红色边框 */
-                background-color: #FFE6E6;   /* 浅红色背景 */
-            }
-            QListWidget::item:selected {
-                color: #000000;  /* 黑色文字 */
-                font-weight: bold;  /* 加粗 */
-            }
-        """)
-        self.thumbnail_list.setUniformItemSizes(True)  # 统一项目大小
-        
-        # 连接点击事件
-        self.thumbnail_list.itemClicked.connect(self.on_thumbnail_clicked)
+        # 连接信号
+        self.thumbnail_list.thumbnail_clicked.connect(self.on_thumbnail_clicked)
+        self.thumbnail_list.thumbnail_right_clicked.connect(self.on_thumbnail_right_clicked)
         
         self.thumbnail_dock.setWidget(self.thumbnail_list)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.thumbnail_dock)
@@ -469,10 +441,12 @@ class AuroraPDF(QMainWindow):
                 self.page_positions = []
                 current_position = 0
                 
+                # 保存当前页面，避免在渲染过程中被改变
+                saved_current_page = self.pdf_processor.get_current_page()
+                
                 for page_num in range(total_pages):
-                    # 设置当前页面并渲染
-                    self.pdf_processor.go_to_page(page_num + 1)
-                    pixmap = self.pdf_processor.render_page(self.render_width, self.render_height)  # 使用动态尺寸
+                    # 为每一页渲染时，直接渲染指定页面
+                    pixmap = self.pdf_processor.render_page_at(page_num, self.render_width, self.render_height)  # 使用动态尺寸
                     if pixmap:
                         # 记录页面位置
                         self.page_positions.append(current_position)
@@ -480,7 +454,9 @@ class AuroraPDF(QMainWindow):
                         page_label = QLabel()
                         page_label.setPixmap(pixmap)
                         page_label.setAlignment(Qt.AlignCenter)
-                        page_height = pixmap.height() + 30  # 包含边距和间距
+                        # 计算包含容器边框和边距的总高度
+                        extra_height = int(pixmap.height() * 0.05)
+                        page_height = pixmap.height() + extra_height * 2 + 10  # 包含边框、边距和标签间距
                         
                         # 记录页面高度
                         self.page_heights.append(page_height)
@@ -515,6 +491,9 @@ class AuroraPDF(QMainWindow):
                         
                         self.scroll_content_layout.addWidget(page_label)
                         current_position += page_height
+                
+                # 恢复当前页面
+                self.pdf_processor.go_to_page(saved_current_page)
             else:
                 # 单页模式：只显示当前页面
                 pixmap = self.pdf_processor.render_page(self.render_width, self.render_height)  # 使用动态尺寸
@@ -553,7 +532,7 @@ class AuroraPDF(QMainWindow):
             
             # 更新页码控件
             self.page_spinbox.setMaximum(total_pages)
-            self.page_spinbox.setValue(1)  # 始终设置为第一页
+            self.page_spinbox.setValue(current_page)
             self.total_pages_label.setText(str(total_pages))
             
             # 更新状态栏
@@ -626,12 +605,33 @@ class AuroraPDF(QMainWindow):
     
     def go_to_page(self, page_number):
         """跳转到指定页面"""
-        if self.continuous_mode and self.page_positions:
-            # 连续模式：直接滚动到页面位置
-            if 1 <= page_number <= len(self.page_positions):
+        if self.continuous_mode:
+            # 连续模式：直接滚动到页面位置，避免重新渲染所有页面
+            if self.page_positions and 1 <= page_number <= len(self.page_positions):
+                # 更新PDF处理器的当前页面
+                self.pdf_processor.go_to_page(page_number)
+                
+                # 直接滚动到指定页面位置
                 scroll_position = self.page_positions[page_number - 1]
+                # 确保页面顶部对齐到显示区域的顶部
                 self.scroll_area.verticalScrollBar().setValue(scroll_position)
                 self.show_message(f"📜 跳转到第 {page_number} 页")
+                
+                # 更新页面信息显示
+                current_page = self.pdf_processor.get_current_page()
+                total_pages = self.pdf_processor.get_total_pages()
+                zoom_level = int(self.pdf_processor.get_zoom() * 100)
+                
+                # 更新页码控件
+                self.page_spinbox.setMaximum(total_pages)
+                self.page_spinbox.setValue(current_page)
+                self.total_pages_label.setText(str(total_pages))
+                
+                # 更新状态栏
+                self.show_message(f"📜 连续浏览模式 | 第 {current_page} 页 / 共 {total_pages} 页 | 缩放: {zoom_level}%")
+                
+                # 更新缩略图选中状态
+                self.update_thumbnail_selection(current_page)
         else:
             # 单页模式：传统跳转
             success, message = self.pdf_processor.go_to_page(page_number)
@@ -994,60 +994,23 @@ class AuroraPDF(QMainWindow):
         if not self.pdf_processor.fitz_document:
             return
         
-        # 确保当前页面是第一页，避免显示问题
-        # self.pdf_processor.go_to_page(1)  # 不要强制跳转，保持当前页面
-        
-        # 清空现有缩略图
-        self.thumbnail_list.clear()
-        self.thumbnails = []
-        
-        total_pages = self.pdf_processor.get_total_pages()
-        
-        # 生成每页的缩略图
-        for page_num in range(total_pages):
-            # 使用PDF处理器生成缩略图
-            thumbnail_pixmap = self.pdf_processor.render_thumbnail(page_num, 350, 260)
-            if thumbnail_pixmap:
-                from PyQt5.QtWidgets import QListWidgetItem
-                from PyQt5.QtGui import QIcon
-                
-                # 创建列表项
-                item = QListWidgetItem()
-                item.setIcon(QIcon(thumbnail_pixmap))
-                item.setText(f"第 {page_num + 1} 页")  # 显示页码
-                item.setData(Qt.UserRole, page_num)  # 存储页码信息
-                
-                self.thumbnail_list.addItem(item)
-                self.thumbnails.append(thumbnail_pixmap)
-                
-                # 如果是当前页面，设置为选中状态
-                # 强制将当前页面设置为第一页，避免显示问题
-                current_page = 1  # 始终选中第一页
-                if page_num == current_page - 1:  # current_page从1开始，page_num从0开始
-                    item.setSelected(True)
-                    # 确保选中的项可见
-                    self.thumbnail_list.scrollToItem(item)
+        # 使用缩略图管理器加载缩略图
+        self.thumbnail_list.load_thumbnails()
     
-    def on_thumbnail_clicked(self, item):
+    def on_thumbnail_clicked(self, page_num):
         """处理缩略图点击事件"""
-        page_num = item.data(Qt.UserRole)
-        if page_num is not None:
-            # 跳转到指定页面
-            self.go_to_page(page_num + 1)
+        # 跳转到指定页面
+        self.go_to_page(page_num)
+        
+    def on_thumbnail_right_clicked(self, page_num):
+        """处理缩略图右键点击事件"""
+        # 右键点击时已经自动选中了页面，这里可以添加其他处理逻辑
+        print(f"右键点击第 {page_num} 页")
     
     def update_thumbnail_selection(self, current_page):
         """更新缩略图选中状态"""
-        if self.thumbnail_list and self.thumbnail_list.count() > 0:
-            # 取消之前的所有选中项
-            self.thumbnail_list.clearSelection()
-            
-            # 选中当前页面的缩略图
-            if current_page <= self.thumbnail_list.count():
-                item = self.thumbnail_list.item(current_page - 1)
-                if item:
-                    item.setSelected(True)
-                    # 确保选中的项可见
-                    self.thumbnail_list.scrollToItem(item)
+        if self.thumbnail_list:
+            self.thumbnail_list.update_thumbnail_selection(current_page)
 
 def main():
     """主函数"""
