@@ -10,6 +10,7 @@ import fitz  # PyMuPDF
 import PyPDF2
 from PyPDF2 import PdfWriter, PdfReader
 from PIL import Image
+from PIL.Image import Resampling
 import time
 
 
@@ -197,12 +198,24 @@ class PageEditor:
                 return False, "无法获取当前PDF文件路径"
             self.pdf_processor.close_pdf()
             
-            # 使用Pillow将图片转换为PDF
+            # 使用Pillow将图片转换为PDF，并调整为A4纸大小
             image = Image.open(image_path)
+            
+            # A4纸尺寸 (595 x 842 points)
+            a4_width, a4_height = 595, 842
+            
+            # 调整图片大小以适应A4纸
+            image.thumbnail((a4_width, a4_height), Resampling.LANCZOS)
+            
+            # 创建新的A4尺寸图片并居中放置原图
+            a4_image = Image.new('RGB', (a4_width, a4_height), 'white')
+            x = (a4_width - image.width) // 2
+            y = (a4_height - image.height) // 2
+            a4_image.paste(image, (x, y))
             
             # 创建临时PDF文件
             temp_pdf_path = image_path + ".tmp.pdf"
-            image.save(temp_pdf_path, "PDF", resolution=100.0)
+            a4_image.save(temp_pdf_path, "PDF", resolution=100.0)
             
             # 使用PyPDF2合并PDF文件
             current_reader = PdfReader(current_file)

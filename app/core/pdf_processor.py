@@ -305,14 +305,23 @@ class PDFProcessor:
         if not self.fitz_document:
             return None
         
-        # 检查缓存
-        cache_key = (self.current_page, self.zoom_factor, width, height)
-        if cache_key in self.render_cache:
-            return self.render_cache[cache_key]
-        
         try:
             # 获取页面
             page = self.fitz_document[self.current_page]
+            
+            # 获取页面实际尺寸
+            page_rect = page.rect
+            page_width = page_rect.width
+            page_height = page_rect.height
+            
+            # 根据页面实际尺寸和缩放因子计算渲染尺寸
+            render_width = int(page_width * self.zoom_factor)
+            render_height = int(page_height * self.zoom_factor)
+            
+            # 检查缓存
+            cache_key = (self.current_page, self.zoom_factor, render_width, render_height)
+            if cache_key in self.render_cache:
+                return self.render_cache[cache_key]
             
             # 创建变换矩阵进行缩放
             mat = fitz.Matrix(self.zoom_factor, self.zoom_factor)
@@ -486,14 +495,23 @@ class PDFProcessor:
         if not self.fitz_document or page_num < 0 or page_num >= len(self.fitz_document):
             return None
         
-        # 检查缓存
-        cache_key = (page_num, self.zoom_factor, width, height)
-        if cache_key in self.render_cache:
-            return self.render_cache[cache_key]
-        
         try:
             # 获取页面
             page = self.fitz_document[page_num]
+            
+            # 获取页面实际尺寸
+            page_rect = page.rect
+            page_width = page_rect.width
+            page_height = page_rect.height
+            
+            # 根据页面实际尺寸和缩放因子计算渲染尺寸
+            render_width = int(page_width * self.zoom_factor)
+            render_height = int(page_height * self.zoom_factor)
+            
+            # 检查缓存
+            cache_key = (page_num, self.zoom_factor, render_width, render_height)
+            if cache_key in self.render_cache:
+                return self.render_cache[cache_key]
             
             # 创建变换矩阵进行缩放
             mat = fitz.Matrix(self.zoom_factor, self.zoom_factor)

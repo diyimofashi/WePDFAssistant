@@ -12,7 +12,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                              QLabel, QStatusBar, QMessageBox, QPushButton,
                              QLineEdit, QSpinBox, QComboBox, QMenu, QMenuBar,
                              QScrollArea, QScrollBar, QDialog, QVBoxLayout as QDialogLayout, 
-                             QHBoxLayout as QDialogLayout, QCheckBox, QPushButton as QPushButton, QGroupBox)
+                             QHBoxLayout as QDialogLayout, QCheckBox, QPushButton as QPushButton, QGroupBox,
+                             QSizePolicy)
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QIcon, QPixmap, QPainter, QColor
 
@@ -152,11 +153,18 @@ class AuroraPDF(QMainWindow):
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         
+        # 设置滚动区域的对齐方式
+        self.scroll_area.setAlignment(Qt.AlignCenter)
+        
         # 设置滚动区域背景色，突出页面边界
         self.scroll_area.setStyleSheet("""
             QScrollArea {
                 background-color: #F5F5F5;
                 border: 1px solid #CCCCCC;
+                alignment: center;
+            }
+            QScrollArea QWidget {
+                alignment: center;
             }
         """)
         
@@ -167,12 +175,19 @@ class AuroraPDF(QMainWindow):
         self.scroll_content_layout.setContentsMargins(10, 10, 10, 10)
         self.scroll_content_layout.setAlignment(Qt.AlignCenter)
         
-        # 设置内容容器背景色
+        # 设置内容容器背景色和居中对齐
         self.scroll_content.setStyleSheet("""
             QWidget {
                 background-color: #F5F5F5;
+                alignment: center;
             }
         """)
+        
+        # 确保滚动内容容器能够正确扩展以适应居中对齐
+        self.scroll_content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        
+        # 设置滚动内容的最小宽度以确保居中效果
+        self.scroll_content.setMinimumWidth(800)
         
         # 创建PDF预览标签（初始状态）
         self.preview_label = QLabel("📄 请点击上方'打开'按钮选择PDF文件")
@@ -470,6 +485,11 @@ class AuroraPDF(QMainWindow):
                         page_label = QLabel()
                         page_label.setPixmap(pixmap)
                         page_label.setAlignment(Qt.AlignCenter)
+                        
+                        # 确保页面标签能够正确扩展以适应居中对齐
+                        page_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                        page_label.setAlignment(Qt.AlignCenter)
+                        
                         # 计算包含容器边框和边距的总高度
                         extra_height = int(pixmap.height() * 0.05)
                         page_height = pixmap.height() + extra_height * 2 + 10  # 包含边框、边距和标签间距
@@ -478,20 +498,33 @@ class AuroraPDF(QMainWindow):
                         self.page_heights.append(page_height)
                         
                         # 添加页面样式 - 容器比内容页大5%
-                        extra_width = int(pixmap.width() * 0.05)
-                        extra_height = int(pixmap.height() * 0.05)
-                        container_width = pixmap.width() + extra_width * 2
-                        container_height = pixmap.height() + extra_height * 2
+                        # 获取实际页面尺寸
+                        page_dimensions = self.pdf_processor.get_page_dimensions(page_num)
+                        if page_dimensions:
+                            actual_width = int(page_dimensions['width'] * self.pdf_processor.zoom_factor)
+                            actual_height = int(page_dimensions['height'] * self.pdf_processor.zoom_factor)
+                        else:
+                            actual_width = pixmap.width()
+                            actual_height = pixmap.height()
                         
-                        # 创建容器并设置固定大小
-                        page_label.setFixedSize(container_width, container_height)
+                        extra_width = int(actual_width * 0.05)
+                        extra_height = int(actual_height * 0.05)
+                        container_width = actual_width + extra_width * 2
+                        container_height = actual_height + extra_height * 2
+                        
+                        # 设置容器的最小尺寸而非固定尺寸，以允许布局管理器居中
+                        page_label.setMinimumSize(container_width, container_height)
+                        
+                        # 设置样式以确保页面在容器中居中显示
                         page_label.setStyleSheet("""
                             QLabel {
                                 background-color: #FFFFFF;
                                 border: 1px solid #CCCCCC;
                                 border-radius: 3px;
                                 padding: 0px;
-                                margin: 5px;
+                                margin: 5px auto;  /* 水平居中 */
+                                qproperty-alignment: AlignCenter;
+                                alignment: center;
                             }
                         """)
                         
@@ -517,23 +550,40 @@ class AuroraPDF(QMainWindow):
                     page_label = QLabel()
                     page_label.setPixmap(pixmap)
                     page_label.setAlignment(Qt.AlignCenter)
+                    
+                    # 确保页面标签能够正确扩展以适应居中对齐
+                    page_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                    page_label.setAlignment(Qt.AlignCenter)
                     # 单页模式 - 容器比内容页大5%
                     if pixmap:
-                        extra_width = int(pixmap.width() * 0.05)
-                        extra_height = int(pixmap.height() * 0.05)
-                        container_width = pixmap.width() + extra_width * 2
-                        container_height = pixmap.height() + extra_height * 2
+                        # 获取实际页面尺寸
+                        current_page = self.pdf_processor.get_current_page() - 1  # 转换为0基索引
+                        page_dimensions = self.pdf_processor.get_page_dimensions(current_page)
+                        if page_dimensions:
+                            actual_width = int(page_dimensions['width'] * self.pdf_processor.zoom_factor)
+                            actual_height = int(page_dimensions['height'] * self.pdf_processor.zoom_factor)
+                        else:
+                            actual_width = pixmap.width()
+                            actual_height = pixmap.height()
                         
-                        # 创建容器并设置固定大小
-                        page_label.setFixedSize(container_width, container_height)
+                        extra_width = int(actual_width * 0.05)
+                        extra_height = int(actual_height * 0.05)
+                        container_width = actual_width + extra_width * 2
+                        container_height = actual_height + extra_height * 2
+                        
+                        # 设置容器的最小尺寸而非固定尺寸，以允许布局管理器居中
+                        page_label.setMinimumSize(container_width, container_height)
                     
+                    # 设置样式以确保页面在容器中居中显示
                     page_label.setStyleSheet("""
                         QLabel {
                             background-color: #FFFFFF;
                             border: 1px solid #CCCCCC;
                             border-radius: 4px;
                             padding: 0px;
-                            margin: 10px;
+                            margin: 10px auto;  /* 水平居中 */
+                            qproperty-alignment: AlignCenter;
+                            alignment: center;
                         }
                     """)
                     
