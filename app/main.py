@@ -110,9 +110,25 @@ class AuroraPDF(QMainWindow):
         self.thumbnail_dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
         self.thumbnail_dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
         
+        # 去掉停靠窗口的边框
+        self.thumbnail_dock.setStyleSheet("""
+            QDockWidget {
+                border: none;
+            }
+            QDockWidget::title {
+                background-color: #F0F0F0;
+                border: none;
+                padding: 4px;
+                text-align: left;
+            }
+            QDockWidget > QWidget {
+                alignment: center;
+            }
+        """)
+        
         # 设置缩略图容器的默认宽度，但允许调整
-        self.thumbnail_dock.setMinimumWidth(300)
-        self.thumbnail_dock.resize(400, self.thumbnail_dock.height())
+        self.thumbnail_dock.setMinimumWidth(250)
+        self.thumbnail_dock.resize(300, self.thumbnail_dock.height())
         
         # 创建缩略图管理器
         self.thumbnail_list = ThumbnailManager(self)
@@ -982,12 +998,12 @@ class AuroraPDF(QMainWindow):
         self.show_thumbnails = not self.show_thumbnails
         if self.show_thumbnails:
             self.thumbnail_dock.show()
-            self.thumbnail_btn.setText("-thumbnails")
+            self.thumbnail_btn.setText("📋 缩略图")
             # 加载缩略图
             self.load_thumbnails()
         else:
             self.thumbnail_dock.hide()
-            self.thumbnail_btn.setText("-thumbnails")
+            self.thumbnail_btn.setText("📋 缩略图")
     
     def load_thumbnails(self):
         """加载PDF页面缩略图"""
@@ -999,6 +1015,10 @@ class AuroraPDF(QMainWindow):
     
     def on_thumbnail_clicked(self, page_num):
         """处理缩略图点击事件"""
+        # 在连续模式下，强制更新预览以重新生成page_positions数组
+        if self.continuous_mode:
+            self.update_preview()
+        
         # 跳转到指定页面
         self.go_to_page(page_num)
         

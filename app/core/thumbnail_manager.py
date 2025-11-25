@@ -3,9 +3,13 @@
 负责PDF页面缩略图的生成、显示和管理
 """
 
-from PyQt5.QtWidgets import QListWidget, QListWidgetItem, QMenu, QAction
+from PyQt5.QtWidgets import QListWidget, QListWidgetItem, QMenu, QAction, QFileDialog, QMessageBox
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtCore import Qt, pyqtSignal, QSize
+import os
+
+# 导入页面编辑功能
+from app.features.editor.page_editor import PageEditor
 
 
 class ThumbnailManager(QListWidget):
@@ -19,6 +23,7 @@ class ThumbnailManager(QListWidget):
         super().__init__(parent)
         self.parent = parent
         self.pdf_processor = None
+        self.page_editor = None  # 页面编辑器
         self.thumbnails = []  # 缩略图缓存
         
         self.init_ui()
@@ -26,37 +31,52 @@ class ThumbnailManager(QListWidget):
     def init_ui(self):
         """初始化界面"""
         # 设置缩略图列表属性
-        self.setIconSize(QSize(350, 260))  # 缩略图尺寸
-        self.setSpacing(10)
-        self.setMovement(QListWidget.Static)
-        self.setViewMode(QListWidget.IconMode)  # 图标模式
+        self.setIconSize(QSize(200, 234))  # 缩略图尺寸 (增加30%高度)
+        self.setSpacing(1)  # 减小项目间距
+        
+        # 设置布局和显示模式
         self.setFlow(QListWidget.LeftToRight)  # 从左到右排列
         self.setResizeMode(QListWidget.Adjust)
         self.setWrapping(True)  # 允许换行
+        self.setMovement(QListWidget.Static)
+        self.setViewMode(QListWidget.IconMode)  # 图标模式
+        self.setUniformItemSizes(True)  # 统一项目大小
+        
+        # 设置滚动条策略
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # 隐藏水平滚动条
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # 垂直滚动条按需显示
+        
+        # 设置对齐方式
+        self.setProperty("alignment", Qt.AlignCenter)
+        self.setUniformItemSizes(True)  # 统一项目大小以确保正确布局
         
         # 设置样式
         self.setStyleSheet("""
             QListWidget {
                 background-color: #FFFFFF;
                 border: none;
+                padding: 3px;  /* 进一步减小内边距 */
+                margin: 0px;
+                text-align: center;
+                alignment: center;
             }
             QListWidget::item {
-                border: 2px solid #CCCCCC;
-                border-radius: 4px;
-                padding: 10px;
-                margin: 5px;
-                text-align: left;
+                border: 1px solid #CCCCCC;
+                border-radius: 2px;
+                padding: 2px;  /* 进一步减小内边距 */
+                margin: 2px;   /* 进一步减小外边距 */
+                text-align: center;
+                alignment: center;
             }
             QListWidget::item:selected {
-                border: 2px solid #FF0000;  /* 红色边框 */
-                background-color: #FFE6E6;   /* 浅红色背景 */
+                border: 2px solid #0066CC;
+                background-color: #E6F0FF;
             }
             QListWidget::item:selected {
-                color: #000000;  /* 黑色文字 */
-                font-weight: bold;  /* 加粗 */
+                color: #000000;
+                font-weight: bold;
             }
         """)
-        self.setUniformItemSizes(True)  # 统一项目大小
         
         # 连接事件
         self.itemClicked.connect(self.on_thumbnail_clicked)
@@ -66,6 +86,9 @@ class ThumbnailManager(QListWidget):
     def set_pdf_processor(self, pdf_processor):
         """设置PDF处理器"""
         self.pdf_processor = pdf_processor
+        # 初始化页面编辑器
+        if pdf_processor:
+            self.page_editor = PageEditor(pdf_processor)
         
     def load_thumbnails(self):
         """加载PDF页面缩略图"""
@@ -81,7 +104,7 @@ class ThumbnailManager(QListWidget):
         # 生成每页的缩略图
         for page_num in range(total_pages):
             # 使用PDF处理器生成缩略图
-            thumbnail_pixmap = self.pdf_processor.render_thumbnail(page_num, 350, 260)
+            thumbnail_pixmap = self.pdf_processor.render_thumbnail(page_num, 200, 234)
             if thumbnail_pixmap:
                 # 创建列表项
                 item = QListWidgetItem()
@@ -99,6 +122,9 @@ class ThumbnailManager(QListWidget):
                     # 确保选中的项可见
                     self.scrollToItem(item)
                     
+        # 确保整个列表居中显示
+        self.center_content()
+                    
     def update_thumbnail_selection(self, current_page):
         """更新缩略图选中状态"""
         if self.count() > 0:
@@ -112,6 +138,13 @@ class ThumbnailManager(QListWidget):
                     item.setSelected(True)
                     # 确保选中的项可见
                     self.scrollToItem(item)
+                    
+    def center_content(self):
+        """确保内容居中显示"""
+        # 通过样式确保居中
+        self.setStyleSheet(self.styleSheet() + "\nQListWidget {\n    alignment: center;\n}")
+        # 强制更新布局
+        self.updateGeometry()
                     
     def on_thumbnail_clicked(self, item):
         """处理缩略图点击事件"""
@@ -190,50 +223,165 @@ class ThumbnailManager(QListWidget):
         
     def on_insert_blank_page(self, page_num):
         """插入空白页"""
-        print(f"插入空白页到第 {page_num} 页")
-        # TODO: 实现插入空白页功能
+        if not self.page_editor:
+            QMessageBox.warning(self, "错误", "页面编辑器未初始化")
+            return
+        
+        success, message = self.page_editor.insert_blank_page(page_num)
+        if success:
+            # 重新加载缩略图
+            self.load_thumbnails()
+            # 发送信号通知主窗口更新内容区域
+            self.thumbnail_clicked.emit(page_num + 1)  # 跳转到插入页面的下一页
+        else:
+            QMessageBox.critical(self, "错误", message)
         
     def on_insert_pdf_page(self, page_num):
         """插入PDF页面"""
-        print(f"插入PDF页面到第 {page_num} 页")
-        # TODO: 实现插入PDF页面功能
+        if not self.page_editor:
+            QMessageBox.warning(self, "错误", "页面编辑器未初始化")
+            return
+        
+        # 选择PDF文件
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "选择PDF文件", "", "PDF文件 (*.pdf)")
+        
+        if file_path:
+            success, message = self.page_editor.insert_pdf_pages(page_num, file_path)
+            if success:
+                # 重新加载缩略图
+                self.load_thumbnails()
+                # 发送信号通知主窗口更新内容区域
+                self.thumbnail_clicked.emit(page_num + 1)  # 跳转到插入页面的下一页
+            else:
+                QMessageBox.critical(self, "错误", message)
         
     def on_insert_image_page(self, page_num):
         """插入图片页面"""
-        print(f"插入图片到第 {page_num} 页")
-        # TODO: 实现插入图片功能
+        if not self.page_editor:
+            QMessageBox.warning(self, "错误", "页面编辑器未初始化")
+            return
+        
+        # 选择图片文件
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "选择图片文件", "", "图片文件 (*.png *.jpg *.jpeg *.bmp *.gif)")
+        
+        if file_path:
+            success, message = self.page_editor.insert_image_page(page_num, file_path)
+            if success:
+                # 重新加载缩略图
+                self.load_thumbnails()
+                # 发送信号通知主窗口更新内容区域
+                self.thumbnail_clicked.emit(page_num + 1)  # 跳转到插入页面的下一页
+            else:
+                QMessageBox.critical(self, "错误", message)
         
     def on_copy_page(self, page_num):
         """复制页面"""
-        print(f"复制第 {page_num} 页")
-        # TODO: 实现复制页面功能
+        if not self.page_editor:
+            QMessageBox.warning(self, "错误", "页面编辑器未初始化")
+            return
+        
+        success, message = self.page_editor.copy_page(page_num)
+        if success:
+            # 重新加载缩略图
+            self.load_thumbnails()
+            # 发送信号通知主窗口更新内容区域
+            self.thumbnail_clicked.emit(page_num)
+        else:
+            QMessageBox.critical(self, "错误", message)
         
     def on_delete_page(self, page_num):
         """删除页面"""
-        print(f"删除第 {page_num} 页")
-        # TODO: 实实现删除页面功能
+        if not self.page_editor:
+            QMessageBox.warning(self, "错误", "页面编辑器未初始化")
+            return
+        
+        # 确认删除
+        reply = QMessageBox.question(
+            self, "确认删除", f"确定要删除第 {page_num} 页吗？", 
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        
+        if reply == QMessageBox.Yes:
+            success, message = self.page_editor.delete_page(page_num)
+            if success:
+                # 重新加载缩略图
+                self.load_thumbnails()
+                # 发送信号通知主窗口更新内容区域
+                # 删除页面后跳转到前一页或第一页
+                if page_num > 1:
+                    self.thumbnail_clicked.emit(page_num - 1)
+                else:
+                    self.thumbnail_clicked.emit(1)
+            else:
+                QMessageBox.critical(self, "错误", message)
         
     def on_rotate_page(self, page_num, angle):
         """旋转页面"""
-        print(f"旋转第 {page_num} 页 {angle} 度")
-        # TODO: 实现旋转页面功能
+        if not self.page_editor:
+            QMessageBox.warning(self, "错误", "页面编辑器未初始化")
+            return
+        
+        success, message = self.page_editor.rotate_page(page_num, angle)
+        if success:
+            # 重新加载缩略图
+            self.load_thumbnails()
+            # 发送信号通知主窗口更新内容区域
+            self.thumbnail_clicked.emit(page_num)
+        else:
+            QMessageBox.critical(self, "错误", message)
         
     def on_rotate_all_pages(self, angle):
         """旋转所有页面"""
-        print(f"旋转所有页面 {angle} 度")
-        # TODO: 实现旋转所有页面功能
+        if not self.page_editor:
+            QMessageBox.warning(self, "错误", "页面编辑器未初始化")
+            return
+        
+        # 确认旋转所有页面
+        reply = QMessageBox.question(
+            self, "确认旋转", f"确定要旋转所有页面 {angle} 度吗？", 
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        
+        if reply == QMessageBox.Yes:
+            success, message = self.page_editor.rotate_all_pages(angle)
+            if success:
+                # 重新加载缩略图
+                self.load_thumbnails()
+                # 发送信号通知主窗口更新内容区域
+                self.thumbnail_clicked.emit(1)  # 跳转到第一页
+            else:
+                QMessageBox.critical(self, "错误", message)
         
     def on_print_page(self, page_num):
         """打印页面"""
-        print(f"打印第 {page_num} 页")
-        # TODO: 实现打印功能
+        if not self.pdf_processor:
+            QMessageBox.warning(self, "错误", "PDF处理器未初始化")
+            return
+        
+        # 调用PDF处理器的打印功能
+        # 这里简化实现，仅提供概念性代码
+        QMessageBox.information(self, "打印", f"打印第 {page_num} 页功能开发中...")
         
     def on_extract_pages(self, page_num):
         """提取页面"""
-        print(f"提取第 {page_num} 页")
-        # TODO: 实现提取页面功能
+        if not self.pdf_processor:
+            QMessageBox.warning(self, "错误", "PDF处理器未初始化")
+            return
+        
+        # 选择保存位置
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "保存提取的页面", f"page_{page_num}.pdf", "PDF文件 (*.pdf)")
+        
+        if file_path:
+            # 这里简化实现，仅提供概念性代码
+            QMessageBox.information(self, "提取页面", f"提取第 {page_num} 页到 {os.path.basename(file_path)} 功能开发中...")
         
     def on_ocr_page(self, page_num):
         """OCR识别页面"""
-        print(f"OCR识别第 {page_num} 页")
-        # TODO: 实现OCR识别功能
+        if not self.pdf_processor:
+            QMessageBox.warning(self, "错误", "PDF处理器未初始化")
+            return
+        
+        # 调用OCR功能
+        # 这里简化实现，仅提供概念性代码
+        QMessageBox.information(self, "OCR识别", f"OCR识别第 {page_num} 页功能开发中...")

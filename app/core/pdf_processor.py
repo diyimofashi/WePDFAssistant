@@ -5,7 +5,7 @@ import time
 import PyPDF2
 import fitz  # PyMuPDF - 用于PDF页面渲染
 from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtGui import QImage, QPixmap, QPainter
+from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor
 from PyQt5.QtCore import Qt
 
 class PDFProcessor:
@@ -544,7 +544,7 @@ class PDFProcessor:
             error_pixmap.fill(Qt.lightGray)
             return error_pixmap
     
-    def render_thumbnail(self, page_num, width=100, height=150):
+    def render_thumbnail(self, page_num, width=100, height=141):
         """渲染指定页面的缩略图"""
         if not self.fitz_document or page_num < 0 or page_num >= len(self.fitz_document):
             return None
@@ -563,10 +563,49 @@ class PDFProcessor:
             img_data = pix.tobytes("ppm")
             image = QImage.fromData(img_data)
             
-            # 缩放图像到指定尺寸
-            image = image.scaled(width, height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            # 创建带边框的缩略图容器（容器比内容页大2%）
+            # 先创建原始尺寸的Pixmap
+            original_pixmap = QPixmap.fromImage(image)
             
-            return QPixmap.fromImage(image)
+            # 计算带边框的容器尺寸（比内容大2%）
+            extra_width = int(original_pixmap.width() * 0.01)
+            extra_height = int(original_pixmap.height() * 0.01)
+            container_width = original_pixmap.width() + extra_width * 2
+            container_height = original_pixmap.height() + extra_height * 2
+            
+            # 创建容器
+            container_pixmap = QPixmap(container_width, container_height)
+            container_pixmap.fill(Qt.white)  # 白色背景
+            
+            # 在容器中绘制带边框的页面
+            painter = QPainter(container_pixmap)
+            # 绘制边框
+            pen = QPen(QColor("#CCCCCC"))
+            pen.setWidth(1)
+            painter.setPen(pen)
+            painter.drawRect(0, 0, container_width - 1, container_height - 1)
+            
+            # 居中绘制页面内容
+            x_offset = (container_width - original_pixmap.width()) // 2
+            y_offset = (container_height - original_pixmap.height()) // 2
+            painter.drawPixmap(x_offset, y_offset, original_pixmap)
+            painter.end()
+            
+            # 缩放到最终尺寸，保持边框完整显示
+            scaled_pixmap = container_pixmap.scaled(width, height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            
+            # 确保边框可见，创建最终的显示Pixmap
+            final_pixmap = QPixmap(width, height)
+            final_pixmap.fill(Qt.transparent)
+            
+            # 居中绘制缩放后的带边框图像
+            painter = QPainter(final_pixmap)
+            x_offset = (width - scaled_pixmap.width()) // 2
+            y_offset = (height - scaled_pixmap.height()) // 2
+            painter.drawPixmap(x_offset, y_offset, scaled_pixmap)
+            painter.end()
+            
+            return final_pixmap
             
         except Exception as e:
             print(f"渲染缩略图失败: {e}")
@@ -738,6 +777,29 @@ class PDFProcessor:
         except Exception as e:
             print(f"清除高亮失败: {e}")
             return False
+    
+    def close_pdf(self):
+        """关闭当前PDF文件句柄"""
+        if self.fitz_document:
+            self.fitz_document.close()
+            self.fitz_document = None
+        self.pdf_document = None
+        self.current_file = None
+        self.current_page = 0
+        self.zoom_factor = 1.0
+        # 清除渲染缓存
+        self.clear_render_cache()
+    
+    def load_pdf(self, file_path):
+        """加载PDF文件"""
+        success, message = self.open_pdf(file_path)
+        if success:
+            # 重置页面相关状态
+            self.current_page = 0
+            self.zoom_factor = self.base_zoom
+            # 清除渲染缓存
+            self.clear_render_cache()
+        return success, message
     
     def clear_render_cache(self):
         """清除渲染缓存"""
