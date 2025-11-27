@@ -32,7 +32,7 @@ class ThumbnailManager(QListWidget):
         """初始化界面"""
         # 设置缩略图列表属性
         self.setIconSize(QSize(200, 234))  # 缩略图尺寸 (增加30%高度)
-        self.setSpacing(1)  # 减小项目间距
+        self.setSpacing(5)  # 增加项目间距
         
         # 设置布局和显示模式
         self.setFlow(QListWidget.LeftToRight)  # 从左到右排列
@@ -55,18 +55,19 @@ class ThumbnailManager(QListWidget):
             QListWidget {
                 background-color: #FFFFFF;
                 border: none;
-                padding: 3px;  /* 进一步减小内边距 */
+                padding: 5px;  /* 增加内边距 */
                 margin: 0px;
                 text-align: center;
                 alignment: center;
             }
             QListWidget::item {
                 border: 1px solid #CCCCCC;
-                border-radius: 2px;
-                padding: 2px;  /* 进一步减小内边距 */
-                margin: 2px;   /* 进一步减小外边距 */
+                border-radius: 4px;
+                padding: 5px;  /* 增加内边距 */
+                margin: 5px;   /* 增加外边距 */
                 text-align: center;
                 alignment: center;
+                width: 200px;  /* 固定宽度 */
             }
             QListWidget::item:selected {
                 border: 2px solid #0066CC;
@@ -111,12 +112,13 @@ class ThumbnailManager(QListWidget):
                 item.setIcon(QIcon(thumbnail_pixmap))
                 item.setText(f"第 {page_num + 1} 页")  # 显示页码
                 item.setData(Qt.UserRole, page_num)  # 存储页码信息
+                item.setTextAlignment(Qt.AlignCenter)  # 文字居中
                 
                 self.addItem(item)
                 self.thumbnails.append(thumbnail_pixmap)
                 
                 # 如果是当前页面，设置为选中状态
-                current_page = 1  # 始终选中第一页
+                current_page = self.pdf_processor.get_current_page()  # 获取当前页面
                 if page_num == current_page - 1:  # current_page从1开始，page_num从0开始
                     item.setSelected(True)
                     # 确保选中的项可见

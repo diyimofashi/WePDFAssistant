@@ -1,4 +1,4 @@
-"""极灵PDF主程序入口 - 现代化PDF阅读器"""
+"""极灵PDF主程序入口 - 现代化PDF阅读器（集成性能优化）"""
 
 import sys
 import os
@@ -7,27 +7,59 @@ import os
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
+# 导入日志模块
+from app.utils.logger import get_logger
+logger = get_logger('main')
+
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, 
                              QWidget, QToolBar, QAction, QFileDialog, QSplitter,
                              QLabel, QStatusBar, QMessageBox, QPushButton,
                              QLineEdit, QSpinBox, QComboBox, QMenu, QMenuBar,
                              QScrollArea, QScrollBar, QDialog, QVBoxLayout as QDialogLayout, 
                              QHBoxLayout as QDialogLayout, QCheckBox, QPushButton as QPushButton, QGroupBox,
-                             QSizePolicy)
-from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer
+                             QSizePolicy, QProgressDialog)
+from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QThread
 from PyQt5.QtGui import QFont, QIcon, QPixmap, QPainter, QColor
 
 from app.config.settings import AppSettings
 from app.ui.styles import AppStyles
 from app.core.pdf_processor import PDFProcessor
+
+# 导入优化组件
+try:
+    from app.ui.virtual_scroll import VirtualScrollArea
+    from app.ui.smart_thumbnail import SmartThumbnailManager
+    OPTIMIZATION_AVAILABLE = True
+    logger.info("🚀 性能优化组件已加载")
+except ImportError as e:
+    logger.warning(f"⚠️ 优化组件不可用，使用标准模式: {e}")
+    OPTIMIZATION_AVAILABLE = False
+    VirtualScrollArea = None
+    SmartThumbnailManager = None
+
+# 备用缩略图管理器
 from app.core.thumbnail_manager import ThumbnailManager
 
 class AuroraPDF(QMainWindow):
-    """极灵PDF主窗口 - 现代化PDF阅读器界面"""
+    """极灵PDF主窗口 - 现代化PDF阅读器界面（集成性能优化）"""
     
     def __init__(self):
         super().__init__()
         self.pdf_processor = PDFProcessor()
+        
+        # 性能优化相关
+        self.use_optimizations = OPTIMIZATION_AVAILABLE
+        self.use_virtual_scroll = self.use_optimizations
+        self.performance_timer = QTimer()
+        self.performance_timer.timeout.connect(self._monitor_performance)
+        self.performance_timer.start(5000)  # 每5秒监控一次
+        self.progress_dialog = None
+        
+        # 连接PDF处理器信号（确保无论是否使用优化版本都连接信号）
+        self.pdf_processor.loading_progress.connect(self._on_loading_progress)
+        self.pdf_processor.loading_finished.connect(self._on_pdf_loaded)
+        self.pdf_processor.page_rendered.connect(self._on_page_rendered)
+        self.pdf_processor.thumbnail_ready.connect(self._on_thumbnail_ready)
         
         # 搜索相关属性
         self.search_results = []
@@ -45,13 +77,7 @@ class AuroraPDF(QMainWindow):
         self.page_heights = []
         self.page_positions = []
         
-        # 缩略图相关属性
-        self.thumbnail_dock = None
-        self.thumbnail_list = None
-        self.thumbnails = []
-        self.show_thumbnails = False
-        
-        # 动态计算渲染尺寸的变量
+        # 动态渲染尺寸
         self.render_width = 800
         self.render_height = 1100
         
@@ -60,54 +86,70 @@ class AuroraPDF(QMainWindow):
         self.resize_timer.setSingleShot(True)
         self.resize_timer.timeout.connect(self._update_render_size)
         
+        # 缩略图相关属性
+        self.thumbnail_dock = None
+        self.thumbnail_list = None
+        self.thumbnails = []
+        self.show_thumbnails = False
+        
         self.init_ui()
         
     def init_ui(self):
         """初始化UI界面 - 按照极光PDF布局设计"""
-        # 设置窗口属性
-        self.setWindowTitle(f"{AppSettings.APP_NAME} v{AppSettings.APP_VERSION}")
-        self.setGeometry(100, 100, AppSettings.WINDOW_WIDTH, AppSettings.WINDOW_HEIGHT)
-        self.setMinimumSize(AppSettings.WINDOW_MIN_WIDTH, AppSettings.WINDOW_MIN_HEIGHT)
-        
-        # 默认最大化窗口
-        self.showMaximized()
-        
-        # 设置应用样式
-        self.apply_styles()
-        
-        # 创建中央部件
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        
-        # 创建主布局（水平布局，左侧缩略图，右侧PDF显示区域）
-        main_layout = QHBoxLayout(central_widget)
-        main_layout.setSpacing(0)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # 创建缩略图区域
-        self.create_thumbnail_area(main_layout)
-        
-        # 创建PDF显示区域
-        self.create_pdf_display_area(main_layout)
-        
-        # 创建菜单栏
-        self.create_menubar()
-        
-        # 创建主工具栏
-        self.create_main_toolbar()
-        
-        # 创建状态栏
-        self.create_statusbar()
-        
-        # 显示欢迎信息
-        self.show_message("🟢 就绪 - 请点击'打开'按钮选择PDF文件")
-        
+        try:
+            logger.debug("开始初始化UI...")
+            # 设置窗口属性
+            self.setWindowTitle(f"{AppSettings.APP_NAME} v{AppSettings.APP_VERSION}")
+            self.setGeometry(100, 100, AppSettings.WINDOW_WIDTH, AppSettings.WINDOW_HEIGHT)
+            self.setMinimumSize(AppSettings.WINDOW_MIN_WIDTH, AppSettings.WINDOW_MIN_HEIGHT)
+            
+            # 默认最大化窗口
+            self.showMaximized()
+            
+            # 设置应用样式
+            self.apply_styles()
+            
+            # 创建中央部件
+            central_widget = QWidget()
+            self.setCentralWidget(central_widget)
+            
+            # 创建主布局（水平布局，左侧缩略图，右侧PDF显示区域）
+            main_layout = QHBoxLayout(central_widget)
+            main_layout.setSpacing(0)
+            main_layout.setContentsMargins(0, 0, 0, 0)
+            
+            # 创建缩略图区域
+            self.create_thumbnail_area(main_layout)
+            
+            # 创建PDF显示区域
+            self.create_pdf_display_area(main_layout)
+            
+            # 创建菜单栏
+            self.create_menubar()
+            
+            # 创建主工具栏
+            self.create_main_toolbar()
+            
+            # 创建状态栏
+            self.create_statusbar()
+            
+            # 显示欢迎信息
+            welcome_msg = "🚀 优化版就绪 - 支持异步加载和虚拟滚动" if self.use_optimizations else "🟢 就绪 - 请点击'打开'按钮选择PDF文件"
+            self.show_message(welcome_msg)
+            
+            logger.debug("UI初始化完成")
+        except Exception as e:
+            logger.error(f"UI初始化过程中出现错误: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    
     def create_thumbnail_area(self, main_layout):
         """创建缩略图区域"""
         from PyQt5.QtWidgets import QDockWidget
         
         # 创建停靠窗口作为缩略图区域
-        self.thumbnail_dock = QDockWidget("缩略图", self)
+        title = "智能缩略图" if self.use_optimizations else "缩略图"
+        self.thumbnail_dock = QDockWidget(title, self)
         self.thumbnail_dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
         self.thumbnail_dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
         
@@ -129,11 +171,15 @@ class AuroraPDF(QMainWindow):
         
         # 设置缩略图容器的默认宽度，但允许调整
         self.thumbnail_dock.setMinimumWidth(250)
-        self.thumbnail_dock.resize(300, self.thumbnail_dock.height())
+        self.thumbnail_dock.resize(280, self.thumbnail_dock.height())
         
-        # 创建缩略图管理器
-        self.thumbnail_list = ThumbnailManager(self)
-        self.thumbnail_list.set_pdf_processor(self.pdf_processor)
+        # 创建缩略图管理器（智能或标准）
+        if self.use_optimizations and SmartThumbnailManager:
+            self.thumbnail_list = SmartThumbnailManager(self)
+            self.thumbnail_list.set_pdf_processor(self.pdf_processor)
+        else:
+            self.thumbnail_list = ThumbnailManager(self)
+            self.thumbnail_list.set_pdf_processor(self.pdf_processor)
         
         # 连接信号
         self.thumbnail_list.thumbnail_clicked.connect(self.on_thumbnail_clicked)
@@ -146,62 +192,81 @@ class AuroraPDF(QMainWindow):
         self.thumbnail_dock.hide()
     
     def create_pdf_display_area(self, main_layout):
-        """创建PDF显示区域 - 支持连续滚动浏览"""
-        # 创建滚动区域
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        """创建PDF显示区域 - 支持虚拟滚动和传统滚动"""
         
-        # 设置滚动区域的对齐方式
-        self.scroll_area.setAlignment(Qt.AlignCenter)
-        
-        # 设置滚动区域背景色，突出页面边界
-        self.scroll_area.setStyleSheet("""
-            QScrollArea {
-                background-color: #F5F5F5;
-                border: 1px solid #CCCCCC;
-                alignment: center;
-            }
-            QScrollArea QWidget {
-                alignment: center;
-            }
-        """)
-        
-        # 创建滚动内容容器
-        self.scroll_content = QWidget()
-        self.scroll_content_layout = QVBoxLayout(self.scroll_content)
-        self.scroll_content_layout.setSpacing(0)
-        self.scroll_content_layout.setContentsMargins(10, 10, 10, 10)
-        self.scroll_content_layout.setAlignment(Qt.AlignCenter)
-        
-        # 设置内容容器背景色和居中对齐
-        self.scroll_content.setStyleSheet("""
-            QWidget {
-                background-color: #F5F5F5;
-                alignment: center;
-            }
-        """)
-        
-        # 确保滚动内容容器能够正确扩展以适应居中对齐
-        self.scroll_content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        
-        # 设置滚动内容的最小宽度以确保居中效果
-        self.scroll_content.setMinimumWidth(800)
-        
-        # 创建PDF预览标签（初始状态）
-        self.preview_label = QLabel("📄 请点击上方'打开'按钮选择PDF文件")
-        self.preview_label.setAlignment(Qt.AlignCenter)
-        self.preview_label.setFont(QFont("微软雅黑", 14))
-        
-        self.scroll_content_layout.addWidget(self.preview_label)
-        self.scroll_area.setWidget(self.scroll_content)
-        
-        # 连接滚动事件
-        self.scroll_area.verticalScrollBar().valueChanged.connect(self.on_scroll_changed)
-        
-        # 添加到主布局
-        main_layout.addWidget(self.scroll_area)
+        if self.use_optimizations and VirtualScrollArea:
+            # 创建虚拟滚动区域
+            self.virtual_scroll = VirtualScrollArea(self)
+            self.virtual_scroll.page_visible.connect(self._on_page_visible)
+            self.virtual_scroll.page_hidden.connect(self._on_page_hidden)
+            self.current_scroll_area = self.virtual_scroll
+            main_layout.addWidget(self.virtual_scroll)
+            
+            # 创建备用传统滚动区域（用于切换）
+            self.scroll_area = QScrollArea()
+            self.scroll_area.setWidgetResizable(True)
+            self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self.scroll_area.setAlignment(Qt.AlignCenter)
+            self.scroll_area.setStyleSheet("""
+                QScrollArea {
+                    background-color: #F5F5F5;
+                    border: 1px solid #CCCCCC;
+                }
+            """)
+            
+        else:
+            # 创建传统滚动区域
+            self.scroll_area = QScrollArea()
+            self.scroll_area.setWidgetResizable(True)
+            self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self.scroll_area.setAlignment(Qt.AlignCenter)
+            
+            # 设置滚动区域背景色，突出页面边界
+            self.scroll_area.setStyleSheet("""
+                QScrollArea {
+                    background-color: #F5F5F5;
+                    border: 1px solid #CCCCCC;
+                    alignment: center;
+                }
+                QScrollArea QWidget {
+                    alignment: center;
+                }
+            """)
+            
+            # 创建滚动内容容器
+            self.scroll_content = QWidget()
+            self.scroll_content_layout = QVBoxLayout(self.scroll_content)
+            self.scroll_content_layout.setSpacing(0)
+            self.scroll_content_layout.setContentsMargins(10, 10, 10, 10)
+            self.scroll_content_layout.setAlignment(Qt.AlignCenter)
+            
+            # 设置内容容器背景色和居中对齐
+            self.scroll_content.setStyleSheet("""
+                QWidget {
+                    background-color: #F5F5F5;
+                    alignment: center;
+                }
+            """)
+            
+            # 确保滚动内容容器能够正确扩展以适应居中对齐
+            self.scroll_content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.scroll_content.setMinimumWidth(800)
+            
+            # 创建PDF预览标签（初始状态）
+            self.preview_label = QLabel("📄 请点击上方'打开'按钮选择PDF文件")
+            self.preview_label.setAlignment(Qt.AlignCenter)
+            self.preview_label.setFont(QFont("微软雅黑", 14))
+            
+            self.scroll_content_layout.addWidget(self.preview_label)
+            self.scroll_area.setWidget(self.scroll_content)
+            
+            # 连接滚动事件
+            self.scroll_area.verticalScrollBar().valueChanged.connect(self.on_scroll_changed)
+            
+            self.current_scroll_area = self.scroll_area
+            main_layout.addWidget(self.scroll_area)
         
     def apply_styles(self):
         """应用样式"""
@@ -251,6 +316,16 @@ class AuroraPDF(QMainWindow):
         # 视图菜单
         view_menu = menubar.addMenu("👁️ 视图")
         
+        # 虚拟滚动切换（仅优化版本）
+        if self.use_optimizations:
+            self.virtual_scroll_action = QAction("⚡ 虚拟滚动", self)
+            self.virtual_scroll_action.setCheckable(True)
+            self.virtual_scroll_action.setChecked(self.use_virtual_scroll)
+            self.virtual_scroll_action.triggered.connect(self.toggle_virtual_scroll)
+            view_menu.addAction(self.virtual_scroll_action)
+            
+            view_menu.addSeparator()
+        
         # 浏览模式
         self.continuous_action = QAction("📜 连续浏览", self)
         self.continuous_action.setCheckable(True)
@@ -265,6 +340,14 @@ class AuroraPDF(QMainWindow):
         self.single_page_action.setShortcut("Ctrl+N")
         self.single_page_action.triggered.connect(self.toggle_single_page_mode)
         view_menu.addAction(self.single_page_action)
+        
+        # 性能监控（仅优化版本）
+        if self.use_optimizations:
+            view_menu.addSeparator()
+            self.performance_action = QAction("📊 性能监控", self)
+            self.performance_action.setCheckable(True)
+            self.performance_action.triggered.connect(self.toggle_performance_monitor)
+            view_menu.addAction(self.performance_action)
         
         view_menu.addSeparator()
         
@@ -353,13 +436,13 @@ class AuroraPDF(QMainWindow):
         self.page_spinbox = QSpinBox()
         self.page_spinbox.setMinimum(1)
         self.page_spinbox.setMaximum(1)
-        self.page_spinbox.setFixedWidth(60)
+        self.page_spinbox.setFixedWidth(80)  # 增加宽度以显示更多数字
         self.page_spinbox.valueChanged.connect(self.go_to_page)
         self.page_spinbox.setToolTip("输入页码直接跳转")
         toolbar.addWidget(self.page_spinbox)
         
         self.total_pages_label = QLabel("/ 1")
-        self.total_pages_label.setFixedWidth(30)
+        self.total_pages_label.setFixedWidth(50)  # 增加宽度以显示更多数字
         toolbar.addWidget(self.total_pages_label)
         
         toolbar.addSeparator()
@@ -406,6 +489,13 @@ class AuroraPDF(QMainWindow):
         self.thumbnail_btn.triggered.connect(self.toggle_thumbnails)
         toolbar.addAction(self.thumbnail_btn)
         
+        # 缓存清理按钮（仅优化版本）
+        if self.use_optimizations:
+            self.cache_btn = QAction("🗑️ 清理缓存", self)
+            self.cache_btn.setToolTip("清理所有缓存")
+            self.cache_btn.triggered.connect(self.clear_cache)
+            toolbar.addAction(self.cache_btn)
+        
     def create_statusbar(self):
         """创建状态栏"""
         statusbar = QStatusBar()
@@ -416,56 +506,179 @@ class AuroraPDF(QMainWindow):
         self.status_label.setFont(QFont("微软雅黑", 9))
         statusbar.addWidget(self.status_label)
         
+        # 性能信息（仅在优化版本显示）
+        if self.use_optimizations:
+            self.performance_label = QLabel("")
+            self.performance_label.setFont(QFont("微软雅黑", 8))
+            statusbar.addPermanentWidget(self.performance_label)
+        
     def open_file(self):
         """打开PDF文件"""
+        logger.info("开始打开文件...")
         # 获取上次打开的目录
         last_dir = AppSettings.get_last_open_dir()
-        
-        # 调试输出
-        print(f"上次打开目录: {last_dir}")
         
         file_path, _ = QFileDialog.getOpenFileName(
             self, "选择PDF文件", last_dir, "PDF文件 (*.pdf)")
         
         if file_path:
-            success, message = self.pdf_processor.open_pdf(file_path)
-            
-            if success:
-                # 记忆打开文件的目录
-                AppSettings.set_last_open_dir(file_path)
-                print(f"已保存新目录: {os.path.dirname(file_path)}")
+            logger.info(f"选择了文件: {file_path}")
+            if self.use_optimizations:
+                # 异步加载模式
+                logger.info("使用异步加载模式...")
+                self.show_progress_dialog("正在加载PDF文件...")
+                success, message = self.pdf_processor.open_pdf(file_path, async_mode=True)
                 
-                # 更新界面
-                self.setWindowTitle(f"{AppSettings.APP_NAME} - {os.path.basename(file_path)}")
-                
-                # 显示PDF信息
-                pdf_info = self.pdf_processor.get_pdf_info()
-                if pdf_info:
-                    info_text = f"📄 {pdf_info['filename']} | 📖 共{pdf_info['page_count']}页 | 💾 {pdf_info['file_size']}"
-                    if pdf_info['is_encrypted']:
-                        info_text += " | 🔒 已加密"
-                    
-                    self.show_message(info_text)
-                    
-                    # 更新预览区域
-                    self.update_preview()
-                                    
-                    # 如果缩略图面板是显示状态，加载缩略图
-                    if self.show_thumbnails:
-                        self.load_thumbnails()
+                if success:
+                    logger.info("异步加载启动成功")
+                    # 记忆打开文件的目录
+                    AppSettings.set_last_open_dir(file_path)
+                else:
+                    logger.error(f"异步加载启动失败: {message}")
+                    self.hide_progress_dialog()
+                    QMessageBox.critical(self, "错误", message)
             else:
-                QMessageBox.critical(self, "错误", message)
+                # 同步加载模式
+                logger.info("使用同步加载模式...")
+                success, message = self.pdf_processor.open_pdf(file_path, async_mode=False)
                 
+                if success:
+                    logger.info("同步加载成功")
+                    # 记忆打开文件的目录
+                    AppSettings.set_last_open_dir(file_path)
+                    
+                    # 更新界面
+                    self.setWindowTitle(f"{AppSettings.APP_NAME} - {os.path.basename(file_path)}")
+                    
+                    # 显示PDF信息
+                    pdf_info = self.pdf_processor.get_pdf_info()
+                    if pdf_info:
+                        info_text = f"📄 {pdf_info['filename']} | 📖 共{pdf_info['page_count']}页 | 💾 {pdf_info['file_size']}"
+                        if pdf_info['is_encrypted']:
+                            info_text += " | 🔒 已加密"
+                        
+                        self.show_message(info_text)
+                        logger.debug(f"PDF信息: {info_text}")
+                        
+                        # 确保显示第一页
+                        self.pdf_processor.go_to_page(1)
+                        logger.debug("已跳转到第1页")
+                        
+                        # 更新页码控件的最大值和总页数显示
+                        total_pages = self.pdf_processor.get_total_pages()
+                        self.page_spinbox.setMaximum(total_pages)
+                        self.total_pages_label.setText(f"/ {total_pages}")
+                        
+                        # 更新预览区域
+                        logger.debug("开始更新预览区域...")
+                        self.update_preview()
+                        logger.debug("预览区域更新完成")
+                                        
+                        # 如果缩略图面板是显示状态，加载缩略图
+                        if self.show_thumbnails:
+                            logger.debug("开始加载缩略图...")
+                            self.load_thumbnails()
+                            logger.debug("缩略图加载完成")
+                else:
+                    logger.error(f"同步加载失败: {message}")
+                    QMessageBox.critical(self, "错误", message)
+        else:
+            logger.info("未选择文件")
+            
+    def _on_pdf_loaded(self, success, message):
+        """PDF加载完成回调"""
+        # 隐藏进度对话框
+        self.hide_progress_dialog()
+        
+        if success:
+            # 更新界面标题
+            if self.pdf_processor.current_file:
+                self.setWindowTitle(f"{AppSettings.APP_NAME} - {os.path.basename(self.pdf_processor.current_file)}")
+            
+            # 显示PDF信息
+            pdf_info = self.pdf_processor.get_pdf_info()
+            if pdf_info:
+                info_text = f"📄 {pdf_info['filename']} | 📖 共{pdf_info['page_count']}页 | 💾 {pdf_info['file_size']}"
+                if pdf_info['is_encrypted']:
+                    info_text += " | 🔒 已加密"
+                
+                self.show_message(info_text)
+                logger.debug(f"PDF信息: {info_text}")
+                
+                # 确保显示第一页
+                self.pdf_processor.go_to_page(1)
+                logger.debug("已跳转到第1页")
+                
+                # 更新页码控件的最大值和总页数显示
+                total_pages = self.pdf_processor.get_total_pages()
+                self.page_spinbox.setMaximum(total_pages)
+                self.total_pages_label.setText(f"/ {total_pages}")
+                
+                # 延迟更新预览区域，确保所有组件初始化完成
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(100, self._delayed_update_preview)
+                logger.debug("已安排延迟更新预览区域")
+                                
+                # 如果缩略图面板是显示状态，加载缩略图
+                if self.show_thumbnails:
+                    logger.debug("开始加载缩略图...")
+                    self.load_thumbnails()
+                    logger.debug("缩略图加载完成")
+        else:
+            QMessageBox.critical(self, "错误", message)
+    
+    def _delayed_update_preview(self):
+        """延迟更新预览区域，确保所有组件初始化完成"""
+        logger.debug("延迟更新预览区域开始...")
+        self.update_preview()
+        logger.debug("延迟更新预览区域完成")
+    
     def update_preview(self):
         """更新预览区域 - 显示PDF页面内容"""
+        logger.debug("开始更新预览...")
         if self.pdf_processor.fitz_document:
+            logger.debug("PDF文档已加载")
+            # 确保在异步加载完成后正确显示内容
+            if self.use_virtual_scroll and hasattr(self, 'virtual_scroll'):
+                logger.debug("使用虚拟滚动模式")
+                try:
+                    # 虚拟滚动模式 - 设置数据并更新页面
+                    logger.debug("设置虚拟滚动数据...")
+                    self._setup_virtual_scroll_data()
+                    logger.debug("调用虚拟滚动区域更新内容...")
+                    # 使用延迟更新确保设置完成
+                    from PyQt5.QtCore import QTimer
+                    QTimer.singleShot(100, self.virtual_scroll.update_content)
+                    logger.debug("虚拟滚动区域更新调用完成")
+                    return
+                except Exception as e:
+                    logger.error(f"虚拟滚动模式出错，回退到传统模式: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    # 如果虚拟滚动出错，回退到传统模式
+                    self.use_virtual_scroll = False
+            
+            logger.debug("使用传统滚动模式")
+            # 传统模式 - 手动管理页面显示
+            if not hasattr(self, 'scroll_content_layout'):
+                # 如果没有scroll_content_layout，可能是初始化问题，重新创建
+                logger.debug("重新创建滚动内容布局")
+                self.scroll_content = QWidget()
+                self.scroll_content_layout = QVBoxLayout(self.scroll_content)
+                self.scroll_content_layout.setSpacing(0)
+                self.scroll_content_layout.setContentsMargins(10, 10, 10, 10)
+                self.scroll_content_layout.setAlignment(Qt.AlignCenter)
+                self.scroll_area.setWidget(self.scroll_content)
+            
             # 清空现有内容
+            logger.debug("清空现有内容...")
             for i in reversed(range(self.scroll_content_layout.count())):
                 child = self.scroll_content_layout.itemAt(i).widget()
                 if child:
                     child.setParent(None)
             
             if self.continuous_mode:
+                logger.debug("连续浏览模式")
                 # 连续浏览模式：渲染并显示所有页面
                 total_pages = self.pdf_processor.get_total_pages()
                 self.page_heights = []
@@ -476,9 +689,11 @@ class AuroraPDF(QMainWindow):
                 saved_current_page = self.pdf_processor.get_current_page()
                 
                 for page_num in range(total_pages):
+                    logger.debug(f"渲染第{page_num + 1}页...")
                     # 为每一页渲染时，直接渲染指定页面
                     pixmap = self.pdf_processor.render_page_at(page_num, self.render_width, self.render_height)  # 使用动态尺寸
                     if pixmap:
+                        logger.debug(f"第{page_num + 1}页渲染成功: {pixmap.width()} x {pixmap.height()}")
                         # 记录页面位置
                         self.page_positions.append(current_position)
                         
@@ -515,14 +730,14 @@ class AuroraPDF(QMainWindow):
                         # 设置容器的最小尺寸而非固定尺寸，以允许布局管理器居中
                         page_label.setMinimumSize(container_width, container_height)
                         
-                        # 设置样式以确保页面在容器中居中显示
+                        # 设置样式以确保页面在容器中居中显示，减小margin
                         page_label.setStyleSheet("""
                             QLabel {
                                 background-color: #FFFFFF;
                                 border: 1px solid #CCCCCC;
-                                border-radius: 3px;
+                                border-radius: 4px;
                                 padding: 0px;
-                                margin: 5px auto;  /* 水平居中 */
+                                margin: 5px auto;  /* 减小水平居中边距 */
                                 qproperty-alignment: AlignCenter;
                                 alignment: center;
                             }
@@ -531,22 +746,31 @@ class AuroraPDF(QMainWindow):
                         # 居中显示PDF内容
                         page_label.setAlignment(Qt.AlignCenter)
                         
-                        # 添加页面间距
+                        # 添加页面间距，保持与虚拟滚动模式一致
                         if page_num > 0:
                             spacer = QLabel()
-                            spacer.setFixedHeight(10)
+                            spacer.setFixedHeight(5)  # 保持5像素间距
                             self.scroll_content_layout.addWidget(spacer)
-                            current_position += 10
+                            current_position += 5
                         
                         self.scroll_content_layout.addWidget(page_label)
                         current_position += page_height
+                        logger.debug(f"第{page_num + 1}页已添加到布局中")
+                    else:
+                        logger.warning(f"第{page_num + 1}页渲染失败")
                 
                 # 恢复当前页面
                 self.pdf_processor.go_to_page(saved_current_page)
+                
+                # 更新页码控件的最大值
+                self.page_spinbox.setMaximum(total_pages)
+                self.total_pages_label.setText(f"/ {total_pages}")
             else:
+                logger.debug("单页浏览模式")
                 # 单页模式：只显示当前页面
                 pixmap = self.pdf_processor.render_page(self.render_width, self.render_height)  # 使用动态尺寸
                 if pixmap:
+                    logger.debug(f"当前页渲染成功: {pixmap.width()} x {pixmap.height()}")
                     page_label = QLabel()
                     page_label.setPixmap(pixmap)
                     page_label.setAlignment(Qt.AlignCenter)
@@ -590,16 +814,21 @@ class AuroraPDF(QMainWindow):
                     # 居中显示PDF内容
                     page_label.setAlignment(Qt.AlignCenter)
                     self.scroll_content_layout.addWidget(page_label)
-                
+                    logger.debug("当前页已添加到布局中")
+                else:
+                    logger.warning("当前页渲染失败")
+            
             # 更新页面信息
             current_page = self.pdf_processor.get_current_page()
             total_pages = self.pdf_processor.get_total_pages()
             zoom_level = int(self.pdf_processor.get_zoom() * 100)
             
+            logger.debug(f"当前页: {current_page}, 总页数: {total_pages}, 缩放: {zoom_level}%")
+            
             # 更新页码控件
             self.page_spinbox.setMaximum(total_pages)
             self.page_spinbox.setValue(current_page)
-            self.total_pages_label.setText(str(total_pages))
+            self.total_pages_label.setText(f"/ {total_pages}")
             
             # 更新状态栏
             mode_text = "📜 连续浏览模式" if self.continuous_mode else "📄 单页浏览模式"
@@ -608,12 +837,15 @@ class AuroraPDF(QMainWindow):
             # 更新缩略图选中状态
             self.update_thumbnail_selection(current_page)
         else:
+            logger.warning("没有PDF文档加载")
             # 没有PDF文件时显示欢迎信息
             self.preview_label.clear()
             self.preview_label.setText("📄 请点击上方'打开'按钮选择PDF文件")
             self.preview_label.setAlignment(Qt.AlignCenter)
             self.preview_label.setFont(QFont("微软雅黑", 14))
         
+        logger.debug("预览更新完成")
+    
     def save_file(self):
         """保存PDF文件"""
         if not self.pdf_processor.current_file:
@@ -691,7 +923,7 @@ class AuroraPDF(QMainWindow):
                 # 更新页码控件
                 self.page_spinbox.setMaximum(total_pages)
                 self.page_spinbox.setValue(current_page)
-                self.total_pages_label.setText(str(total_pages))
+                self.total_pages_label.setText(f"/ {total_pages}")
                 
                 # 更新状态栏
                 self.show_message(f"📜 连续浏览模式 | 第 {current_page} 页 / 共 {total_pages} 页 | 缩放: {zoom_level}%")
@@ -704,6 +936,15 @@ class AuroraPDF(QMainWindow):
             if success:
                 self.update_preview()
             self.show_message(message)
+            
+            # 确保页面输入框更新
+            current_page = self.pdf_processor.get_current_page()
+            total_pages = self.pdf_processor.get_total_pages()
+            self.page_spinbox.blockSignals(True)
+            self.page_spinbox.setMaximum(total_pages)
+            self.page_spinbox.setValue(current_page)
+            self.page_spinbox.blockSignals(False)
+            self.total_pages_label.setText(f"/ {total_pages}")
     
     def on_scroll_changed(self, value):
         """滚动事件处理 - 实时更新页码"""
@@ -728,6 +969,8 @@ class AuroraPDF(QMainWindow):
                 total_pages = self.pdf_processor.get_total_pages()
                 zoom_level = int(self.pdf_processor.get_zoom() * 100)
                 self.show_message(f"📜 连续浏览模式 | 第 {current_page} 页 / 共 {total_pages} 页 | 缩放: {zoom_level}%")
+                # 更新总页数标签
+                self.total_pages_label.setText(f"/ {total_pages}")
                                 
                 # 更新缩略图选中状态
                 self.update_thumbnail_selection(current_page)
@@ -763,6 +1006,43 @@ class AuroraPDF(QMainWindow):
             # 更新菜单项状态
             self.continuous_action.setChecked(False)
             self.single_page_action.setChecked(True)
+    
+    def toggle_virtual_scroll(self):
+        """切换虚拟滚动"""
+        if not self.use_optimizations:
+            return
+            
+        self.use_virtual_scroll = self.virtual_scroll_action.isChecked()
+        
+        if self.use_virtual_scroll:
+            # 切换到虚拟滚动
+            if hasattr(self, 'main_layout'):
+                self.main_layout.replaceWidget(self.scroll_area, self.virtual_scroll)
+            self.scroll_area.hide()
+            self.virtual_scroll.show()
+            self.current_scroll_area = self.virtual_scroll
+            self.show_message("⚡ 已切换到虚拟滚动模式")
+        else:
+            # 切换到传统滚动
+            if hasattr(self, 'main_layout'):
+                self.main_layout.replaceWidget(self.virtual_scroll, self.scroll_area)
+            self.virtual_scroll.hide()
+            self.scroll_area.show()
+            self.current_scroll_area = self.scroll_area
+            self.update_preview()  # 重新渲染
+            self.show_message("📜 已切换到传统滚动模式")
+            
+    def toggle_performance_monitor(self):
+        """切换性能监控"""
+        if not self.use_optimizations:
+            return
+            
+        if self.performance_action.isChecked():
+            self.performance_timer.start(1000)  # 每秒更新
+            self.show_message("📊 性能监控已开启")
+        else:
+            self.performance_timer.start(5000)  # 每5秒更新
+            self.show_message("📊 性能监控已关闭")
     
     # ===== 缩放控制功能 =====
     
@@ -1070,17 +1350,213 @@ class AuroraPDF(QMainWindow):
             self.update_preview()
         
         # 跳转到指定页面
-        self.go_to_page(page_num)
+        self.go_to_page(page_num + 1)  # 注意：缩略图传递的是0基索引，但go_to_page需要1基索引
         
+        # 确保页面输入框更新
+        self.page_spinbox.blockSignals(True)
+        self.page_spinbox.setValue(page_num + 1)
+        self.page_spinbox.blockSignals(False)
+    
     def on_thumbnail_right_clicked(self, page_num):
         """处理缩略图右键点击事件"""
         # 右键点击时已经自动选中了页面，这里可以添加其他处理逻辑
-        print(f"右键点击第 {page_num} 页")
+        logger.debug(f"右键点击第 {page_num} 页")
     
     def update_thumbnail_selection(self, current_page):
         """更新缩略图选中状态"""
         if self.thumbnail_list:
             self.thumbnail_list.update_thumbnail_selection(current_page)
+    
+    def clear_cache(self):
+        """清理缓存"""
+        if not self.use_optimizations:
+            return
+            
+        # 清理PDF处理器缓存
+        self.pdf_processor.clear_render_cache()
+        
+        # 清理缩略图缓存
+        if hasattr(self.thumbnail_list, 'clear_cache'):
+            self.thumbnail_list.clear_cache()
+            
+        # 清理虚拟滚动缓存
+        if self.use_virtual_scroll and hasattr(self.virtual_scroll, 'clear_cache'):
+            self.virtual_scroll.clear_cache()
+            
+        # 强制内存优化
+        self.pdf_processor.optimize_memory_usage()
+        
+        self.show_message("🗑️ 所有缓存已清理")
+
+    # ===== 性能优化相关方法 =====
+    
+    def _on_loading_progress(self, value, message):
+        """加载进度更新"""
+        if self.progress_dialog:
+            self.progress_dialog.setValue(value)
+            self.progress_dialog.setLabelText(message)
+            
+    def _setup_virtual_scroll_data(self):
+        """设置虚拟滚动数据"""
+        logger.debug("开始设置虚拟滚动数据...")
+        if not self.pdf_processor or not self.pdf_processor.fitz_document:
+            logger.debug("PDF处理器未准备好")
+            return
+            
+        try:
+            # 获取总页数
+            total_pages = self.pdf_processor.get_total_pages()
+            logger.debug(f"总页数: {total_pages}")
+            
+            # 构建页面数据
+            pages_data = []
+            for page_num in range(total_pages):
+                # 获取页面尺寸
+                dimensions = self.pdf_processor.get_page_dimensions(page_num)
+                if dimensions:
+                    width = int(dimensions['width'] * self.pdf_processor.zoom_factor)
+                    height = int(dimensions['height'] * self.pdf_processor.zoom_factor)
+                else:
+                    # 使用默认尺寸
+                    width = 800
+                    height = 1100
+                
+                pages_data.append({
+                    'page_num': page_num,
+                    'width': width,
+                    'height': height,
+                    'zoom_factor': self.pdf_processor.zoom_factor
+                })
+            
+            logger.debug(f"准备设置{len(pages_data)}页数据到虚拟滚动区域")
+            # 设置虚拟滚动数据
+            self.virtual_scroll.set_pages_data(pages_data)
+            
+            # 确保信号连接以处理页面渲染
+            if hasattr(self.virtual_scroll, 'page_visible'):
+                try:
+                    self.virtual_scroll.page_visible.connect(self._on_virtual_page_visible)
+                    logger.debug("虚拟滚动信号连接成功")
+                except Exception as signal_error:
+                    logger.debug(f"信号连接失败（可能已连接）: {signal_error}")
+                
+            logger.debug("虚拟滚动数据设置完成")
+        except Exception as e:
+            logger.error(f"设置虚拟滚动数据失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
+    def _on_page_rendered(self, page_num, pixmap):
+        """页面渲染完成"""
+        logger.debug(f"主窗口接收到第{page_num + 1}页渲染完成通知")
+        if self.use_optimizations and hasattr(self, 'virtual_scroll'):
+            logger.debug("转发到虚拟滚动区域...")
+            self.virtual_scroll.on_page_rendered(page_num, pixmap)
+            
+    def _on_virtual_page_visible(self, page_num):
+        """虚拟滚动页面变为可见时触发渲染"""
+        logger.debug(f"虚拟页面{page_num}变为可见，开始渲染...")
+        if self.pdf_processor and hasattr(self, 'virtual_scroll'):
+            # 异步渲染页面
+            logger.debug(f"调用PDF处理器渲染第{page_num + 1}页...")
+            # 使用页面的实际渲染尺寸
+            if hasattr(self.virtual_scroll, 'pages_data') and page_num < len(self.virtual_scroll.pages_data):
+                page_data = self.virtual_scroll.pages_data[page_num]
+                render_width = page_data.get('width', self.render_width)
+                render_height = page_data.get('height', self.render_height)
+            else:
+                render_width = self.render_width
+                render_height = self.render_height
+                
+            pixmap = self.pdf_processor.render_page_at(page_num, render_width, render_height)
+            if pixmap:
+                logger.debug(f"第{page_num + 1}页渲染成功: {pixmap.width()} x {pixmap.height()}")
+                # 更新虚拟滚动中的页面显示
+                self.virtual_scroll.on_page_rendered(page_num, pixmap)
+                logger.debug(f"页面{page_num}更新完成")
+            else:
+                logger.debug(f"页面{page_num}渲染失败")
+    
+    def _on_thumbnail_ready(self, page_num, pixmap):
+        """缩略图就绪"""
+        # 智能缩略图管理器会自动处理
+        pass
+        
+    def _on_page_visible(self, page_num):
+        """页面变为可见"""
+        if hasattr(self.pdf_processor, 'render_pages_async'):
+            self.pdf_processor.render_pages_async([page_num], self.render_width, self.render_height)
+            
+    def _on_page_hidden(self, page_num):
+        """页面变为隐藏"""
+        # 可以在这里清理隐藏页面的缓存
+        pass
+        
+    def _monitor_performance(self):
+        """监控性能"""
+        if not self.use_optimizations:
+            return
+            
+        try:
+            # 获取缓存统计
+            cache_stats = self.pdf_processor.get_cache_stats()
+            
+            # 更新性能显示（如果状态栏有性能标签）
+            if hasattr(self, 'performance_label'):
+                perf_text = f"内存: {cache_stats['current_memory_usage_mb']:.1f}MB | "
+                perf_text += f"缓存命中率: {cache_stats['page_cache_hit_rate']:.1%}"
+                self.performance_label.setText(perf_text)
+            
+            # 自动优化内存
+            if cache_stats['current_memory_usage_mb'] > cache_stats['max_memory_usage_mb'] * 0.8:
+                self.pdf_processor.optimize_memory_usage()
+                
+        except Exception as e:
+            logger.error(f"性能监控错误: {e}")
+    
+    def show_progress_dialog(self, title, cancellable=True):
+        """显示进度对话框"""
+        if self.use_optimizations:
+            self.progress_dialog = QProgressDialog(title, "取消", 0, 100, self)
+            self.progress_dialog.setWindowTitle("进度")
+            self.progress_dialog.setWindowModality(Qt.WindowModal)
+            self.progress_dialog.show()
+            
+            if cancellable:
+                self.progress_dialog.canceled.connect(self._cancel_loading)
+                
+    def hide_progress_dialog(self):
+        """隐藏进度对话框"""
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+            
+    def _cancel_loading(self):
+        """取消加载"""
+        if hasattr(self.pdf_processor, 'async_loader') and self.pdf_processor.async_loader:
+            self.pdf_processor.async_loader.cancel()
+        self.hide_progress_dialog()
+        self.show_message("❌ 加载已取消")
+
+    def on_virtual_scroll_page_changed(self, current_page):
+        """处理虚拟滚动页面变更事件"""
+        # 更新页码显示（避免触发额外的事件）
+        if current_page != self.page_spinbox.value():
+            # 阻止信号以避免循环触发
+            self.page_spinbox.blockSignals(True)
+            self.page_spinbox.setValue(current_page)
+            self.page_spinbox.blockSignals(False)
+                            
+            # 更新状态栏
+            if self.pdf_processor:
+                total_pages = self.pdf_processor.get_total_pages()
+                zoom_level = int(self.pdf_processor.get_zoom() * 100)
+                self.show_message(f"⚡ 虚拟滚动模式 | 第 {current_page} 页 / 共 {total_pages} 页 | 缩放: {zoom_level}%")
+                # 更新总页数标签
+                self.total_pages_label.setText(f"/ {total_pages}")
+                            
+            # 更新缩略图选中状态
+            self.update_thumbnail_selection(current_page)
 
 def main():
     """主函数"""

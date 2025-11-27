@@ -2,6 +2,15 @@
 
 import os
 import json
+import sys
+
+# 添加项目根目录到Python路径，解决模块导入问题
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+
+# 导入日志模块
+from app.utils.logger import get_logger
+logger = get_logger('settings')
 
 class AppSettings:
     """应用设置类"""
@@ -47,13 +56,13 @@ class AppSettings:
                 try:
                     with open(cls.SETTINGS_FILE, 'r', encoding='utf-8') as f:
                         cls._settings_cache = json.load(f)
-                    print(f"成功加载设置文件: {cls.SETTINGS_FILE}")
-                    print(f"设置内容: {cls._settings_cache}")
+                    logger.debug(f"成功加载设置文件: {cls.SETTINGS_FILE}")
+                    logger.debug(f"设置内容: {cls._settings_cache}")
                 except Exception as e:
-                    print(f"加载设置失败: {e}")
+                    logger.error(f"加载设置失败: {e}")
                     cls._settings_cache = {}
             else:
-                print(f"设置文件不存在，使用默认设置: {cls.SETTINGS_FILE}")
+                logger.info(f"设置文件不存在，使用默认设置: {cls.SETTINGS_FILE}")
                 cls._settings_cache = {}
         return cls._settings_cache
     
@@ -64,10 +73,10 @@ class AppSettings:
             os.makedirs(os.path.dirname(cls.SETTINGS_FILE), exist_ok=True)
             with open(cls.SETTINGS_FILE, 'w', encoding='utf-8') as f:
                 json.dump(cls._settings_cache, f, ensure_ascii=False, indent=2)
-            print(f"已保存设置到: {cls.SETTINGS_FILE}")
-            print(f"保存的内容: {cls._settings_cache}")
+            logger.debug(f"已保存设置到: {cls.SETTINGS_FILE}")
+            logger.debug(f"保存的内容: {cls._settings_cache}")
         except Exception as e:
-            print(f"保存设置失败: {e}")
+            logger.error(f"保存设置失败: {e}")
     
     @classmethod
     def get_last_open_dir(cls):

@@ -4,20 +4,41 @@ import os
 import time
 import PyPDF2
 import fitz  # PyMuPDF - 用于PDF页面渲染
+import sys
+
+# 添加项目根目录到Python路径，解决模块导入问题
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+
+# 导入日志模块
+from app.utils.logger import get_logger
+logger = get_logger('pdf_processor')
+
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QObject, pyqtSignal
 
-class PDFProcessor:
+# 导入新的异步加载器和缓存管理器
+from .async_loader import AsyncPDFLoader, AsyncThumbnailLoader, AsyncPageRenderer
+from .cache_manager import RenderCache, DiskCache
+
+class PDFProcessor(QObject):
     """PDF处理器 - 提供稳定可靠的PDF文件处理和渲染功能"""
     
+    # 信号定义
+    loading_progress = pyqtSignal(int, str)  # 加载进度
+    loading_finished = pyqtSignal(bool, str)  # 加载完成
+    thumbnail_ready = pyqtSignal(int, object)  # 缩略图就绪
+    page_rendered = pyqtSignal(int, object)  # 页面渲染完成
+    
     def __init__(self):
+        super().__init__()
         self.current_file = None
         self.pdf_document = None
         self.fitz_document = None  # PyMuPDF文档对象
         self.current_page = 0  # 当前页码（从0开始）
-        self.zoom_factor = 3.0  # 缩放因子（设置为3.0，即300%作为新的100%基准）
-        self.base_zoom = 3.0  # 基准缩放因子（用户看到的100%实际是300%）
+        self.zoom_factor = 2.0  # 缩放因子（设置为2.0，即200%作为新的100%基准）
+        self.base_zoom = 2.0  # 基准缩放因子（用户看到的100%实际是200%）
         self.file_size = 0  # 文件大小（字节）
         self.load_time = 0  # 加载时间（秒）
         self.last_error = ""  # 最后错误信息
@@ -27,12 +48,28 @@ class PDFProcessor:
         self.pages_per_view = 3  # 连续模式下每次显示的页面数
         self.page_spacing = 20  # 页面间距（像素）
         
-        # 渲染缓存
-        self.render_cache = {}  # 页面渲染缓存
-        self.cache_max_size = 10  # 最大缓存页面数
+        # 异步加载器
+        self.async_loader = None
+        self.thumbnail_loader = None
+        self.page_renderer = None
         
-    def open_pdf(self, file_path):
-        """打开PDF文件 - 提供稳定可靠的PDF文件打开功能"""
+        # 新的缓存系统
+        self.render_cache = RenderCache(max_memory_mb=200, max_items=50)
+        self.disk_cache = DiskCache(cache_dir="cache", max_size_mb=500)
+        
+        # 向后兼容的简单缓存
+        self.simple_cache = {}
+        self.cache_max_size = 10
+        
+    def open_pdf(self, file_path, async_mode=True):
+        """打开PDF文件 - 支持异步和同步模式"""
+        if async_mode:
+            return self.open_pdf_async(file_path)
+        else:
+            return self.open_pdf_sync(file_path)
+    
+    def open_pdf_sync(self, file_path):
+        """同步打开PDF文件（原有逻辑）"""
         try:
             # 记录开始时间
             start_time = time.time()
@@ -63,6 +100,9 @@ class PDFProcessor:
             self.zoom_factor = self.base_zoom  # 重置为基准缩放（300%作为100%基准）
             self.last_error = ""
             
+            # 清除缓存
+            self.clear_render_cache()
+            
             # 计算加载时间
             self.load_time = time.time() - start_time
             
@@ -74,6 +114,66 @@ class PDFProcessor:
         except Exception as e:
             self.last_error = f"无法打开PDF文件: {str(e)}"
             return False, self.last_error
+    
+    def open_pdf_async(self, file_path):
+        """异步打开PDF文件"""
+        try:
+            # 检查文件是否存在和可读
+            if not os.path.exists(file_path):
+                return False, "文件不存在"
+            
+            if not os.access(file_path, os.R_OK):
+                return False, "文件不可读"
+            
+            # 取消之前的加载任务
+            if self.async_loader and self.async_loader.isRunning():
+                self.async_loader.cancel()
+                self.async_loader.wait()
+            
+            # 创建异步加载器
+            self.async_loader = AsyncPDFLoader(file_path)
+            
+            # 连接信号
+            self.async_loader.loading_progress.connect(self.loading_progress.emit)
+            self.async_loader.loading_finished.connect(self._on_pdf_loaded)
+            self.async_loader.loading_error.connect(self._on_load_error)
+            
+            # 记录加载开始时间
+            self.async_loader.load_start_time = time.time()
+            
+            # 开始异步加载
+            self.async_loader.start()
+            
+            return True, "开始异步加载PDF文件..."
+            
+        except Exception as e:
+            return False, f"启动异步加载失败: {str(e)}"
+    
+    def _on_pdf_loaded(self, success, message, pdf_info):
+        """异步加载完成回调"""
+        if success:
+            # 更新处理器状态
+            self.current_file = pdf_info['filepath']
+            self.file_size = pdf_info['file_size']
+            self.pdf_document = pdf_info['pdf_document']
+            self.fitz_document = pdf_info['fitz_document']
+            self.current_page = 0
+            self.zoom_factor = self.base_zoom
+            self.last_error = ""
+            
+            # 清除缓存
+            self.clear_render_cache()
+            
+            # 计算加载时间
+            self.load_time = time.time() - self.async_loader.load_start_time
+            
+        # 发送加载完成信号
+        self.loading_finished.emit(success, message)
+    
+    def _on_load_error(self, error_message):
+        """异步加载错误回调"""
+        self.last_error = error_message
+        self.loading_finished.emit(False, error_message)
     
     def get_file_size_str(self):
         """获取文件大小格式化字符串"""
@@ -134,7 +234,7 @@ class PDFProcessor:
                     
                     info["metadata"][display_key] = str(value)
         except Exception as e:
-            print(f"获取元数据失败: {e}")
+            logger.error(f"获取元数据失败: {e}")
         
         # 添加文档属性
         info["properties"]["文档状态"] = "正常" if not self.pdf_document.is_encrypted else "已加密"
@@ -306,22 +406,45 @@ class PDFProcessor:
             return None
         
         try:
+            # 获取页面实际尺寸
+            page_rect = self.fitz_document[self.current_page].rect
+            render_width = int(page_rect.width * self.zoom_factor)
+            render_height = int(page_rect.height * self.zoom_factor)
+            
+            # 首先检查内存缓存
+            cached_pixmap = self.render_cache.get_rendered_page(
+                self.current_page, self.zoom_factor, (render_width, render_height)
+            )
+            if cached_pixmap:
+                return cached_pixmap
+            
+            # 检查磁盘缓存
+            disk_key = f"page_{self.current_page}_zoom_{self.zoom_factor:.2f}_size_{render_width}x{render_height}"
+            disk_pixmap = self.disk_cache.get(disk_key)
+            if disk_pixmap:
+                # 将磁盘缓存的内容放入内存缓存
+                self.render_cache.put_rendered_page(
+                    self.current_page, self.zoom_factor, (render_width, render_height), disk_pixmap
+                )
+                return disk_pixmap
+            
+            # 缓存未命中，进行渲染
+            return self._render_page_sync(self.current_page, width, height)
+            
+        except Exception as e:
+            logger.error(f"渲染页面失败: {e}")
+            return False
+    
+    def _render_page_sync(self, page_num, width=800, height=1000):
+        """同步渲染指定页面"""
+        try:
             # 获取页面
-            page = self.fitz_document[self.current_page]
+            page = self.fitz_document[page_num]
             
             # 获取页面实际尺寸
             page_rect = page.rect
-            page_width = page_rect.width
-            page_height = page_rect.height
-            
-            # 根据页面实际尺寸和缩放因子计算渲染尺寸
-            render_width = int(page_width * self.zoom_factor)
-            render_height = int(page_height * self.zoom_factor)
-            
-            # 检查缓存
-            cache_key = (self.current_page, self.zoom_factor, render_width, render_height)
-            if cache_key in self.render_cache:
-                return self.render_cache[cache_key]
+            render_width = int(page_rect.width * self.zoom_factor)
+            render_height = int(page_rect.height * self.zoom_factor)
             
             # 创建变换矩阵进行缩放
             mat = fitz.Matrix(self.zoom_factor, self.zoom_factor)
@@ -356,21 +479,63 @@ class PDFProcessor:
                 pixmap = QPixmap()
                 pixmap.loadFromData(img_data)
             
-            # 缓存结果
-            if len(self.render_cache) >= self.cache_max_size:
-                # 移除最旧的缓存项
-                oldest_key = next(iter(self.render_cache))
-                del self.render_cache[oldest_key]
-            self.render_cache[cache_key] = pixmap
+            # 缓存结果到内存缓存
+            self.render_cache.put_rendered_page(
+                page_num, self.zoom_factor, (render_width, render_height), pixmap
+            )
+            
+            # 缓存到磁盘（异步进行，不阻塞）
+            try:
+                disk_key = f"page_{page_num}_zoom_{self.zoom_factor:.2f}_size_{render_width}x{render_height}"
+                self.disk_cache.put(disk_key, pixmap)
+            except:
+                pass  # 磁盘缓存失败不影响主流程
             
             return pixmap
             
         except Exception as e:
-            print(f"渲染页面失败: {e}")
-            # 返回错误提示图像
-            error_pixmap = QPixmap(width, height)
-            error_pixmap.fill(Qt.lightGray)
-            return error_pixmap
+            logger.error(f"渲染页面失败: {e}")
+            return False
+    
+    def render_pages_async(self, page_nums, width=800, height=1000):
+        """异步渲染多个页面"""
+        if not self.fitz_document:
+            return False
+        
+        try:
+            # 取消之前的渲染任务
+            if self.page_renderer and self.page_renderer.isRunning():
+                self.page_renderer.cancel()
+                self.page_renderer.wait()
+            
+            # 创建异步渲染器
+            self.page_renderer = AsyncPageRenderer(
+                self.fitz_document, page_nums, self.zoom_factor, (width, height)
+            )
+            
+            # 连接信号
+            self.page_renderer.page_rendered.connect(
+                lambda page_num, pixmap: self._on_page_rendered(page_num, pixmap, (width, height))
+            )
+            
+            # 开始异步渲染
+            self.page_renderer.start()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"启动异步渲染失败: {e}")
+            return False
+    
+    def _on_page_rendered(self, page_num, pixmap, render_size):
+        """页面渲染完成回调"""
+        # 缓存渲染结果
+        self.render_cache.put_rendered_page(
+            page_num, self.zoom_factor, render_size, pixmap
+        )
+        
+        # 发送渲染完成信号
+        self.page_rendered.emit(page_num, pixmap)
     
     def render_continuous_pages(self, width=800, height=1000):
         """渲染连续的多页内容 - 支持网页式浏览"""
@@ -460,7 +625,7 @@ class PDFProcessor:
             return combined_pixmap
             
         except Exception as e:
-            print(f"连续页面渲染失败: {e}")
+            logger.error(f"连续页面渲染失败: {e}")
             # 返回错误提示图像
             error_pixmap = QPixmap(width, height)
             error_pixmap.fill(Qt.lightGray)
@@ -492,31 +657,39 @@ class PDFProcessor:
     
     def render_page_at(self, page_num, width=800, height=1000):
         """渲染指定页面为高质量图像 - 优化显示效果和性能"""
+        logger.debug(f"开始渲染第{page_num + 1}页 (width={width}, height={height})")
         if not self.fitz_document or page_num < 0 or page_num >= len(self.fitz_document):
+            logger.warning("文档未加载或页码无效")
             return None
-        
+
         try:
             # 获取页面
             page = self.fitz_document[page_num]
-            
+            logger.debug(f"获取页面对象成功: {page}")
+
             # 获取页面实际尺寸
             page_rect = page.rect
             page_width = page_rect.width
             page_height = page_rect.height
-            
+            logger.debug(f"页面尺寸: {page_width} x {page_height}")
+
             # 根据页面实际尺寸和缩放因子计算渲染尺寸
             render_width = int(page_width * self.zoom_factor)
             render_height = int(page_height * self.zoom_factor)
-            
+            logger.debug(f"渲染尺寸: {render_width} x {render_height}")
+
             # 检查缓存
-            cache_key = (page_num, self.zoom_factor, render_width, render_height)
-            if cache_key in self.render_cache:
-                return self.render_cache[cache_key]
-            
+            cache_pixmap = self.render_cache.get_rendered_page(page_num, self.zoom_factor, (render_width, render_height))
+            if cache_pixmap:
+                logger.debug("从缓存获取页面渲染结果")
+                return cache_pixmap
+
             # 创建变换矩阵进行缩放
             mat = fitz.Matrix(self.zoom_factor, self.zoom_factor)
-            
+            logger.debug(f"创建变换矩阵: {mat}")
+
             # 渲染页面为图像 - 使用优化的渲染参数
+            logger.debug("开始渲染页面...")
             pix = page.get_pixmap(
                 matrix=mat,
                 alpha=False,  # 不使用alpha通道，提高性能
@@ -524,14 +697,16 @@ class PDFProcessor:
                 annots=True,  # 包含注释
                 clip=page.rect  # 限定渲染区域
             )
-            
+            logger.debug(f"页面渲染完成: {pix.width} x {pix.height}")
+
             # 获取图像尺寸
             img_width = pix.width
             img_height = pix.height
-            
+
             # 直接创建QPixmap，避免中间转换步骤，提升性能
             if hasattr(pix, 'samples') and pix.samples is not None:
                 # 使用像素数据直接创建QImage然后转换为QPixmap
+                logger.debug("使用像素数据创建QImage...")
                 image = QImage(
                     pix.samples, 
                     img_width, 
@@ -540,33 +715,80 @@ class PDFProcessor:
                     QImage.Format_RGB888
                 )
                 pixmap = QPixmap.fromImage(image)
+                logger.debug(f"QPixmap创建成功: {pixmap.width()} x {pixmap.height()}")
             else:
                 # 备用方法：直接转换为QPixmap
+                logger.debug("使用备用方法创建QPixmap...")
                 img_data = pix.tobytes("ppm")  # 使用PPM格式更快
                 pixmap = QPixmap()
                 pixmap.loadFromData(img_data)
-            
-            # 缓存结果
-            if len(self.render_cache) >= self.cache_max_size:
-                # 移除最旧的缓存项
-                oldest_key = next(iter(self.render_cache))
-                del self.render_cache[oldest_key]
-            self.render_cache[cache_key] = pixmap
-            
+                logger.debug(f"QPixmap创建成功: {pixmap.width()} x {pixmap.height()}")
+
+            # 缓存结果到新的缓存系统
+            self.render_cache.put_rendered_page(page_num, self.zoom_factor, (render_width, render_height), pixmap)
+            logger.debug("页面渲染结果已缓存")
+
             return pixmap
-            
+
         except Exception as e:
-            print(f"渲染页面失败: {e}")
+            logger.error(f"渲染页面失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             # 返回错误提示图像
             error_pixmap = QPixmap(width, height)
             error_pixmap.fill(Qt.lightGray)
             return error_pixmap
     
+    def get_total_pages(self):
+        """获取总页数"""
+        if self.fitz_document:
+            return len(self.fitz_document)
+        return 0
+        
+    def get_current_page(self):
+        """获取当前页码（1基索引）"""
+        return self.current_page + 1
+    
     def render_thumbnail(self, page_num, width=100, height=141):
-        """渲染指定页面的缩略图"""
+        """渲染指定页面的缩略图 - 优化版本"""
         if not self.fitz_document or page_num < 0 or page_num >= len(self.fitz_document):
             return None
         
+        try:
+            # 首先检查缓存
+            cached_thumb = self.render_cache.get_thumbnail(page_num, (width, height))
+            if cached_thumb:
+                return cached_thumb
+            
+            # 检查磁盘缓存
+            disk_key = f"thumb_{page_num}_size_{width}x{height}"
+            disk_thumb = self.disk_cache.get(disk_key)
+            if disk_thumb:
+                # 将磁盘缓存的内容放入内存缓存
+                self.render_cache.put_thumbnail(page_num, (width, height), disk_thumb)
+                return disk_thumb
+            
+            # 缓存未命中，生成缩略图
+            thumbnail = self._render_thumbnail_sync(page_num, width, height)
+            
+            if thumbnail:
+                # 缓存结果
+                self.render_cache.put_thumbnail(page_num, (width, height), thumbnail)
+                
+                # 缓存到磁盘
+                try:
+                    self.disk_cache.put(disk_key, thumbnail)
+                except:
+                    pass
+            
+            return thumbnail
+            
+        except Exception as e:
+            logger.error(f"渲染缩略图失败: {e}")
+            return None
+    
+    def _render_thumbnail_sync(self, page_num, width=100, height=141):
+        """同步生成缩略图"""
         try:
             # 获取页面
             page = self.fitz_document[page_num]
@@ -626,8 +848,78 @@ class PDFProcessor:
             return final_pixmap
             
         except Exception as e:
-            print(f"渲染缩略图失败: {e}")
+            logger.error(f"渲染缩略图失败: {e}")
             return None
+    
+    def load_thumbnails_async(self, start_page=0, end_page=None):
+        """异步加载缩略图"""
+        if not self.fitz_document:
+            return False
+        
+        try:
+            total_pages = len(self.fitz_document)
+            if end_page is None:
+                end_page = total_pages
+            
+            # 取消之前的缩略图加载任务
+            if self.thumbnail_loader and self.thumbnail_loader.isRunning():
+                self.thumbnail_loader.cancel()
+                self.thumbnail_loader.wait()
+            
+            # 创建异步缩略图加载器
+            self.thumbnail_loader = AsyncThumbnailLoader(self.fitz_document)
+            
+            # 连接信号
+            self.thumbnail_loader.thumbnail_ready.connect(self._on_thumbnail_ready)
+            self.thumbnail_loader.thumbnail_progress.connect(
+                lambda current, total: self.loading_progress.emit(
+                    int(current / total * 100), f"加载缩略图 {current}/{total}"
+                )
+            )
+            
+            # 开始异步加载
+            self.thumbnail_loader.start()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"启动异步缩略图加载失败: {e}")
+            return False
+    
+    def _on_thumbnail_ready(self, page_num, pixmap):
+        """缩略图就绪回调"""
+        # 标准化缩略图尺寸
+        standard_thumb = self._standardize_thumbnail(pixmap, 200, 234)
+        
+        # 缓存缩略图
+        if standard_thumb:
+            self.render_cache.put_thumbnail(page_num, (200, 234), standard_thumb)
+            
+            # 发送缩略图就绪信号
+            self.thumbnail_ready.emit(page_num, standard_thumb)
+    
+    def _standardize_thumbnail(self, pixmap, width, height):
+        """标准化缩略图尺寸"""
+        try:
+            # 缩放到指定尺寸
+            scaled_pixmap = pixmap.scaled(width, height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            
+            # 创建指定尺寸的容器
+            final_pixmap = QPixmap(width, height)
+            final_pixmap.fill(Qt.white)
+            
+            # 居中绘制
+            painter = QPainter(final_pixmap)
+            x_offset = (width - scaled_pixmap.width()) // 2
+            y_offset = (height - scaled_pixmap.height()) // 2
+            painter.drawPixmap(x_offset, y_offset, scaled_pixmap)
+            painter.end()
+            
+            return final_pixmap
+            
+        except Exception as e:
+            logger.error(f"标准化缩略图失败: {e}")
+            return pixmap  # 返回原始图片作为备用
     
 
     
@@ -768,7 +1060,7 @@ class PDFProcessor:
             
             return True
         except Exception as e:
-            print(f"高亮失败: {e}")
+            logger.error(f"高亮失败: {e}")
             return False
     
     def clear_highlights(self, page_num=None):
@@ -793,7 +1085,7 @@ class PDFProcessor:
             
             return True
         except Exception as e:
-            print(f"清除高亮失败: {e}")
+            logger.error(f"清除高亮失败: {e}")
             return False
     
     def close_pdf(self):
@@ -821,7 +1113,33 @@ class PDFProcessor:
     
     def clear_render_cache(self):
         """清除渲染缓存"""
-        self.render_cache.clear()
+        # 清除新缓存系统
+        self.render_cache.clear_all()
+        self.disk_cache.clear_all()
+        
+        # 清除旧的简单缓存
+        self.simple_cache.clear()
+    
+    def get_cache_stats(self):
+        """获取缓存统计信息"""
+        return self.render_cache.get_stats()
+    
+    def cleanup_cache(self):
+        """手动清理缓存"""
+        self.render_cache._auto_cleanup()
+    
+    def optimize_memory_usage(self):
+        """优化内存使用"""
+        stats = self.get_cache_stats()
+        
+        # 如果内存使用超过80%，清理缓存
+        if stats['current_memory_usage_mb'] > stats['max_memory_usage_mb'] * 0.8:
+            self.cleanup_cache()
+            
+            # 再次检查，如果还是太高，强制清理
+            stats = self.get_cache_stats()
+            if stats['current_memory_usage_mb'] > stats['max_memory_usage_mb'] * 0.9:
+                self.render_cache.clear_all()
     
     def get_text_from_rect(self, page_num, rect):
         """从指定矩形区域提取文本"""
@@ -833,7 +1151,7 @@ class PDFProcessor:
             text = page.get_text("text", clip=rect)
             return text.strip()
         except Exception as e:
-            print(f"提取文本失败: {e}")
+            logger.error(f"提取文本失败: {e}")
             return ""
     
     def close_document(self):
