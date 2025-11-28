@@ -23,6 +23,7 @@ class VirtualScrollArea(QScrollArea):
     # 信号定义
     page_visible = pyqtSignal(int)  # 页面变为可见
     page_hidden = pyqtSignal(int)  # 页面变为隐藏
+    page_changed = pyqtSignal(int)  # 页面变更信号
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -135,7 +136,7 @@ class VirtualScrollArea(QScrollArea):
         
         # 预估页面高度（可以基于实际内容动态调整）
         default_height = 1100  # 默认页面高度
-        page_spacing = 5  # 页面间距，与传统滚动模式保持一致
+        page_spacing = 35  # 进一步增大页面间距到35像素，使页面之间有更明显的间隔
         
         for i, page_data in enumerate(self.pages_data):
             # 如果有实际高度则使用，否则使用默认高度
@@ -147,7 +148,7 @@ class VirtualScrollArea(QScrollArea):
             self.total_height += height + page_spacing
             
         # 设置虚拟容器的高度，确保使用整数，并增加一些额外空间
-        self.virtual_widget.setMinimumHeight(int(self.total_height + 50))  # 减少额外空间到50像素
+        self.virtual_widget.setMinimumHeight(int(self.total_height + 60))  # 增加额外空间到60像素
         logger.debug(f"布局计算完成，总高度: {self.total_height}")
         
     def _update_virtual_widget(self):
@@ -174,7 +175,7 @@ class VirtualScrollArea(QScrollArea):
             # 设置容器大小和位置，确保使用整数
             height = self.page_heights[i] if i < len(self.page_heights) else 1100
             # 只增加少量额外空间以确保内容不会被截断
-            adjusted_height = height + 10  # 减少额外空间到10像素
+            adjusted_height = height + 40  # 增加额外空间到40像素
             y_position = self.page_positions[i]
             page_container.setGeometry(0, int(y_position), self.width(), int(adjusted_height))
             
@@ -225,8 +226,8 @@ class VirtualScrollArea(QScrollArea):
                 
         # 找到结束页面
         for i in range(len(self.page_positions) - 1, -1, -1):
-            # 减少容差以避免页面间隔过大
-            if self.page_positions[i] + self.page_heights[i] + 10 >= start_pos:  # 减少容差到10像素
+            # 调整容差值以匹配页面间隔的增加
+            if self.page_positions[i] + self.page_heights[i] + 40 >= start_pos:  # 增加容差到40像素
                 end_page = i
             else:
                 break
@@ -241,6 +242,7 @@ class VirtualScrollArea(QScrollArea):
         
     def _on_scroll_changed(self, value):
         """滚动事件处理"""
+        logger.debug(f"滚动条值变化: {value}")
         # 使用延迟渲染避免频繁更新
         self.render_timer.start(self.render_delay)
         
@@ -248,8 +250,7 @@ class VirtualScrollArea(QScrollArea):
         current_page = self.get_current_page()
         
         # 发出信号通知页面变更
-        if hasattr(self.parent(), 'on_virtual_scroll_page_changed'):
-            self.parent().on_virtual_scroll_page_changed(current_page)
+        self.page_changed.emit(current_page)
             
     def _delayed_render(self):
         """延迟渲染可见页面"""
@@ -359,7 +360,7 @@ class VirtualScrollArea(QScrollArea):
             # 设置页面大小，确保使用整数
             height = self.page_heights[page_num] if page_num < len(self.page_heights) else 1100
             # 只增加少量额外高度以确保内容不会被截断
-            adjusted_height = int(height + 10)  # 减少额外空间到10像素
+            adjusted_height = int(height + 30)  # 增加额外空间到30像素
             page_label.setMinimumSize(int(pixmap.width()), adjusted_height)
             page_label.resize(int(pixmap.width()), adjusted_height)
             
@@ -425,11 +426,12 @@ class VirtualScrollArea(QScrollArea):
         
         current_page = 1  # 默认第一页
         for i, pos in enumerate(self.page_positions):
-            if scroll_pos >= pos - 50:  # 给50像素的容差
+            if scroll_pos >= pos - 20:  # 调整容差到20像素以提高准确性
                 current_page = i + 1  # 转换为1基索引
             else:
                 break
                 
+        logger.debug(f"滚动位置: {scroll_pos}, 当前页面: {current_page}")
         return current_page
         
     def resizeEvent(self, event):
