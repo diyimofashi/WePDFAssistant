@@ -223,6 +223,13 @@ class ThumbnailManager(QListWidget):
         # 显示菜单
         menu.exec_(position)
         
+    def _notify_main_window_changes(self):
+        """通知主窗口更新保存操作状态"""
+        # 更新保存操作状态
+        main_window = self.parent()
+        if main_window and hasattr(main_window, 'update_save_actions_state'):
+            main_window.update_save_actions_state()
+
     def on_insert_blank_page(self, page_num):
         """插入空白页"""
         if not self.page_editor:
@@ -235,9 +242,11 @@ class ThumbnailManager(QListWidget):
             self.load_thumbnails()
             # 发送信号通知主窗口更新内容区域
             self.thumbnail_clicked.emit(page_num + 1)  # 跳转到插入页面的下一页
+            # 通知主窗口更新保存操作状态
+            self._notify_main_window_changes()
         else:
             QMessageBox.critical(self, "错误", message)
-        
+
     def on_insert_pdf_page(self, page_num):
         """插入PDF页面"""
         if not self.page_editor:
@@ -249,15 +258,17 @@ class ThumbnailManager(QListWidget):
             self, "选择PDF文件", "", "PDF文件 (*.pdf)")
         
         if file_path:
-            success, message = self.page_editor.insert_pdf_pages(page_num, file_path)
+            success, message = self.page_editor.insert_pdf_page(page_num, file_path)
             if success:
                 # 重新加载缩略图
                 self.load_thumbnails()
                 # 发送信号通知主窗口更新内容区域
-                self.thumbnail_clicked.emit(page_num + 1)  # 跳转到插入页面的下一页
+                self.thumbnail_clicked.emit(page_num + 1)
+                # 通知主窗口更新保存操作状态
+                self._notify_main_window_changes()
             else:
                 QMessageBox.critical(self, "错误", message)
-        
+
     def on_insert_image_page(self, page_num):
         """插入图片页面"""
         if not self.page_editor:
@@ -274,10 +285,12 @@ class ThumbnailManager(QListWidget):
                 # 重新加载缩略图
                 self.load_thumbnails()
                 # 发送信号通知主窗口更新内容区域
-                self.thumbnail_clicked.emit(page_num + 1)  # 跳转到插入页面的下一页
+                self.thumbnail_clicked.emit(page_num + 1)
+                # 通知主窗口更新保存操作状态
+                self._notify_main_window_changes()
             else:
                 QMessageBox.critical(self, "错误", message)
-        
+
     def on_copy_page(self, page_num):
         """复制页面"""
         if not self.page_editor:
@@ -289,10 +302,12 @@ class ThumbnailManager(QListWidget):
             # 重新加载缩略图
             self.load_thumbnails()
             # 发送信号通知主窗口更新内容区域
-            self.thumbnail_clicked.emit(page_num)
+            self.thumbnail_clicked.emit(page_num + 1)
+            # 通知主窗口更新保存操作状态
+            self._notify_main_window_changes()
         else:
             QMessageBox.critical(self, "错误", message)
-        
+
     def on_delete_page(self, page_num):
         """删除页面"""
         if not self.page_editor:
@@ -301,7 +316,7 @@ class ThumbnailManager(QListWidget):
         
         # 确认删除
         reply = QMessageBox.question(
-            self, "确认删除", f"确定要删除第 {page_num} 页吗？", 
+            self, "确认删除", f"确定要删除第{page_num}页吗？",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         
         if reply == QMessageBox.Yes:
@@ -309,61 +324,41 @@ class ThumbnailManager(QListWidget):
             if success:
                 # 重新加载缩略图
                 self.load_thumbnails()
-                # 发送信号通知主窗口更新内容区域
-                # 删除页面后跳转到前一页或第一页
-                if page_num > 1:
-                    self.thumbnail_clicked.emit(page_num - 1)
-                else:
-                    self.thumbnail_clicked.emit(1)
+                # 通知主窗口更新保存操作状态
+                self._notify_main_window_changes()
             else:
                 QMessageBox.critical(self, "错误", message)
-        
-    def on_rotate_page(self, page_num, angle):
-        """旋转页面"""
+
+    def on_rotate_cw(self, page_num):
+        """顺时针旋转页面"""
         if not self.page_editor:
             QMessageBox.warning(self, "错误", "页面编辑器未初始化")
             return
         
-        success, message = self.page_editor.rotate_page(page_num, angle)
+        success, message = self.page_editor.rotate_page(page_num, 90)
         if success:
             # 重新加载缩略图
             self.load_thumbnails()
-            # 发送信号通知主窗口更新内容区域
-            self.thumbnail_clicked.emit(page_num)
+            # 通知主窗口更新保存操作状态
+            self._notify_main_window_changes()
         else:
             QMessageBox.critical(self, "错误", message)
-        
-    def on_rotate_all_pages(self, angle):
-        """旋转所有页面"""
+
+    def on_rotate_ccw(self, page_num):
+        """逆时针旋转页面"""
         if not self.page_editor:
             QMessageBox.warning(self, "错误", "页面编辑器未初始化")
             return
         
-        # 确认旋转所有页面
-        reply = QMessageBox.question(
-            self, "确认旋转", f"确定要旋转所有页面 {angle} 度吗？", 
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        
-        if reply == QMessageBox.Yes:
-            success, message = self.page_editor.rotate_all_pages(angle)
-            if success:
-                # 重新加载缩略图
-                self.load_thumbnails()
-                # 发送信号通知主窗口更新内容区域
-                self.thumbnail_clicked.emit(1)  # 跳转到第一页
-            else:
-                QMessageBox.critical(self, "错误", message)
-        
-    def on_print_page(self, page_num):
-        """打印页面"""
-        if not self.pdf_processor:
-            QMessageBox.warning(self, "错误", "PDF处理器未初始化")
-            return
-        
-        # 调用PDF处理器的打印功能
-        # 这里简化实现，仅提供概念性代码
-        QMessageBox.information(self, "打印", f"打印第 {page_num} 页功能开发中...")
-        
+        success, message = self.page_editor.rotate_page(page_num, -90)
+        if success:
+            # 重新加载缩略图
+            self.load_thumbnails()
+            # 通知主窗口更新保存操作状态
+            self._notify_main_window_changes()
+        else:
+            QMessageBox.critical(self, "错误", message)
+
     def on_extract_pages(self, page_num):
         """提取页面"""
         if not self.pdf_processor:
@@ -375,9 +370,64 @@ class ThumbnailManager(QListWidget):
             self, "保存提取的页面", f"page_{page_num}.pdf", "PDF文件 (*.pdf)")
         
         if file_path:
-            # 这里简化实现，仅提供概念性代码
-            QMessageBox.information(self, "提取页面", f"提取第 {page_num} 页到 {os.path.basename(file_path)} 功能开发中...")
+            # 使用页面编辑器提取页面
+            if self.page_editor:
+                success, message = self.page_editor.extract_pages([page_num], file_path)
+                if success:
+                    QMessageBox.information(self, "提取页面", message)
+                else:
+                    QMessageBox.critical(self, "错误", message)
+            else:
+                QMessageBox.warning(self, "错误", "页面编辑器未初始化")
+
+    def on_print_page(self, page_num):
+        """打印页面"""
+        if not self.pdf_processor:
+            QMessageBox.warning(self, "错误", "PDF处理器未初始化")
+            return
         
+        # 创建打印机对象
+        printer = QPrinter(QPrinter.HighResolution)
+        printer.setPageMargins(10, 10, 10, 10, QPrinter.Millimeter)
+        
+        # 显示打印对话框
+        print_dialog = QPrintDialog(printer, self)
+        print_dialog.setWindowTitle(f"打印第{page_num}页")
+        
+        if print_dialog.exec_() == QPrintDialog.Accepted:
+            try:
+                # 渲染页面到打印机
+                painter = QPainter(printer)
+                
+                # 获取页面
+                page = self.pdf_processor.fitz_document.load_page(page_num - 1)  # 0-based index
+                
+                # 获取页面尺寸
+                rect = page.rect
+                dpi = 300  # 打印分辨率
+                
+                # 计算缩放因子
+                scale_x = printer.width() / rect.width
+                scale_y = printer.height() / rect.height
+                scale = min(scale_x, scale_y) * 0.9  # 留一些边距
+                
+                # 设置变换矩阵
+                mat = fitz.Matrix(scale, scale)
+                
+                # 渲染页面
+                pix = page.get_pixmap(matrix=mat, dpi=dpi)
+                
+                # 创建QImage
+                img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888)
+                
+                # 绘制到打印机
+                painter.drawImage(0, 0, img)
+                painter.end()
+                
+                QMessageBox.information(self, "打印成功", f"第{page_num}页已发送到打印机")
+            except Exception as e:
+                QMessageBox.critical(self, "打印失败", f"打印过程中出现错误：{str(e)}")
+
     def on_ocr_page(self, page_num):
         """OCR识别页面"""
         if not self.pdf_processor:

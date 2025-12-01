@@ -240,6 +240,13 @@ class DiskCache:
                     data = pickle.load(f)
                     # 检查是否过期（24小时）
                     if time.time() - data['timestamp'] < 86400:
+                        # 检查是否是QPixmap对象的序列化数据
+                        if isinstance(data['value'], dict) and 'pixmap_data' in data['value']:
+                            # 从字节数据重建QPixmap
+                            from PyQt5.QtGui import QPixmap
+                            pixmap = QPixmap()
+                            pixmap.loadFromData(data['value']['pixmap_data'])
+                            return pixmap
                         return data['value']
                     else:
                         # 过期，删除文件
@@ -252,6 +259,21 @@ class DiskCache:
         """保存到磁盘缓存"""
         cache_path = self._get_cache_path(key)
         try:
+            # 如果是QPixmap对象，先转换为字节数据
+            if hasattr(value, 'saveToData'):  # 检查是否是QPixmap对象
+                # 将QPixmap转换为字节数据
+                pixmap_data = value.saveToData()
+                if pixmap_data:  # 如果转换成功
+                    value = {'pixmap_data': pixmap_data}
+                else:
+                    # 如果saveToData失败，尝试其他方法
+                    from PyQt5.QtCore import QByteArray, QBuffer, QIODevice
+                    byte_array = QByteArray()
+                    buffer = QBuffer(byte_array)
+                    buffer.open(QIODevice.WriteOnly)
+                    value.save(buffer, "PNG")
+                    value = {'pixmap_data': byte_array.data()}
+            
             data = {
                 'value': value,
                 'timestamp': time.time()

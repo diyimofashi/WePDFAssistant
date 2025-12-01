@@ -2,6 +2,7 @@
 
 import sys
 import os
+import json
 
 # 添加项目根目录到Python路径，解决模块导入问题
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,8 +19,9 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                              QScrollArea, QScrollBar, QDialog, QVBoxLayout as QDialogLayout, 
                              QHBoxLayout as QDialogLayout, QCheckBox, QPushButton as QPushButton, QGroupBox,
                              QSizePolicy, QProgressDialog)
-from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QThread
-from PyQt5.QtGui import QFont, QIcon, QPixmap, QPainter, QColor
+from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QThread, QSettings, QCoreApplication
+from PyQt5.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QKeySequence
+from PyQt5.QtPrintSupport import QPrintDialog, QPrinter
 
 from app.config.settings import AppSettings
 from app.ui.styles import AppStyles
@@ -27,7 +29,7 @@ from app.core.pdf_processor import PDFProcessor
 
 # 导入优化组件
 from app.ui.virtual_scroll import VirtualScrollArea
-from app.ui.smart_thumbnail import SmartThumbnailManager
+from app.core.thumbnail_manager import ThumbnailManager
 
 class AuroraPDF(QMainWindow):
     """极灵PDF主窗口 - 现代化PDF阅读器界面（集成性能优化）"""
@@ -160,8 +162,8 @@ class AuroraPDF(QMainWindow):
         self.thumbnail_dock.setMinimumWidth(250)
         self.thumbnail_dock.resize(280, self.thumbnail_dock.height())
         
-        # 创建智能缩略图管理器
-        self.thumbnail_list = SmartThumbnailManager(self)
+        # 创建缩略图管理器
+        self.thumbnail_list = ThumbnailManager(self)
         self.thumbnail_list.set_pdf_processor(self.pdf_processor)
         
         # 连接信号
@@ -210,14 +212,38 @@ class AuroraPDF(QMainWindow):
         save_action.triggered.connect(self.save_file)
         file_menu.addAction(save_action)
         
+        save_as_action = QAction("💾 另存为", self)
+        save_as_action.setShortcut("Ctrl+Shift+S")
+        save_as_action.triggered.connect(self.save_as_file)
+        file_menu.addAction(save_as_action)
+        
+        # 添加保存更改和放弃更改选项
+        self.save_changes_action = QAction("✅ 保存更改", self)
+        self.save_changes_action.setShortcut("Ctrl+Shift+S")
+        self.save_changes_action.triggered.connect(self.save_changes)
+        self.save_changes_action.setEnabled(False)
+        file_menu.addAction(self.save_changes_action)
+        
+        self.discard_changes_action = QAction("❌ 放弃更改", self)
+        self.discard_changes_action.setShortcut("Ctrl+D")
+        self.discard_changes_action.triggered.connect(self.discard_changes)
+        self.discard_changes_action.setEnabled(False)
+        file_menu.addAction(self.discard_changes_action)
+        
         file_menu.addSeparator()
         
-        print_action = QAction("🖨️ 打印", self)
-        print_action.setShortcut("Ctrl+P")
-        print_action.triggered.connect(self.print_file)
-        file_menu.addAction(print_action)
+        # 添加撤销和重做选项
+        self.undo_action = QAction("↩️ 撤销", self)
+        self.undo_action.setShortcut("Ctrl+Z")
+        self.undo_action.triggered.connect(self.undo_operation)
+        self.undo_action.setEnabled(False)
+        file_menu.addAction(self.undo_action)
         
-        file_menu.addSeparator()
+        self.redo_action = QAction("↪️ 重做", self)
+        self.redo_action.setShortcut("Ctrl+Y")
+        self.redo_action.triggered.connect(self.redo_operation)
+        self.redo_action.setEnabled(False)
+        file_menu.addAction(self.redo_action)
         
         file_menu.addSeparator()
         
@@ -226,48 +252,34 @@ class AuroraPDF(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
         
-        # 编辑菜单
-        edit_menu = menubar.addMenu("✏️ 编辑")
-        
         # 视图菜单
-        view_menu = menubar.addMenu("👁️ 视图")
+        view_menu = menubar.addMenu("👀 视图")
         
-        # 虚拟滚动切换
-        self.virtual_scroll_action = QAction("⚡ 虚拟滚动", self)
-        self.virtual_scroll_action.setCheckable(True)
-        self.virtual_scroll_action.setChecked(self.use_virtual_scroll)
-        self.virtual_scroll_action.triggered.connect(self.toggle_virtual_scroll)
-        view_menu.addAction(self.virtual_scroll_action)
-        
-        view_menu.addSeparator()
-        
-        # 浏览模式
-        self.continuous_action = QAction("📜 连续浏览", self)
-        self.continuous_action.setCheckable(True)
-        self.continuous_action.setChecked(self.continuous_mode)
-        self.continuous_action.setShortcut("Ctrl+M")
-        self.continuous_action.triggered.connect(self.toggle_continuous_mode)
-        view_menu.addAction(self.continuous_action)
-        
-        self.single_page_action = QAction("📄 单页浏览", self)
-        self.single_page_action.setCheckable(True)
-        # 强制设置为False，因为我们已经禁用了单页模式
-        self.single_page_action.setChecked(False)
-        self.single_page_action.setShortcut("Ctrl+N")
-        self.single_page_action.triggered.connect(self.toggle_single_page_mode)
-        view_menu.addAction(self.single_page_action)
-        
-        # 性能监控
-        view_menu.addSeparator()
-        self.performance_action = QAction("📊 性能监控", self)
-        self.performance_action.setCheckable(True)
-        self.performance_action.triggered.connect(self.toggle_performance_monitor)
-        view_menu.addAction(self.performance_action)
-        
-        view_menu.addSeparator()
+        # 缩略图停靠
+        self.thumbnail_action = QAction("🖼️ 缩略图", self)
+        self.thumbnail_action.setCheckable(True)
+        self.thumbnail_action.setChecked(True)
+        self.thumbnail_action.triggered.connect(self.toggle_thumbnails)  # 修复方法名
+        view_menu.addAction(self.thumbnail_action)
         
         # 工具菜单
         tools_menu = menubar.addMenu("🛠️ 工具")
+        
+        # 搜索功能
+        search_action = QAction("🔍 搜索", self)
+        search_action.setShortcut("Ctrl+F")
+        search_action.triggered.connect(self.show_search_options)  # 修复方法名
+        tools_menu.addAction(search_action)
+        
+        # 合并PDF功能
+        merge_action = QAction("🔗 合并PDF", self)
+        merge_action.triggered.connect(self.merge_pdfs)
+        tools_menu.addAction(merge_action)
+        
+        # 分割PDF功能
+        split_action = QAction("✂️ 分割PDF", self)
+        split_action.triggered.connect(self.split_pdf)
+        tools_menu.addAction(split_action)
         
         # 帮助菜单
         help_menu = menubar.addMenu("❓ 帮助")
@@ -275,7 +287,7 @@ class AuroraPDF(QMainWindow):
         about_action = QAction("ℹ️ 关于", self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
-        
+
     def create_main_toolbar(self):
         """创建完整的主工具栏 - 按照极光PDF布局设计"""
         toolbar = QToolBar("主工具栏")
@@ -297,134 +309,177 @@ class AuroraPDF(QMainWindow):
         save_btn.triggered.connect(self.save_file)
         toolbar.addAction(save_btn)
         
-        print_btn = QAction("🖨️ 打印", self)
-        print_btn.setToolTip("打印PDF文件 (Ctrl+P)")
-        print_btn.setShortcut("Ctrl+P")
-        print_btn.triggered.connect(self.print_file)
-        toolbar.addAction(print_btn)
+        save_as_btn = QAction("💾 另存为", self)
+        save_as_btn.setToolTip("另存为PDF文件 (Ctrl+Shift+S)")
+        save_as_btn.setShortcut("Ctrl+Shift+S")
+        save_as_btn.triggered.connect(self.save_as_file)
+        toolbar.addAction(save_as_btn)
         
         toolbar.addSeparator()
         
-        # === 缩放控制组 ===
-        zoom_in_btn = QAction("🔍 放大", self)
-        zoom_in_btn.setToolTip("放大页面 (+)")
+        # 添加撤销和重做按钮
+        self.undo_btn = QAction("↩️ 撤销", self)
+        self.undo_btn.setToolTip("撤销上一步操作 (Ctrl+Z)")
+        self.undo_btn.setShortcut("Ctrl+Z")
+        self.undo_btn.triggered.connect(self.undo_operation)
+        self.undo_btn.setEnabled(False)
+        toolbar.addAction(self.undo_btn)
+        
+        self.redo_btn = QAction("↪️ 重做", self)
+        self.redo_btn.setToolTip("重做上一步操作 (Ctrl+Y)")
+        self.redo_btn.setShortcut("Ctrl+Y")
+        self.redo_btn.triggered.connect(self.redo_operation)
+        self.redo_btn.setEnabled(False)
+        toolbar.addAction(self.redo_btn)
+        
+        toolbar.addSeparator()
+        
+        # === 视图控制组 ===
+        zoom_in_btn = QAction("➕ 放大", self)
+        zoom_in_btn.setToolTip("放大页面 (Ctrl++)")
         zoom_in_btn.setShortcut("Ctrl++")
         zoom_in_btn.triggered.connect(self.zoom_in)
         toolbar.addAction(zoom_in_btn)
         
-        zoom_out_btn = QAction("🔎 缩小", self)
-        zoom_out_btn.setToolTip("缩小页面 (-)")
+        zoom_out_btn = QAction("➖ 缩小", self)
+        zoom_out_btn.setToolTip("缩小页面 (Ctrl+-)")
         zoom_out_btn.setShortcut("Ctrl+-")
         zoom_out_btn.triggered.connect(self.zoom_out)
         toolbar.addAction(zoom_out_btn)
         
-        fit_width_btn = QAction("📏 适合宽度", self)
-        fit_width_btn.setToolTip("适合宽度显示")
-        fit_width_btn.setShortcut("Ctrl+W")
-        fit_width_btn.triggered.connect(self.fit_width)
+        fit_width_btn = QAction("↔️ 适应宽度", self)
+        fit_width_btn.setToolTip("适应页面宽度")
+        fit_width_btn.triggered.connect(lambda: self.fit_to_width())
         toolbar.addAction(fit_width_btn)
         
-        fit_page_btn = QAction("📄 适合页面", self)
-        fit_page_btn.setToolTip("适合页面显示")
-        fit_page_btn.setShortcut("Ctrl+H")
-        fit_page_btn.triggered.connect(self.fit_page)
-        toolbar.addAction(fit_page_btn)
+        fit_height_btn = QAction("↕️ 适应高度", self)
+        fit_height_btn.setToolTip("适应页面高度")
+        fit_height_btn.triggered.connect(lambda: self.fit_to_height())
+        toolbar.addAction(fit_height_btn)
+        
+        actual_size_btn = QAction("1:1 原始尺寸", self)
+        actual_size_btn.setToolTip("显示原始尺寸")
+        actual_size_btn.triggered.connect(lambda: self.set_actual_size())
+        toolbar.addAction(actual_size_btn)
         
         toolbar.addSeparator()
         
-        # === 页面导航组 ===
+        # === 导航组 ===
         prev_page_btn = QAction("⬅️ 上一页", self)
-        prev_page_btn.setToolTip("上一页 (PageUp)")
-        prev_page_btn.setShortcut("PageUp")
-        prev_page_btn.triggered.connect(self.previous_page)
+        prev_page_btn.setToolTip("上一页 (PgUp)")
+        prev_page_btn.setShortcut("PgUp")
+        prev_page_btn.triggered.connect(self.previous_page)  # 修复方法名
         toolbar.addAction(prev_page_btn)
         
         next_page_btn = QAction("➡️ 下一页", self)
-        next_page_btn.setToolTip("下一页 (PageDown)")
-        next_page_btn.setShortcut("PageDown")
+        next_page_btn.setToolTip("下一页 (PgDown)")
+        next_page_btn.setShortcut("PgDown")
         next_page_btn.triggered.connect(self.next_page)
         toolbar.addAction(next_page_btn)
         
-        # 页码输入框和显示
-        toolbar.addWidget(QLabel("页码:"))
-        
+        # 页面数值输入框（用于显示和设置页码）
         self.page_spinbox = QSpinBox()
+        self.page_spinbox.setFixedWidth(60)
+        self.page_spinbox.setAlignment(Qt.AlignCenter)
         self.page_spinbox.setMinimum(1)
-        self.page_spinbox.setMaximum(1)
-        self.page_spinbox.setFixedWidth(80)  # 增加宽度以显示更多数字
-        self.page_spinbox.valueChanged.connect(self.go_to_page)
-        self.page_spinbox.setToolTip("输入页码直接跳转")
+        self.page_spinbox.setValue(1)
+        self.page_spinbox.setToolTip("当前页码")
+        self.page_spinbox.valueChanged.connect(self._on_page_spinbox_changed)
+        self.page_spinbox.editingFinished.connect(self.go_to_page)  # 添加回车键支持
         toolbar.addWidget(self.page_spinbox)
         
-        self.total_pages_label = QLabel("/ 1")
-        self.total_pages_label.setFixedWidth(50)  # 增加宽度以显示更多数字
+        # 总页数标签
+        self.total_pages_label = QLabel()
         toolbar.addWidget(self.total_pages_label)
         
         toolbar.addSeparator()
         
-        # === 搜索功能 ===
-        toolbar.addWidget(QLabel("搜索:"))
+        # === 模式切换组 ===
         
-        self.search_lineedit = QLineEdit()
-        self.search_lineedit.setPlaceholderText("输入关键词查找...")
-        self.search_lineedit.setFixedWidth(180)
-        self.search_lineedit.setToolTip("在PDF中搜索文本 (Ctrl+F)")
-        self.search_lineedit.returnPressed.connect(self.search_text)
-        toolbar.addWidget(self.search_lineedit)
-        
-        search_btn = QAction("🔍 查找", self)
+        # 搜索按钮
+        search_btn = QAction("🔍 搜索", self)
         search_btn.setToolTip("搜索文本 (Ctrl+F)")
         search_btn.setShortcut("Ctrl+F")
-        search_btn.triggered.connect(self.search_text)
+        search_btn.triggered.connect(self.show_search_options)  # 修复方法名
         toolbar.addAction(search_btn)
         
-        # 搜索导航按钮
-        search_prev_btn = QAction("⬆️ 上一个", self)
-        search_prev_btn.setToolTip("上一个匹配项 (Shift+F3)")
-        search_prev_btn.setShortcut("Shift+F3")
-        search_prev_btn.triggered.connect(self.search_previous)
-        toolbar.addAction(search_prev_btn)
-        
-        search_next_btn = QAction("⬇️ 下一个", self)
-        search_next_btn.setToolTip("下一个匹配项 (F3)")
-        search_next_btn.setShortcut("F3")
-        search_next_btn.triggered.connect(self.search_next)
-        toolbar.addAction(search_next_btn)
-        
-        # 搜索选项按钮
-        search_options_btn = QAction("⚙️ 选项", self)
-        search_options_btn.setToolTip("搜索选项")
-        search_options_btn.triggered.connect(self.show_search_options)
-        toolbar.addAction(search_options_btn)
-        
-        # 缩略图切换按钮
-        self.thumbnail_btn = QAction("📋 缩略图", self)  # 使用字体图标并添加文字
+        # 缩略图按钮
+        self.thumbnail_btn = QAction("📋 缩略图", self)
+        self.thumbnail_btn.setCheckable(True)
+        self.thumbnail_btn.setChecked(False)
         self.thumbnail_btn.setToolTip("显示/隐藏缩略图")
-        self.thumbnail_btn.setShortcut("Ctrl+T")
         self.thumbnail_btn.triggered.connect(self.toggle_thumbnails)
         toolbar.addAction(self.thumbnail_btn)
-        
-        # 缓存清理按钮
-        self.cache_btn = QAction("🗑️ 清理缓存", self)
-        self.cache_btn.setToolTip("清理所有缓存")
-        self.cache_btn.triggered.connect(self.clear_cache)
-        toolbar.addAction(self.cache_btn)
-        
+
     def create_statusbar(self):
         """创建状态栏"""
-        statusbar = QStatusBar()
-        self.setStatusBar(statusbar)
+        # 创建状态栏
+        self.statusBar = QStatusBar()
+        self.setStatusBar(self.statusBar)
         
-        # 状态栏信息
-        self.status_label = QLabel("🟢 就绪")
-        self.status_label.setFont(QFont("微软雅黑", 9))
-        statusbar.addWidget(self.status_label)
+        # 创建状态标签
+        self.status_label = QLabel("📢 就绪")
+        self.status_label.setIndent(5)
+        self.statusBar.addWidget(self.status_label)
         
-        # 性能信息
-        self.performance_label = QLabel("")
-        self.performance_label.setFont(QFont("微软雅黑", 8))
-        statusbar.addPermanentWidget(self.performance_label)
+        # 创建性能监控标签
+        self.performance_label = QLabel()
+        self.performance_label.setIndent(10)
+        self.statusBar.addPermanentWidget(self.performance_label)
         
+    def update_save_actions_state(self):
+        """更新保存操作状态"""
+        has_changes = (hasattr(self.pdf_processor, 'page_editor') and 
+                      self.pdf_processor.page_editor and 
+                      self.pdf_processor.page_editor.has_unsaved_changes())
+        
+        self.save_changes_action.setEnabled(has_changes)
+        self.discard_changes_action.setEnabled(has_changes)
+        self.undo_action.setEnabled(has_changes and 
+                                   hasattr(self.pdf_processor.page_editor, 'history') and
+                                   len(self.pdf_processor.page_editor.history) > 0)
+        self.redo_action.setEnabled(has_changes and 
+                                   hasattr(self.pdf_processor.page_editor, 'redo_stack') and
+                                   len(self.pdf_processor.page_editor.redo_stack) > 0)
+        
+        # 更新工具栏按钮状态
+        if hasattr(self, 'undo_btn'):
+            self.undo_btn.setEnabled(self.undo_action.isEnabled())
+        if hasattr(self, 'redo_btn'):
+            self.redo_btn.setEnabled(self.redo_action.isEnabled())
+
+    def undo_operation(self):
+        """撤销操作"""
+        if (hasattr(self.pdf_processor, 'page_editor') and 
+            self.pdf_processor.page_editor):
+            success, message = self.pdf_processor.page_editor.undo_operation()
+            if success:
+                self.show_message(f"✅ {message}")
+                # 更新保存操作状态
+                self.update_save_actions_state()
+                # 重新加载缩略图
+                self.load_thumbnails()
+                # 更新预览
+                self.update_preview()
+            else:
+                QMessageBox.warning(self, "撤销失败", message)
+
+    def redo_operation(self):
+        """重做操作"""
+        if (hasattr(self.pdf_processor, 'page_editor') and 
+            self.pdf_processor.page_editor):
+            success, message = self.pdf_processor.page_editor.redo_operation()
+            if success:
+                self.show_message(f"✅ {message}")
+                # 更新保存操作状态
+                self.update_save_actions_state()
+                # 重新加载缩略图
+                self.load_thumbnails()
+                # 更新预览
+                self.update_preview()
+            else:
+                QMessageBox.warning(self, "重做失败", message)
+
     def open_file(self):
         """打开PDF文件"""
         logger.info("开始打开文件...")
@@ -501,38 +556,79 @@ class AuroraPDF(QMainWindow):
         logger.debug("延迟更新预览区域完成")
     
     def update_preview(self):
-        """更新预览区域 - 显示PDF页面内容"""
+        """更新PDF预览显示"""
         logger.debug("开始更新预览...")
-        if self.pdf_processor.fitz_document:
-            logger.debug("PDF文档已加载")
-            # 确保在异步加载完成后正确显示内容
-            # 直接使用虚拟滚动模式 - 设置数据并更新页面
-            logger.debug("使用虚拟滚动模式")
-            try:
-                # 虚拟滚动模式 - 设置数据并更新页面
-                logger.debug("设置虚拟滚动数据...")
-                self._setup_virtual_scroll_data()
-                logger.debug("调用虚拟滚动区域更新内容...")
-                # 使用延迟更新确保设置完成
-                from PyQt5.QtCore import QTimer
-                QTimer.singleShot(100, self.virtual_scroll.update_content)
-                logger.debug("虚拟滚动区域更新调用完成")
-            except Exception as e:
-                logger.error(f"虚拟滚动模式出错: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-        else:
-            logger.warning("没有PDF文档加载")
+        if not self.pdf_processor.fitz_document:
+            logger.debug("没有PDF文档加载")
             # 没有PDF文件时显示欢迎信息
             self.preview_label.clear()
             self.preview_label.setText("📄 请点击上方'打开'按钮选择PDF文件")
             self.preview_label.setAlignment(Qt.AlignCenter)
             self.preview_label.setFont(QFont("微软雅黑", 14))
+            return
         
-        logger.debug("预览更新完成")
+        try:
+            logger.debug("PDF文档已加载")
+            # 更新标题栏显示文件名
+            if self.pdf_processor.current_file:
+                # 显示原始文件名而不是临时文件名
+                display_filename = self.pdf_processor.current_file
+                if (hasattr(self.pdf_processor, 'page_editor') and 
+                    self.pdf_processor.page_editor and 
+                    self.pdf_processor.page_editor.get_original_filename()):
+                    display_filename = self.pdf_processor.page_editor.get_original_filename()
+                
+                filename = os.path.basename(display_filename)
+                self.setWindowTitle(f"{AppSettings.APP_NAME} - {filename}")
+            
+            # 更新页码控件范围
+            total_pages = self.pdf_processor.get_total_pages()
+            self.page_spinbox.setMaximum(total_pages)
+            
+            # 更新总页数标签
+            self.total_pages_label.setText(f"/ {total_pages}")
+            
+            # 更新缩略图
+            if self.show_thumbnails:
+                self.load_thumbnails()
+            
+            # 使用虚拟滚动模式
+            logger.debug("使用虚拟滚动模式")
+            self._setup_virtual_scroll_data()
+            self.virtual_scroll.update_content()
+            
+            logger.debug("预览更新完成")
+        except Exception as e:
+            logger.error(f"更新预览时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
     
     def save_file(self):
         """保存PDF文件"""
+        if not self.pdf_processor.current_file:
+            QMessageBox.information(self, "提示", "📝 请先打开PDF文件")
+            return
+        
+        # 如果有未保存的更改，直接保存到原文件
+        if (hasattr(self.pdf_processor, 'page_editor') and 
+            self.pdf_processor.page_editor and 
+            self.pdf_processor.page_editor.has_unsaved_changes()):
+            
+            success, message = self.pdf_processor.page_editor.save_changes()
+            if success:
+                self.show_message("✅ 更改已保存到原文件")
+                # 更新保存操作状态
+                self.update_save_actions_state()
+                # 重新加载缩略图
+                self.load_thumbnails()
+            else:
+                QMessageBox.critical(self, "保存失败", message)
+        else:
+            # 没有更改时执行另存为操作
+            self.save_as_file()
+    
+    def save_as_file(self):
+        """另存为PDF文件"""
         if not self.pdf_processor.current_file:
             QMessageBox.information(self, "提示", "📝 请先打开PDF文件")
             return
@@ -541,7 +637,7 @@ class AuroraPDF(QMainWindow):
         last_save_dir = AppSettings.get_last_save_dir()
         
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "保存PDF文件", last_save_dir, "PDF文件 (*.pdf)")
+            self, "另存为PDF文件", last_save_dir, "PDF文件 (*.pdf)")
         
         if file_path:
             success, message = self.pdf_processor.save_pdf(file_path)
@@ -552,6 +648,105 @@ class AuroraPDF(QMainWindow):
                 QMessageBox.information(self, "保存成功", message)
             else:
                 QMessageBox.critical(self, "保存失败", message)
+    
+    def save_changes(self):
+        """保存更改"""
+        if (hasattr(self.pdf_processor, 'page_editor') and 
+            self.pdf_processor.page_editor and 
+            self.pdf_processor.page_editor.has_unsaved_changes()):
+            
+            success, message = self.pdf_processor.page_editor.save_changes()
+            if success:
+                self.show_message("✅ 更改已保存")
+                self.save_changes_action.setEnabled(False)
+                self.discard_changes_action.setEnabled(False)
+                self.undo_action.setEnabled(False)
+                self.redo_action.setEnabled(False)
+                # 重新加载缩略图
+                self.load_thumbnails()
+            else:
+                QMessageBox.critical(self, "保存失败", message)
+        else:
+            self.show_message("ℹ️ 没有需要保存的更改")
+    
+    def discard_changes(self):
+        """放弃更改"""
+        if (hasattr(self.pdf_processor, 'page_editor') and 
+            self.pdf_processor.page_editor and 
+            self.pdf_processor.page_editor.has_unsaved_changes()):
+            
+            reply = QMessageBox.question(
+                self, 
+                "确认放弃更改", 
+                "确定要放弃所有未保存的更改吗？", 
+                QMessageBox.Yes | QMessageBox.No, 
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                success, message = self.pdf_processor.page_editor.discard_changes()
+                if success:
+                    self.show_message("❌ 更改已放弃")
+                    self.save_changes_action.setEnabled(False)
+                    self.discard_changes_action.setEnabled(False)
+                    self.undo_action.setEnabled(False)
+                    self.redo_action.setEnabled(False)
+                    # 重新加载缩略图
+                    self.load_thumbnails()
+                else:
+                    QMessageBox.critical(self, "操作失败", message)
+        else:
+            self.show_message("ℹ️ 没有需要放弃的更改")
+    
+    def undo(self):
+        """撤销操作"""
+        if (hasattr(self.pdf_processor, 'page_editor') and 
+            self.pdf_processor.page_editor):
+            
+            success, message = self.pdf_processor.page_editor.undo()
+            if success:
+                self.show_message(f"↩️ {message}")
+                # 更新操作状态
+                self.update_save_actions_state()
+                # 重新加载缩略图
+                self.load_thumbnails()
+            else:
+                QMessageBox.information(self, "撤销失败", message)
+    
+    def redo(self):
+        """重做操作"""
+        if (hasattr(self.pdf_processor, 'page_editor') and 
+            self.pdf_processor.page_editor):
+            
+            success, message = self.pdf_processor.page_editor.redo()
+            if success:
+                self.show_message(f"↪️ {message}")
+                # 更新操作状态
+                self.update_save_actions_state()
+                # 重新加载缩略图
+                self.load_thumbnails()
+            else:
+                QMessageBox.information(self, "重做失败", message)
+    
+    def update_save_actions_state(self):
+        """更新保存操作的状态"""
+        has_changes = (hasattr(self.pdf_processor, 'page_editor') and 
+                      self.pdf_processor.page_editor and 
+                      self.pdf_processor.page_editor.has_unsaved_changes())
+        
+        self.save_changes_action.setEnabled(has_changes)
+        self.discard_changes_action.setEnabled(has_changes)
+        
+        # 更新撤销/重做状态
+        can_undo = (hasattr(self.pdf_processor, 'page_editor') and 
+                   self.pdf_processor.page_editor and 
+                   self.pdf_processor.page_editor.can_undo())
+        can_redo = (hasattr(self.pdf_processor, 'page_editor') and 
+                   self.pdf_processor.page_editor and 
+                   self.pdf_processor.page_editor.can_redo())
+        
+        self.undo_action.setEnabled(can_undo)
+        self.redo_action.setEnabled(can_redo)
     
     # ===== 页面导航功能 =====
     
@@ -567,54 +762,45 @@ class AuroraPDF(QMainWindow):
         self.virtual_scroll.scroll_page(1)
         self.show_message("向下滚动")
     
-    def go_to_page(self, page_number):
-        """跳转到指定页面"""
-        # 直接使用虚拟滚动模式
-        if 1 <= page_number <= self.pdf_processor.get_total_pages():
-            # 更新PDF处理器的当前页面
-            self.pdf_processor.go_to_page(page_number)
+    def go_to_page(self, page_number=None):
+        """跳转到指定页面
+        如果没有提供page_number，则从页面输入框获取页码
+        """
+        try:
+            if page_number is None:
+                # 从页面数值输入框获取页码
+                page_number = self.page_spinbox.value()
             
-            # 直接滚动到指定页面位置
-            self.virtual_scroll.scroll_to_page(page_number - 1)
-            self.show_message(f"跳转到第 {page_number} 页")
-            
-            # 更新页面信息显示
-            current_page = self.pdf_processor.get_current_page()
-            total_pages = self.pdf_processor.get_total_pages()
-            
-            # 更新页码控件
-            self.page_spinbox.blockSignals(True)
-            self.page_spinbox.setValue(current_page)
-            self.page_spinbox.blockSignals(False)
-            
-            # 更新缩略图选中状态
-            self.update_thumbnail_selection(current_page)
-        else:
-            self.show_message("❌ 无效的页码")
-    
-    def toggle_continuous_mode(self):
-        """切换到连续浏览模式"""
-        # 强制启用连续模式，因为我们只使用虚拟滚动
-        if not self.continuous_mode:
-            self.continuous_mode = True
-            self.pdf_processor.set_continuous_mode(True)
-            self.show_message("⚡ 已切换到连续浏览模式 - 虚拟滚动技术")
-            
-            # 更新菜单项状态
-            self.continuous_action.setChecked(True)
-            self.single_page_action.setChecked(False)
-    
-    def toggle_single_page_mode(self):
-        """切换到单页浏览模式"""
-        # 不再支持单页模式，因为我们只使用虚拟滚动
-        self.show_message("❌ 单页模式已禁用，仅支持连续浏览模式")
+            # 直接使用虚拟滚动模式
+            if 1 <= page_number <= self.pdf_processor.get_total_pages():
+                # 更新PDF处理器的当前页面
+                self.pdf_processor.go_to_page(page_number)
+                
+                # 直接滚动到指定页面位置
+                self.virtual_scroll.scroll_to_page(page_number - 1)
+                self.show_message(f"跳转到第 {page_number} 页")
+                
+                # 更新页面信息显示
+                current_page = self.pdf_processor.get_current_page()
+                total_pages = self.pdf_processor.get_total_pages()
+                
+                # 更新页码控件
+                self.page_spinbox.blockSignals(True)
+                self.page_spinbox.setValue(current_page)
+                self.page_spinbox.blockSignals(False)
+                
+                # 更新缩略图选中状态
+                self.update_thumbnail_selection(current_page)
+            else:
+                self.show_message("❌ 无效的页码")
+        except ValueError:
+            self.show_message("❌ 请输入有效的页码")
+
+    def _on_page_spinbox_changed(self, value):
+        """处理页码数值输入框变化"""
+        # 跳转到指定页面
+        self.go_to_page(value)
         
-        # 保持连续模式启用
-        self.continuous_mode = True
-        self.pdf_processor.set_continuous_mode(True)
-        self.continuous_action.setChecked(True)
-        self.single_page_action.setChecked(False)
-    
     def toggle_virtual_scroll(self):
         """切换虚拟滚动"""
         # 强制启用虚拟滚动，不允许切换
@@ -670,8 +856,44 @@ class AuroraPDF(QMainWindow):
         if not self.pdf_processor.current_file:
             QMessageBox.information(self, "提示", "📝 请先打开PDF文件")
             return
-            
-        QMessageBox.information(self, "打印", "🖨️ 打印功能开发中...")
+        
+        # 创建打印机对象
+        printer = QPrinter(QPrinter.HighResolution)
+        printer.setDocName(os.path.basename(self.pdf_processor.current_file))
+        
+        # 创建打印对话框
+        print_dialog = QPrintDialog(printer, self)
+        print_dialog.setWindowTitle("打印PDF")
+        
+        if print_dialog.exec_() == QPrintDialog.Accepted:
+            try:
+                # 使用PyMuPDF渲染当前页面并打印
+                current_page = self.pdf_processor.get_current_page()
+                page_pixmap = self.pdf_processor.render_page_at(current_page - 1, 800, 1000)
+                
+                if page_pixmap:
+                    # 创建绘图器并绘制页面
+                    painter = QPainter(printer)
+                    # 缩放页面以适应打印区域
+                    page_rect = printer.pageRect()
+                    scaled_pixmap = page_pixmap.scaled(
+                        page_rect.width(), page_rect.height(),
+                        Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    )
+                    
+                    # 在页面中央绘制
+                    x = (page_rect.width() - scaled_pixmap.width()) // 2
+                    y = (page_rect.height() - scaled_pixmap.height()) // 2
+                    painter.drawPixmap(x, y, scaled_pixmap)
+                    painter.end()
+                    
+                    self.show_message("🖨️ 打印完成")
+                else:
+                    QMessageBox.warning(self, "打印失败", "无法渲染页面进行打印")
+            except Exception as e:
+                QMessageBox.critical(self, "打印错误", f"打印过程中发生错误: {str(e)}")
+        else:
+            self.show_message("❌ 打印已取消")
     
     def resizeEvent(self, event):
         """窗口大小变化事件 - 重新计算PDF渲染尺寸"""
@@ -719,10 +941,9 @@ class AuroraPDF(QMainWindow):
         self.status_label.setText(f"📢 {message}")
     
     def show_about(self):
-        """显示关于信息"""
-        about_text = f"""
-        <h2>{AppSettings.APP_NAME}</h2>
-        <p>版本: {AppSettings.APP_VERSION}</p>
+        """显示关于对话框"""
+        about_text = """
+        <h2>极灵PDF v1.0</h2>
         <p>一个功能强大的PDF文档处理工具</p>
         <p>支持PDF查看、编辑、转换、合并、分割等功能</p>
         <p>🎯 设计理念: 简单易用，功能强大</p>
@@ -730,6 +951,67 @@ class AuroraPDF(QMainWindow):
         
         QMessageBox.about(self, "关于", about_text)
         
+    def merge_pdfs(self):
+        """合并PDF功能"""
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox
+        from PyQt5.QtCore import Qt
+        
+        # 选择多个PDF文件
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self, "选择要合并的PDF文件", "", "PDF文件 (*.pdf)")
+        
+        if not file_paths:
+            return
+        
+        if len(file_paths) < 2:
+            QMessageBox.information(self, "合并PDF", "至少需要选择两个PDF文件进行合并")
+            return
+        
+        # 选择输出文件路径
+        output_path, _ = QFileDialog.getSaveFileName(
+            self, "保存合并后的PDF文件", "", "PDF文件 (*.pdf)")
+        
+        if not output_path:
+            return
+        
+        # 执行合并操作
+        success, message = self.pdf_processor.merge_pdfs(file_paths, output_path)
+        
+        if success:
+            QMessageBox.information(self, "合并PDF", "PDF文件合并成功！")
+        else:
+            QMessageBox.critical(self, "合并PDF", f"合并失败：{message}")
+
+    def split_pdf(self):
+        """分割PDF功能"""
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox, QInputDialog
+        import os
+        
+        if not self.pdf_processor.current_file:
+            QMessageBox.information(self, "分割PDF", "请先打开PDF文件")
+            return
+        
+        # 选择输出目录
+        output_dir = QFileDialog.getExistingDirectory(self, "选择分割文件保存目录")
+        
+        if not output_dir:
+            return
+        
+        # 询问分割方式
+        pages_per_file, ok = QInputDialog.getInt(
+            self, "分割PDF", "每份文件的页数（0表示按单页分割）:", 0, 0, 1000, 1)
+        
+        if not ok:
+            return
+        
+        # 执行分割操作
+        success, message = self.pdf_processor.split_pdf(output_dir, pages_per_file if pages_per_file > 0 else None)
+        
+        if success:
+            QMessageBox.information(self, "分割PDF", "PDF文件分割成功！")
+        else:
+            QMessageBox.critical(self, "分割PDF", f"分割失败：{message}")
+    
     def search_text(self):
         """搜索PDF中的文本"""
         search_text = self.search_lineedit.text().strip()
@@ -913,14 +1195,13 @@ class AuroraPDF(QMainWindow):
     def toggle_thumbnails(self):
         """切换缩略图显示/隐藏"""
         self.show_thumbnails = not self.show_thumbnails
+        self.thumbnail_btn.setChecked(self.show_thumbnails)  # 更新按钮选中状态
         if self.show_thumbnails:
             self.thumbnail_dock.show()
-            self.thumbnail_btn.setText("📋 缩略图")
             # 加载缩略图
             self.load_thumbnails()
         else:
             self.thumbnail_dock.hide()
-            self.thumbnail_btn.setText("📋 缩略图")
     
     def load_thumbnails(self):
         """加载PDF页面缩略图"""
@@ -933,7 +1214,7 @@ class AuroraPDF(QMainWindow):
     def on_thumbnail_clicked(self, page_num):
         """处理缩略图点击事件"""
         # 跳转到指定页面
-        self.go_to_page(page_num)  # 修复：缩略图已经传递了正确的1基索引页码
+        self.go_to_page(page_num)
         
         # 确保页面输入框更新
         self.page_spinbox.blockSignals(True)
@@ -1113,6 +1394,37 @@ class AuroraPDF(QMainWindow):
                             
                 # 更新缩略图选中状态
                 self.update_thumbnail_selection(current_page)
+
+    def closeEvent(self, event):
+        """处理窗口关闭事件"""
+        # 检查是否有未保存的更改
+        if (hasattr(self.pdf_processor, 'page_editor') and 
+            self.pdf_processor.page_editor and 
+            self.pdf_processor.page_editor.has_unsaved_changes()):
+            
+            # 显示确认对话框
+            reply = QMessageBox.question(
+                self, 
+                "保存更改", 
+                "文档已被修改，是否保存更改？", 
+                QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel, 
+                QMessageBox.Save
+            )
+            
+            if reply == QMessageBox.Save:
+                # 保存更改
+                success, message = self.pdf_processor.page_editor.save_changes()
+                if not success:
+                    QMessageBox.critical(self, "保存失败", message)
+                    event.ignore()
+                    return
+            elif reply == QMessageBox.Cancel:
+                # 取消关闭
+                event.ignore()
+                return
+        
+        # 正常关闭
+        event.accept()
 
 def main():
     """主函数"""
