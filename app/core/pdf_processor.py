@@ -1597,3 +1597,193 @@ class PDFProcessor(QObject):
                 
         except Exception as e:
             return False, f"旋转页面失败: {str(e)}"
+    
+    # ===== 图片导入功能 =====
+    
+    def import_images(self, image_paths: list, insert_after_page: int = -1) -> tuple[bool, str]:
+        """导入图片到PDF
+        
+        Args:
+            image_paths: 图片文件路径列表
+            insert_after_page: 插入位置（-1表示末尾，0表示第一页前，其他表示在指定页后）
+            
+        Returns:
+            (success, message) 元组
+        """
+        if not image_paths:
+            return False, "未选择图片文件"
+        
+        try:
+            # 验证图片文件
+            valid_image_paths = self._validate_image_files(image_paths)
+            if not valid_image_paths:
+                return False, "未找到有效的图片文件"
+            
+            # 场景1: 无打开PDF - 创建新PDF
+            if not self.fitz_document:
+                return self._create_pdf_from_images(valid_image_paths)
+            
+            # 场景2: 有打开PDF - 在当前页后插入
+            if insert_after_page == -1:
+                insert_after_page = len(self.fitz_document) - 1
+            elif insert_after_page < -1:
+                insert_after_page = -1
+            
+            return self._insert_images_after_page(valid_image_paths, insert_after_page)
+                
+        except Exception as e:
+            logger.error(f"导入图片失败: {e}")
+            return False, f"导入图片失败: {str(e)}"
+    
+    def _validate_image_files(self, image_paths: list) -> list:
+        """验证图片文件有效性"""
+        valid_paths = []
+        supported_formats = ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.gif']
+        
+        for image_path in image_paths:
+            if not os.path.exists(image_path):
+                logger.warning(f"图片文件不存在: {image_path}")
+                continue
+                
+            file_ext = os.path.splitext(image_path)[1].lower()
+            if file_ext not in supported_formats:
+                logger.warning(f"不支持的图片格式: {image_path}")
+                continue
+                
+            valid_paths.append(image_path)
+        
+        return valid_paths
+    
+    def _create_pdf_from_images(self, image_paths: list) -> tuple[bool, str]:
+        """从图片创建新PDF"""
+        try:
+            # 创建新的PDF文档
+            new_doc = fitz.open()
+            
+            # 逐张图片添加到PDF
+            success_count = 0
+            for image_path in image_paths:
+                try:
+                    # 创建新页面
+                    page = new_doc.new_page()
+                    
+                    # 插入图片到页面
+                    success = self._insert_image_to_page(page, image_path)
+                    if success:
+                        success_count += 1
+                        logger.info(f"成功添加图片: {image_path}")
+                    else:
+                        logger.error(f"添加图片失败: {image_path}")
+                        
+                except Exception as e:
+                    logger.error(f"处理图片失败 {image_path}: {e}")
+            
+            if success_count == 0:
+                new_doc.close()
+                return False, "所有图片都无法添加到PDF"
+            
+            # 关闭当前文档（如果有）
+            if self.fitz_document:
+                self.fitz_document.close()
+            
+            # 设置新文档
+            self.fitz_document = new_doc
+            self.current_file = None  # 新创建的PDF没有文件路径
+            self.current_page = 0
+            
+            # 重置渲染缓存
+            self.render_cache.clear_all()
+            
+            # 发送文档已加载信号
+            self.loading_finished.emit(True, f"成功创建PDF，包含{success_count}张图片")
+            
+            return True, f"成功创建PDF，添加了{success_count}/{len(image_paths)}张图片"
+            
+        except Exception as e:
+            logger.error(f"创建PDF失败: {e}")
+            return False, f"创建PDF失败: {str(e)}"
+    
+    def _insert_images_after_page(self, image_paths: list, after_page: int) -> tuple[bool, str]:
+        """在指定页后插入图片"""
+        try:
+            success_count = 0
+            
+            # 计算插入位置（从after_page+1开始）
+            insert_position = after_page + 1
+            
+            for image_path in image_paths:
+                try:
+                    # 在指定位置创建新页面
+                    page = self.fitz_document.new_page(insert_position)
+                    
+                    # 插入图片到页面
+                    success = self._insert_image_to_page(page, image_path)
+                    if success:
+                        success_count += 1
+                        insert_position += 1  # 移动到下一个插入位置
+                        logger.info(f"成功插入图片: {image_path}")
+                    else:
+                        # 删除失败的页面
+                        self.fitz_document.delete_page(insert_position)
+                        logger.error(f"插入图片失败: {image_path}")
+                        
+                except Exception as e:
+                    logger.error(f"处理图片失败 {image_path}: {e}")
+            
+            if success_count == 0:
+                return False, "所有图片都无法插入到PDF"
+            
+            # 更新当前页码（如果需要）
+            if self.current_page > after_page:
+                self.current_page += success_count
+            
+            # 清空缓存，因为页面结构已改变
+            self.render_cache.clear_all()
+            
+            # 发送页面更新信号
+            # 注意：当前没有定义page_count_changed信号，使用loading_finished信号通知页面变化
+            self.loading_finished.emit(True, f"页面数量已更新，当前共{len(self.fitz_document)}页")
+            
+            return True, f"成功插入{success_count}/{len(image_paths)}张图片到PDF"
+            
+        except Exception as e:
+            logger.error(f"插入图片失败: {e}")
+            return False, f"插入图片失败: {str(e)}"
+    
+    def _insert_image_to_page(self, page, image_path: str) -> bool:
+        """将图片插入到PDF页面"""
+        try:
+            # 获取页面矩形区域
+            page_rect = page.rect
+            
+            # 计算图片在页面中的位置和尺寸
+            # 这里可以优化为保持宽高比，居中显示等
+            img_rect = fitz.Rect(50, 50, page_rect.width - 50, page_rect.height - 50)
+            
+            # 插入图片到页面
+            page.insert_image(img_rect, filename=image_path)
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"插入图片到页面失败 {image_path}: {e}")
+            return False
+    
+    def get_supported_image_formats_for_import(self) -> list[str]:
+        """获取支持导入的图片格式列表"""
+        return [
+            "所有图片文件 (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif *.webp *.ico *.svg)",
+            "PNG 图片 (*.png)",
+            "JPEG 图片 (*.jpg *.jpeg)",
+            "BMP 图片 (*.bmp)",
+            "TIFF 图片 (*.tiff *.tif)",
+            "GIF 图片 (*.gif)",
+            "WebP 图片 (*.webp)",
+            "ICO 图标 (*.ico)",
+            "SVG 矢量图 (*.svg)"
+        ]
+    
+    def get_supported_image_formats_filter(self) -> str:
+        """获取文件选择对话框的格式过滤器"""
+        formats = self.get_supported_image_formats_for_import()
+        return ";;".join(formats) + ";;所有文件 (*.*)"

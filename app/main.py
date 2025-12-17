@@ -297,13 +297,30 @@ class AuroraPDF(QMainWindow):
         split_action.triggered.connect(self.split_pdf)
         tools_menu.addAction(split_action)
         
-        # 转换菜单
-        convert_menu = menubar.addMenu("🔄 转换")
+        # 工具菜单 - 添加导入图片功能
+        tools_menu = menubar.addMenu("🛠️ 工具")
         
+        # 导入图片功能
+        import_images_action = QAction("📷 导入图片", self)
+        import_images_action.setShortcut("Ctrl+Shift+I")
+        import_images_action.triggered.connect(self.import_images)
+        tools_menu.addAction(import_images_action)
+        
+        # 转为图片功能（移动到工具菜单）
         convert_to_image_action = QAction("🖼️ 转为图片", self)
         convert_to_image_action.setShortcut("Ctrl+I")
         convert_to_image_action.triggered.connect(self.convert_pdf_to_images)
-        convert_menu.addAction(convert_to_image_action)
+        tools_menu.addAction(convert_to_image_action)
+        
+        tools_menu.addSeparator()
+        
+        # 其他工具功能（保持原有）
+        split_action = QAction("✂️ 分割PDF", self)
+        split_action.triggered.connect(self.split_pdf)
+        tools_menu.addAction(split_action)
+        
+        # 转换菜单（移除转为图片功能）
+        convert_menu = menubar.addMenu("🔄 转换")
         
         # 帮助菜单
         help_menu = menubar.addMenu("❓ 帮助")
@@ -438,6 +455,12 @@ class AuroraPDF(QMainWindow):
         toolbar.addSeparator()
         
         # === 转换工具组 ===
+        
+        # 导入图片按钮
+        import_images_btn = QAction("📷 导入图片", self)
+        import_images_btn.setToolTip("导入图片到PDF (Ctrl+Shift+I)")
+        import_images_btn.triggered.connect(self.import_images)
+        toolbar.addAction(import_images_btn)
         
         # PDF转图片按钮
         convert_to_image_btn = QAction("🖼️ 转为图片", self)
@@ -982,6 +1005,75 @@ class AuroraPDF(QMainWindow):
         dialog = ConvertToImagesDialog(self, self.pdf_processor)
         dialog.exec_()
     
+    def import_images(self):
+        """导入图片到PDF"""
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox, QProgressDialog
+        
+        # 获取支持的图片格式过滤器
+        formats_filter = self.pdf_processor.get_supported_image_formats_filter()
+        
+        # 打开文件选择对话框，支持多选
+        image_paths, _ = QFileDialog.getOpenFileNames(
+            self, 
+            "选择要导入的图片文件", 
+            "",  # 默认目录
+            formats_filter
+        )
+        
+        if not image_paths:
+            logger.info("未选择图片文件")
+            return
+        
+        logger.info(f"选择了{len(image_paths)}张图片文件")
+        
+        # 显示进度对话框
+        progress_dialog = QProgressDialog("正在导入图片...", "取消", 0, len(image_paths), self)
+        progress_dialog.setWindowTitle("导入图片")
+        progress_dialog.setWindowModality(Qt.WindowModal)
+        progress_dialog.show()
+        
+        try:
+            # 确定插入位置：如果有打开PDF，在当前页后插入
+            insert_after_page = -1  # 默认在末尾插入
+            if self.pdf_processor.fitz_document:
+                insert_after_page = self.pdf_processor.current_page
+            
+            # 执行导入
+            success, message = self.pdf_processor.import_images(image_paths, insert_after_page)
+            
+            # 关闭进度对话框
+            progress_dialog.close()
+            
+            if success:
+                QMessageBox.information(self, "导入成功", message)
+                
+                # 更新界面状态
+                self._update_ui_after_import()
+                
+            else:
+                QMessageBox.critical(self, "导入失败", message)
+                
+        except Exception as e:
+            progress_dialog.close()
+            logger.error(f"导入图片过程中发生错误: {e}")
+            QMessageBox.critical(self, "错误", f"导入图片过程中发生错误: {str(e)}")
+    
+    def _update_ui_after_import(self):
+        """导入图片后更新界面状态"""
+        # 更新页码显示
+        total_pages = self.pdf_processor.get_total_pages()
+        self.page_spinbox.setMaximum(total_pages)
+        self.total_pages_label.setText(f" / {total_pages}")
+        
+        # 强制刷新预览区域
+        self._force_refresh_preview()
+        
+        # 强制重新加载缩略图
+        if self.show_thumbnails:
+            self._force_reload_thumbnails()
+        
+        logger.info("界面状态已更新")
+    
     def show_about(self):
         """显示关于对话框"""
         about_text = """
@@ -1481,7 +1573,7 @@ class AuroraPDF(QMainWindow):
             self.progress_dialog.setLabelText(message)
             
     def _on_pdf_loading_finished(self, success, message):
-        """PDF加载完成"""
+        """PDF加载完成或图片插入完成"""
         # 隐藏进度对话框
         self.hide_progress_dialog()
         
@@ -1514,21 +1606,39 @@ class AuroraPDF(QMainWindow):
                 self.page_spinbox.setMaximum(total_pages)
                 self.total_pages_label.setText(f"/ {total_pages}")
                 
-                # 延迟更新预览区域，确保所有组件初始化完成
-                from PyQt5.QtCore import QTimer
-                QTimer.singleShot(100, self._delayed_update_preview)
-                logger.debug("已安排延迟更新预览区域")
+                # 强制刷新预览区域
+                self._force_refresh_preview()
+                logger.debug("已强制刷新预览区域")
                                 
-                # 如果缩略图面板是显示状态，加载缩略图
+                # 如果缩略图面板是显示状态，强制重新加载缩略图
                 if self.show_thumbnails:
-                    logger.debug("开始加载缩略图...")
-                    self.load_thumbnails()
-                    logger.debug("缩略图加载完成")
+                    logger.debug("开始强制重新加载缩略图...")
+                    self._force_reload_thumbnails()
+                    logger.debug("缩略图强制重新加载完成")
                 
                 # 更新按钮状态
                 self.update_save_actions_state()
         else:
             QMessageBox.critical(self, "错误", message)
+    
+    def _force_refresh_preview(self):
+        """强制刷新预览区域"""
+        # 强制更新预览区域
+        self.update_preview()
+        
+        # 强制重绘画布
+        if hasattr(self, 'preview_label') and self.preview_label:
+            self.preview_label.update()
+            self.preview_label.repaint()
+    
+    def _force_reload_thumbnails(self):
+        """强制重新加载缩略图"""
+        # 清空现有缩略图缓存
+        if hasattr(self, 'thumbnail_list') and self.thumbnail_list:
+            self.thumbnail_list.clear_thumbnails()
+        
+        # 重新加载缩略图
+        self.load_thumbnails()
     
     def _delayed_update_preview(self):
         """延迟更新预览区域，确保所有组件初始化完成"""
