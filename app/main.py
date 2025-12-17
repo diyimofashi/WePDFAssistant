@@ -278,25 +278,6 @@ class AuroraPDF(QMainWindow):
         self.thumbnail_action.triggered.connect(self.toggle_thumbnails)  # 修复方法名
         view_menu.addAction(self.thumbnail_action)
         
-        # 工具菜单
-        tools_menu = menubar.addMenu("🛠️ 工具")
-        
-        # 搜索功能
-        search_action = QAction("🔍 搜索", self)
-        search_action.setShortcut("Ctrl+F")
-        search_action.triggered.connect(self.show_search_options)  # 修复方法名
-        tools_menu.addAction(search_action)
-        
-        # 合并PDF功能
-        merge_action = QAction("🔗 合并PDF", self)
-        merge_action.triggered.connect(self.merge_pdfs)
-        tools_menu.addAction(merge_action)
-        
-        # 分割PDF功能
-        split_action = QAction("✂️ 分割PDF", self)
-        split_action.triggered.connect(self.split_pdf)
-        tools_menu.addAction(split_action)
-        
         # 工具菜单 - 添加导入图片功能
         tools_menu = menubar.addMenu("🛠️ 工具")
         
@@ -319,8 +300,6 @@ class AuroraPDF(QMainWindow):
         split_action.triggered.connect(self.split_pdf)
         tools_menu.addAction(split_action)
         
-        # 转换菜单（移除转为图片功能）
-        convert_menu = menubar.addMenu("🔄 转换")
         
         # 帮助菜单
         help_menu = menubar.addMenu("❓ 帮助")
@@ -461,12 +440,6 @@ class AuroraPDF(QMainWindow):
         import_images_btn.setToolTip("导入图片到PDF (Ctrl+Shift+I)")
         import_images_btn.triggered.connect(self.import_images)
         toolbar.addAction(import_images_btn)
-        
-        # PDF转图片按钮
-        convert_to_image_btn = QAction("🖼️ 转为图片", self)
-        convert_to_image_btn.setToolTip("将PDF转换为单张图片")
-        convert_to_image_btn.triggered.connect(self.convert_pdf_to_images)
-        toolbar.addAction(convert_to_image_btn)
 
     def create_statusbar(self):
         """创建状态栏"""
