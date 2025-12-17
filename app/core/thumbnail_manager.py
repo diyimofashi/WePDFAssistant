@@ -5,11 +5,52 @@
 
 from PyQt5.QtWidgets import QListWidget, QListWidgetItem, QMenu, QAction, QFileDialog, QMessageBox
 from PyQt5.QtGui import QIcon, QPixmap
-from PyQt5.QtCore import Qt, pyqtSignal, QSize
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QThread, QTimer
 import os
+import logging
 
 # 导入页面编辑功能
 from app.features.editor.page_editor import PageEditor
+
+logger = logging.getLogger(__name__)
+
+
+class AsyncThumbnailLoader(QThread):
+    """异步缩略图加载器"""
+    
+    # 信号定义
+    thumbnail_ready = pyqtSignal(int, object)  # 页码, QPixmap
+    loading_finished = pyqtSignal()  # 加载完成
+    
+    def __init__(self, pdf_processor, page_nums, parent=None):
+        super().__init__(parent)
+        self.pdf_processor = pdf_processor
+        self.page_nums = page_nums
+        self.is_cancelled = False
+        
+    def run(self):
+        """异步加载缩略图"""
+        try:
+            for page_num in self.page_nums:
+                if self.is_cancelled:
+                    break
+                    
+                # 生成缩略图
+                thumbnail_pixmap = self.pdf_processor.render_thumbnail(page_num, 200, 234)
+                if thumbnail_pixmap:
+                    self.thumbnail_ready.emit(page_num, thumbnail_pixmap)
+                    
+                # 短暂延迟，避免阻塞UI
+                self.msleep(10)
+                
+            if not self.is_cancelled:
+                self.loading_finished.emit()
+        except Exception as e:
+            logger.error(f"异步加载缩略图失败: {e}")
+            
+    def cancel(self):
+        """取消加载"""
+        self.is_cancelled = True
 
 
 class ThumbnailManager(QListWidget):
@@ -21,10 +62,10 @@ class ThumbnailManager(QListWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.parent = parent
         self.pdf_processor = None
         self.page_editor = None  # 页面编辑器
         self.thumbnails = []  # 缩略图缓存
+        self.async_loader = None  # 异步加载器
         
         self.init_ui()
         
@@ -86,10 +127,27 @@ class ThumbnailManager(QListWidget):
         
     def set_pdf_processor(self, pdf_processor):
         """设置PDF处理器"""
+        logger.debug(f"设置PDF处理器: {pdf_processor}")
         self.pdf_processor = pdf_processor
         # 初始化页面编辑器
         if pdf_processor:
+            logger.debug("初始化页面编辑器")
             self.page_editor = PageEditor(pdf_processor)
+            logger.debug(f"页面编辑器初始化完成: {self.page_editor}")
+            
+            # 连接页面编辑器的状态变化信号到主窗口
+            if hasattr(self, 'parent') and self.parent():
+                main_window = self.parent()
+                logger.debug(f"找到主窗口: {main_window}")
+                if hasattr(main_window, 'update_save_actions_state'):
+                    logger.debug("连接PageEditor状态变化信号到主窗口")
+                    self.page_editor.state_changed.connect(main_window.update_save_actions_state)
+                else:
+                    logger.debug("主窗口没有update_save_actions_state方法")
+            else:
+                logger.debug("没有找到父窗口或父窗口无效")
+        else:
+            logger.debug("PDF处理器为空，未初始化页面编辑器")
         
     def load_thumbnails(self):
         """加载PDF页面缩略图"""
@@ -102,31 +160,74 @@ class ThumbnailManager(QListWidget):
         
         total_pages = self.pdf_processor.get_total_pages()
         
-        # 生成每页的缩略图
+        # 生成每页的缩略图占位符
         for page_num in range(total_pages):
-            # 使用PDF处理器生成缩略图
-            thumbnail_pixmap = self.pdf_processor.render_thumbnail(page_num, 200, 234)
-            if thumbnail_pixmap:
-                # 创建列表项
-                item = QListWidgetItem()
-                item.setIcon(QIcon(thumbnail_pixmap))
-                item.setText(f"第 {page_num + 1} 页")  # 显示页码
-                item.setData(Qt.UserRole, page_num)  # 存储页码信息
-                item.setTextAlignment(Qt.AlignCenter)  # 文字居中
+            # 创建列表项
+            item = QListWidgetItem()
+            # 使用占位符图标
+            placeholder_pixmap = self._create_placeholder()
+            item.setIcon(QIcon(placeholder_pixmap))
+            item.setText(f"第 {page_num + 1} 页")  # 显示页码
+            item.setData(Qt.UserRole, page_num)  # 存储页码信息
+            item.setTextAlignment(Qt.AlignCenter)  # 文字居中
+            
+            self.addItem(item)
+            self.thumbnails.append(None)  # 占位符
+            
+            # 如果是当前页面，设置为选中状态
+            current_page = self.pdf_processor.get_current_page()  # 获取当前页面
+            if page_num == current_page - 1:  # current_page从1开始，page_num从0开始
+                item.setSelected(True)
+                # 确保选中的项可见
+                self.scrollToItem(item)
                 
-                self.addItem(item)
-                self.thumbnails.append(thumbnail_pixmap)
-                
-                # 如果是当前页面，设置为选中状态
-                current_page = self.pdf_processor.get_current_page()  # 获取当前页面
-                if page_num == current_page - 1:  # current_page从1开始，page_num从0开始
-                    item.setSelected(True)
-                    # 确保选中的项可见
-                    self.scrollToItem(item)
-                    
         # 确保整个列表居中显示
         self.center_content()
+        
+        # 异步加载缩略图
+        self._load_thumbnails_async()
                     
+    def _create_placeholder(self):
+        """创建占位符缩略图"""
+        pixmap = QPixmap(200, 234)
+        pixmap.fill(Qt.lightGray)
+        return pixmap
+        
+    def _load_thumbnails_async(self):
+        """异步加载缩略图"""
+        if not self.pdf_processor or not self.pdf_processor.fitz_document:
+            return
+            
+        # 取消之前的加载任务
+        if self.async_loader and self.async_loader.isRunning():
+            self.async_loader.cancel()
+            self.async_loader.wait()
+            
+        total_pages = self.pdf_processor.get_total_pages()
+        page_nums = list(range(total_pages))
+        
+        # 创建异步加载器
+        self.async_loader = AsyncThumbnailLoader(self.pdf_processor, page_nums)
+        
+        # 连接信号
+        self.async_loader.thumbnail_ready.connect(self._on_thumbnail_ready)
+        self.async_loader.loading_finished.connect(self._on_loading_finished)
+        
+        # 开始异步加载
+        self.async_loader.start()
+        
+    def _on_thumbnail_ready(self, page_num, pixmap):
+        """缩略图就绪回调"""
+        if page_num < self.count():
+            item = self.item(page_num)
+            if item:
+                item.setIcon(QIcon(pixmap))
+                self.thumbnails[page_num] = pixmap
+                
+    def _on_loading_finished(self):
+        """加载完成回调"""
+        pass
+        
     def update_thumbnail_selection(self, current_page):
         """更新缩略图选中状态"""
         if self.count() > 0:
@@ -227,8 +328,20 @@ class ThumbnailManager(QListWidget):
         """通知主窗口更新保存操作状态"""
         # 更新保存操作状态
         main_window = self.parent()
+        logger.debug(f"通知主窗口更新状态: main_window={main_window}")
         if main_window and hasattr(main_window, 'update_save_actions_state'):
+            logger.debug("调用主窗口的update_save_actions_state方法")
+            # 检查主窗口中的页面编辑器状态
+            if hasattr(main_window, 'pdf_processor') and main_window.pdf_processor:
+                if hasattr(main_window.pdf_processor, 'page_editor') and main_window.pdf_processor.page_editor:
+                    page_editor = main_window.pdf_processor.page_editor
+                    logger.debug(f"主窗口页面编辑器状态: can_undo={page_editor.can_undo()}, history_length={len(page_editor.history)})")
+            # 检查缩略图管理器中的页面编辑器状态
+            if hasattr(self, 'page_editor') and self.page_editor:
+                logger.debug(f"缩略图管理器页面编辑器状态: can_undo={self.page_editor.can_undo()}, history_length={len(self.page_editor.history)})")
             main_window.update_save_actions_state()
+        else:
+            logger.debug("无法找到主窗口或update_save_actions_state方法")
 
     def on_insert_blank_page(self, page_num):
         """插入空白页"""
@@ -236,14 +349,21 @@ class ThumbnailManager(QListWidget):
             QMessageBox.warning(self, "错误", "页面编辑器未初始化")
             return
         
+        logger.debug(f"开始插入空白页到第{page_num}页")
         success, message = self.page_editor.insert_blank_page(page_num)
+        logger.debug(f"插入空白页结果: success={success}, message={message}")
         if success:
-            # 重新加载缩略图
-            self.load_thumbnails()
+            # 只更新受影响的缩略图，而不是重新加载所有缩略图
+            self.update_specific_thumbnails_after_insert(page_num)
             # 发送信号通知主窗口更新内容区域
-            self.thumbnail_clicked.emit(page_num + 1)  # 跳转到插入页面的下一页
+            self.thumbnail_clicked.emit(page_num + 1)  # 跳转到新插入的页面
             # 通知主窗口更新保存操作状态
+            logger.debug("调用_notify_main_window_changes方法")
             self._notify_main_window_changes()
+            logger.debug("_notify_main_window_changes方法调用完成")
+            # 添加延迟更新，确保按钮状态正确更新
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(100, self._notify_main_window_changes)
         else:
             QMessageBox.critical(self, "错误", message)
 
@@ -260,10 +380,10 @@ class ThumbnailManager(QListWidget):
         if file_path:
             success, message = self.page_editor.insert_pdf_page(page_num, file_path)
             if success:
-                # 重新加载缩略图
-                self.load_thumbnails()
+                # 只更新受影响的缩略图，而不是重新加载所有缩略图
+                self.update_specific_thumbnails_after_insert(page_num)
                 # 发送信号通知主窗口更新内容区域
-                self.thumbnail_clicked.emit(page_num + 1)
+                self.thumbnail_clicked.emit(page_num + 1)  # 跳转到新插入的页面
                 # 通知主窗口更新保存操作状态
                 self._notify_main_window_changes()
             else:
@@ -282,10 +402,10 @@ class ThumbnailManager(QListWidget):
         if file_path:
             success, message = self.page_editor.insert_image_page(page_num, file_path)
             if success:
-                # 重新加载缩略图
-                self.load_thumbnails()
+                # 只更新受影响的缩略图，而不是重新加载所有缩略图
+                self.update_specific_thumbnails_after_insert(page_num)
                 # 发送信号通知主窗口更新内容区域
-                self.thumbnail_clicked.emit(page_num + 1)
+                self.thumbnail_clicked.emit(page_num + 1)  # 跳转到新插入的页面
                 # 通知主窗口更新保存操作状态
                 self._notify_main_window_changes()
             else:
@@ -322,8 +442,8 @@ class ThumbnailManager(QListWidget):
         if reply == QMessageBox.Yes:
             success, message = self.page_editor.delete_page(page_num)
             if success:
-                # 重新加载缩略图
-                self.load_thumbnails()
+                # 只更新受影响的缩略图，而不是重新加载所有缩略图
+                self.update_specific_thumbnails_after_delete(page_num)
                 # 通知主窗口更新保存操作状态
                 self._notify_main_window_changes()
             else:
@@ -337,8 +457,8 @@ class ThumbnailManager(QListWidget):
         
         success, message = self.page_editor.rotate_page(page_num, 90)
         if success:
-            # 重新加载缩略图
-            self.load_thumbnails()
+            # 只更新受影响的缩略图，而不是重新加载所有缩略图
+            self.update_specific_thumbnail(page_num)
             # 通知主窗口更新保存操作状态
             self._notify_main_window_changes()
         else:
@@ -352,8 +472,8 @@ class ThumbnailManager(QListWidget):
         
         success, message = self.page_editor.rotate_page(page_num, -90)
         if success:
-            # 重新加载缩略图
-            self.load_thumbnails()
+            # 只更新受影响的缩略图，而不是重新加载所有缩略图
+            self.update_specific_thumbnail(page_num)
             # 通知主窗口更新保存操作状态
             self._notify_main_window_changes()
         else:
@@ -437,3 +557,94 @@ class ThumbnailManager(QListWidget):
         # 调用OCR功能
         # 这里简化实现，仅提供概念性代码
         QMessageBox.information(self, "OCR识别", f"OCR识别第 {page_num} 页功能开发中...")
+        
+    def update_specific_thumbnail(self, page_num):
+        """更新指定页面的缩略图"""
+        if not self.pdf_processor or not self.pdf_processor.fitz_document:
+            return
+            
+        # 异步更新单个缩略图
+        self._update_thumbnail_async(page_num - 1)
+            
+    def update_specific_thumbnails_after_insert(self, insert_page_num):
+        """在插入页面后更新缩略图"""
+        if not self.pdf_processor or not self.pdf_processor.fitz_document:
+            return
+            
+        try:
+            total_pages = self.pdf_processor.get_total_pages()
+            
+            # 首先更新插入点之后的所有页面编号
+            for i in range(insert_page_num, self.count()):
+                item = self.item(i)
+                if item:
+                    item.setText(f"第 {i + 2} 页")  # 所有后续页面编号+1
+                    
+            # 然后在插入点位置插入新的缩略图占位符
+            if insert_page_num <= total_pages:
+                # 创建新的列表项
+                item = QListWidgetItem()
+                # 使用占位符图标
+                placeholder_pixmap = self._create_placeholder()
+                item.setIcon(QIcon(placeholder_pixmap))
+                item.setText(f"第 {insert_page_num} 页")
+                item.setData(Qt.UserRole, insert_page_num - 1)
+                item.setTextAlignment(Qt.AlignCenter)
+                
+                # 插入到指定位置
+                self.insertItem(insert_page_num - 1, item)
+                
+                # 如果是当前页面，设置为选中状态
+                current_page = self.pdf_processor.get_current_page()
+                if insert_page_num == current_page:
+                    item.setSelected(True)
+                    self.scrollToItem(item)
+                    
+                # 异步加载新插入的缩略图
+                self._update_thumbnail_async(insert_page_num - 1)
+        except Exception as e:
+            logger.error(f"插入后更新缩略图失败: {e}")
+    
+    def update_specific_thumbnails_after_delete(self, delete_page_num):
+        """在删除页面后更新缩略图"""
+        logger.debug(f"开始更新删除后的缩略图，删除页码: {delete_page_num}")
+        if not self.pdf_processor or not self.pdf_processor.fitz_document:
+            logger.debug("PDF处理器或文档不存在")
+            return
+            
+        try:
+            # 首先删除指定位置的缩略图
+            logger.debug(f"当前缩略图数量: {self.count()}")
+            if delete_page_num <= self.count():
+                logger.debug(f"删除第{delete_page_num}页的缩略图")
+                self.takeItem(delete_page_num - 1)
+                
+            # 然后更新删除点之后的所有页面编号
+            logger.debug("更新后续页面编号")
+            for i in range(delete_page_num - 1, self.count()):
+                item = self.item(i)
+                if item:
+                    item.setText(f"第 {i + 1} 页")  # 所有后续页面编号恢复正常
+                    logger.debug(f"更新第{i+1}页的文本显示")
+            logger.debug("删除后缩略图更新完成")
+        except Exception as e:
+            logger.error(f"删除后更新缩略图失败: {e}")
+            
+    def _update_thumbnail_async(self, page_num):
+        """异步更新单个缩略图"""
+        if not self.pdf_processor or not self.pdf_processor.fitz_document:
+            return
+            
+        # 取消之前的加载任务
+        if self.async_loader and self.async_loader.isRunning():
+            self.async_loader.cancel()
+            self.async_loader.wait()
+            
+        # 创建异步加载器
+        self.async_loader = AsyncThumbnailLoader(self.pdf_processor, [page_num])
+        
+        # 连接信号
+        self.async_loader.thumbnail_ready.connect(self._on_thumbnail_ready)
+        
+        # 开始异步加载
+        self.async_loader.start()

@@ -16,11 +16,15 @@ logger = get_logger('pdf_processor')
 
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor
-from PyQt5.QtCore import Qt, QObject, pyqtSignal
+from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import Qt as QtCore
 
 # 导入新的异步加载器和缓存管理器
 from .async_loader import AsyncPDFLoader, AsyncThumbnailLoader, AsyncPageRenderer
 from .cache_manager import RenderCache, DiskCache
+
+# 导入操作历史记录管理器
+from .operation_history import OperationHistory, OperationType, OperationFactory
 
 class PDFProcessor(QObject):
     """PDF处理器 - 提供稳定可靠的PDF文件处理和渲染功能"""
@@ -30,6 +34,7 @@ class PDFProcessor(QObject):
     loading_finished = pyqtSignal(bool, str)  # 加载完成
     thumbnail_ready = pyqtSignal(int, object)  # 缩略图就绪
     page_rendered = pyqtSignal(int, object)  # 页面渲染完成
+    operation_history_changed = pyqtSignal()  # 操作历史记录发生变化
     
     def __init__(self):
         super().__init__()
@@ -60,6 +65,14 @@ class PDFProcessor(QObject):
         # 向后兼容的简单缓存
         self.simple_cache = {}
         self.cache_max_size = 10
+        
+        # 页面编辑器
+        self.page_editor = None
+        
+        # 操作历史记录管理器
+        self.operation_history = OperationHistory(max_history_size=100)
+        # 连接操作历史记录变化信号
+        self.operation_history.history_changed.connect(self.operation_history_changed.emit)
         
     def open_pdf(self, file_path, async_mode=True):
         """打开PDF文件 - 支持异步和同步模式"""
@@ -590,7 +603,7 @@ class PDFProcessor(QObject):
                 if pixmap.width() > width - 40:  # 留出边距
                     pixmap = pixmap.scaledToWidth(
                         width - 40,  # 留出边距
-                        Qt.SmoothTransformation
+                        QtCore.SmoothTransformation
                     )
                 
                 page_pixmaps.append(pixmap)
@@ -602,7 +615,7 @@ class PDFProcessor(QObject):
             
             # 创建组合图像
             combined_pixmap = QPixmap(width, total_height)
-            combined_pixmap.fill(Qt.white)
+            combined_pixmap.fill(QtCore.white)
             
             # 绘制各页面到组合图像
             painter = QPainter(combined_pixmap)
@@ -615,7 +628,7 @@ class PDFProcessor(QObject):
                 
                 # 添加页面分隔线（除了最后一页）
                 if i < len(page_pixmaps) - 1:
-                    painter.setPen(Qt.gray)
+                    painter.setPen(QtCore.gray)
                     painter.drawLine(20, y_offset + self.page_spacing // 2, 
                                  width - 20, y_offset + self.page_spacing // 2)
                     y_offset += self.page_spacing
@@ -628,7 +641,7 @@ class PDFProcessor(QObject):
             logger.error(f"连续页面渲染失败: {e}")
             # 返回错误提示图像
             error_pixmap = QPixmap(width, height)
-            error_pixmap.fill(Qt.lightGray)
+            error_pixmap.fill(QtCore.lightGray)
             return error_pixmap
     
     def set_continuous_mode(self, enabled=True, pages_per_view=3):
@@ -736,7 +749,7 @@ class PDFProcessor(QObject):
             logger.error(traceback.format_exc())
             # 返回错误提示图像
             error_pixmap = QPixmap(width, height)
-            error_pixmap.fill(Qt.lightGray)
+            error_pixmap.fill(QtCore.lightGray)
             return error_pixmap
     
     def get_total_pages(self):
@@ -815,7 +828,7 @@ class PDFProcessor(QObject):
             
             # 创建容器
             container_pixmap = QPixmap(container_width, container_height)
-            container_pixmap.fill(Qt.white)  # 白色背景
+            container_pixmap.fill(QtCore.white)  # 白色背景
             
             # 在容器中绘制带边框的页面
             painter = QPainter(container_pixmap)
@@ -832,11 +845,11 @@ class PDFProcessor(QObject):
             painter.end()
             
             # 缩放到最终尺寸，保持边框完整显示
-            scaled_pixmap = container_pixmap.scaled(width, height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            scaled_pixmap = container_pixmap.scaled(width, height, QtCore.KeepAspectRatio, QtCore.SmoothTransformation)
             
             # 确保边框可见，创建最终的显示Pixmap
             final_pixmap = QPixmap(width, height)
-            final_pixmap.fill(Qt.transparent)
+            final_pixmap.fill(QtCore.transparent)
             
             # 居中绘制缩放后的带边框图像
             painter = QPainter(final_pixmap)
@@ -902,11 +915,11 @@ class PDFProcessor(QObject):
         """标准化缩略图尺寸"""
         try:
             # 缩放到指定尺寸
-            scaled_pixmap = pixmap.scaled(width, height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            scaled_pixmap = pixmap.scaled(width, height, QtCore.KeepAspectRatio, QtCore.SmoothTransformation)
             
             # 创建指定尺寸的容器
             final_pixmap = QPixmap(width, height)
-            final_pixmap.fill(Qt.white)
+            final_pixmap.fill(QtCore.white)
             
             # 居中绘制
             painter = QPainter(final_pixmap)
@@ -1165,3 +1178,422 @@ class PDFProcessor(QObject):
         self.zoom_factor = 1.0
         # 清除渲染缓存
         self.clear_render_cache()
+        # 清空操作历史记录
+        self.operation_history.clear_history()
+    
+    # ===== 操作历史记录相关方法 =====
+    
+    def can_undo(self) -> bool:
+        """检查是否可以撤销"""
+        return self.operation_history.can_undo()
+    
+    def can_redo(self) -> bool:
+        """检查是否可以重做"""
+        return self.operation_history.can_redo()
+    
+    def undo_operation(self) -> tuple[bool, str]:
+        """撤销上一个操作"""
+        try:
+            operation = self.operation_history.undo()
+            if operation:
+                # 执行实际的撤销逻辑
+                success = self._execute_undo(operation)
+                if success:
+                    return True, f"撤销成功: {operation.description}"
+                else:
+                    # 如果撤销执行失败，恢复操作历史记录
+                    self.operation_history.redo()
+                    return False, "撤销操作执行失败"
+            else:
+                return False, "没有可撤销的操作"
+        except Exception as e:
+            logger.error(f"撤销操作失败: {e}")
+            return False, f"撤销失败: {str(e)}"
+    
+    def redo_operation(self) -> tuple[bool, str]:
+        """重做下一个操作"""
+        try:
+            operation = self.operation_history.redo()
+            if operation:
+                # 执行实际的重做逻辑
+                success = self._execute_redo(operation)
+                if success:
+                    return True, f"重做成功: {operation.description}"
+                else:
+                    # 如果重做执行失败，恢复操作历史记录
+                    self.operation_history.undo()
+                    return False, "重做操作执行失败"
+            else:
+                return False, "没有可重做的操作"
+        except Exception as e:
+            logger.error(f"重做操作失败: {e}")
+            return False, f"重做失败: {str(e)}"
+    
+    def _execute_undo(self, operation) -> bool:
+        """执行撤销操作"""
+        try:
+            # 根据操作类型执行相应的撤销逻辑
+            if operation.operation_type == OperationType.PAGE_ADD:
+                # 撤销添加页面：删除该页面
+                page_number = operation.parameters.get('page_number')
+                return self._delete_page_by_number(page_number - 1)  # 转换为0基索引
+            
+            elif operation.operation_type == OperationType.PAGE_DELETE:
+                # 撤销删除页面：恢复该页面
+                page_data = operation.before_state
+                return self._restore_page(page_data)
+            
+            elif operation.operation_type == OperationType.TEXT_ADD:
+                # 撤销添加文本：删除该文本
+                page_number = operation.parameters.get('page_number')
+                position = operation.parameters.get('position')
+                return self._delete_text(page_number - 1, position)
+            
+            elif operation.operation_type == OperationType.TEXT_EDIT:
+                # 撤销编辑文本：恢复原始文本
+                page_number = operation.parameters.get('page_number')
+                old_text = operation.before_state.get('text')
+                position = operation.parameters.get('position')
+                return self._restore_text(page_number - 1, old_text, position)
+            
+            elif operation.operation_type == OperationType.ROTATE:
+                # 撤销旋转：反向旋转
+                page_number = operation.parameters.get('page_number')
+                angle = operation.parameters.get('angle')
+                return self._rotate_page(page_number - 1, -angle)
+            
+            # 其他操作类型的撤销逻辑...
+            else:
+                logger.warning(f"未实现的撤销操作类型: {operation.operation_type}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"执行撤销操作失败: {e}")
+            return False
+    
+    def _execute_redo(self, operation) -> bool:
+        """执行重做操作"""
+        try:
+            # 根据操作类型执行相应的重做逻辑
+            if operation.operation_type == OperationType.PAGE_ADD:
+                # 重做添加页面：重新添加该页面
+                page_data = operation.after_state
+                return self._add_page_from_data(page_data)
+            
+            elif operation.operation_type == OperationType.PAGE_DELETE:
+                # 重做删除页面：再次删除该页面
+                page_number = operation.parameters.get('page_number')
+                return self._delete_page_by_number(page_number - 1)
+            
+            elif operation.operation_type == OperationType.TEXT_ADD:
+                # 重做添加文本：重新添加该文本
+                page_number = operation.parameters.get('page_number')
+                text = operation.parameters.get('text')
+                position = operation.parameters.get('position')
+                return self._add_text(page_number - 1, text, position)
+            
+            elif operation.operation_type == OperationType.TEXT_EDIT:
+                # 重做编辑文本：重新应用编辑
+                page_number = operation.parameters.get('page_number')
+                new_text = operation.after_state.get('text')
+                position = operation.parameters.get('position')
+                return self._edit_text(page_number - 1, new_text, position)
+            
+            elif operation.operation_type == OperationType.ROTATE:
+                # 重做旋转：重新旋转
+                page_number = operation.parameters.get('page_number')
+                angle = operation.parameters.get('angle')
+                return self._rotate_page(page_number - 1, angle)
+            
+            # 其他操作类型的重做逻辑...
+            else:
+                logger.warning(f"未实现的重做操作类型: {operation.operation_type}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"执行重做操作失败: {e}")
+            return False
+    
+    def add_operation_to_history(self, operation_type: OperationType, **kwargs):
+        """添加操作到历史记录"""
+        return self.operation_history.add_operation(operation_type, **kwargs)
+    
+    def get_operation_history_info(self) -> dict:
+        """获取操作历史记录信息"""
+        return self.operation_history.get_history_info()
+    
+    def has_unsaved_changes(self) -> bool:
+        """检查是否有未保存的更改"""
+        return self.operation_history.has_unsaved_changes()
+    
+    def get_operation_summary(self) -> str:
+        """获取操作历史摘要"""
+        return self.operation_history.get_operation_summary()
+    
+    def clear_operation_history(self):
+        """清空操作历史记录"""
+        self.operation_history.clear_history()
+    
+    # 以下是具体的操作实现方法（简化示例）
+    
+    def _delete_page_by_number(self, page_index: int) -> bool:
+        """删除指定页面"""
+        try:
+            if self.fitz_document and 0 <= page_index < len(self.fitz_document):
+                self.fitz_document.delete_page(page_index)
+                logger.info(f"删除页面: {page_index + 1}")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"删除页面失败: {e}")
+            return False
+    
+    def _restore_page(self, page_data: dict) -> bool:
+        """恢复被删除的页面"""
+        # 实际实现需要根据page_data恢复页面
+        logger.info("恢复页面")
+        return True
+    
+    def _delete_text(self, page_index: int, position: dict) -> bool:
+        """删除指定位置的文本"""
+        logger.info(f"删除页面 {page_index + 1} 上的文本")
+        return True
+    
+    def _restore_text(self, page_index: int, text: str, position: dict) -> bool:
+        """恢复被删除的文本"""
+        logger.info(f"恢复页面 {page_index + 1} 上的文本: {text}")
+        return True
+    
+    def _add_text(self, page_index: int, text: str, position: dict) -> bool:
+        """添加文本"""
+        logger.info(f"在页面 {page_index + 1} 上添加文本: {text}")
+        return True
+    
+    def _edit_text(self, page_index: int, text: str, position: dict) -> bool:
+        """编辑文本"""
+        logger.info(f"编辑页面 {page_index + 1} 上的文本: {text}")
+        return True
+    
+    def _rotate_page(self, page_index: int, angle: int) -> bool:
+        """旋转页面"""
+        try:
+            if self.fitz_document and 0 <= page_index < len(self.fitz_document):
+                page = self.fitz_document[page_index]
+                page.set_rotation(angle)
+                logger.info(f"旋转页面 {page_index + 1}: {angle}度")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"旋转页面失败: {e}")
+            return False
+    
+    def _add_page_from_data(self, page_data: dict) -> bool:
+        """从数据添加页面"""
+        logger.info("从数据添加页面")
+        return True
+    
+    # ===== PDF转图片功能 =====
+    
+    def convert_pdf_to_images(self, output_dir: str, dpi: int = 150, format: str = "JPEG", page_range: str = "all") -> tuple[bool, str]:
+        """将PDF转换为图片
+        
+        Args:
+            output_dir: 输出目录路径
+            dpi: 图片分辨率（每英寸点数）
+            format: 图片格式（PNG/JPEG等）
+            page_range: 页面范围，格式如 "all", "1,3,5-9,11-14"
+            
+        Returns:
+            (success, message) 元组
+        """
+        if not self.fitz_document:
+            return False, "请先打开PDF文件"
+        
+        try:
+            # 检查输出目录是否存在，不存在则创建
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir, exist_ok=True)
+            
+            # 检查输出目录是否可写
+            if not os.access(output_dir, os.W_OK):
+                return False, f"输出目录不可写: {output_dir}"
+            
+            total_pages = len(self.fitz_document)
+            
+            # 解析页面范围
+            page_numbers = self._parse_page_range(page_range, total_pages)
+            if not page_numbers:
+                return False, f"无效的页面范围: {page_range}"
+            
+            success_count = 0
+            
+            # 创建变换矩阵，设置DPI
+            zoom_factor = dpi / 72.0  # 72 DPI是PDF的标准分辨率
+            mat = fitz.Matrix(zoom_factor, zoom_factor)
+            
+            # 逐页转换
+            for page_num in page_numbers:
+                try:
+                    page = self.fitz_document[page_num]
+                    
+                    # 渲染页面为图像
+                    pix = page.get_pixmap(
+                        matrix=mat,
+                        alpha=False,
+                        colorspace=fitz.csRGB
+                    )
+                    
+                    # 生成输出文件名
+                    filename = f"page_{page_num + 1:03d}.{format.lower()}"
+                    output_path = os.path.join(output_dir, filename)
+                    
+                    # 保存图片
+                    if format.upper() == "JPEG" or format.upper() == "JPG":
+                        pix.save(output_path, "jpeg")
+                    else:
+                        pix.save(output_path)
+                    
+                    success_count += 1
+                    
+                except Exception as page_error:
+                    logger.error(f"转换第{page_num + 1}页失败: {page_error}")
+            
+            if success_count == len(page_numbers):
+                return True, f"成功转换所有{len(page_numbers)}页到目录: {output_dir}"
+            elif success_count > 0:
+                return True, f"成功转换{success_count}/{len(page_numbers)}页到目录: {output_dir}"
+            else:
+                return False, "转换失败，所有页面都无法转换"
+                
+        except Exception as e:
+            logger.error(f"PDF转图片失败: {e}")
+            return False, f"转换失败: {str(e)}"
+    
+    def _parse_page_range(self, page_range: str, total_pages: int) -> list[int]:
+        """解析页面范围字符串
+        
+        Args:
+            page_range: 页面范围字符串，如 "all", "1,3,5-9,11-14"
+            total_pages: 总页数
+            
+        Returns:
+            页面编号列表（从0开始）
+        """
+        if page_range.lower() == "all":
+            return list(range(total_pages))
+        
+        page_numbers = []
+        parts = page_range.split(',')
+        
+        for part in parts:
+            part = part.strip()
+            if '-' in part:
+                # 处理范围，如 "5-9"
+                range_parts = part.split('-')
+                if len(range_parts) == 2:
+                    try:
+                        start = int(range_parts[0].strip()) - 1  # 转换为0基索引
+                        end = int(range_parts[1].strip()) - 1
+                        if 0 <= start <= end < total_pages:
+                            page_numbers.extend(range(start, end + 1))
+                    except ValueError:
+                        continue
+            else:
+                # 处理单个页码
+                try:
+                    page_num = int(part) - 1  # 转换为0基索引
+                    if 0 <= page_num < total_pages:
+                        page_numbers.append(page_num)
+                except ValueError:
+                    continue
+        
+        # 去重并排序
+        return sorted(set(page_numbers))
+    
+    def get_supported_image_formats(self) -> list[str]:
+        """获取支持的图片格式列表"""
+        return ["PNG", "JPEG", "BMP", "TIFF"]
+    
+    def get_recommended_dpi(self) -> dict[str, int]:
+        """获取推荐的DPI设置"""
+        return {
+            "屏幕显示": 96,
+            "普通打印": 150,
+            "高质量打印": 300,
+            "超高质量": 600
+        }
+    
+    # 示例操作方法（供其他模块调用）
+    
+    def add_page(self, page_number: int, page_data: dict) -> tuple[bool, str]:
+        """添加页面并记录操作"""
+        try:
+            # 实际添加页面的逻辑
+            success = True  # 这里应该是实际的添加逻辑
+            
+            if success:
+                # 记录操作到历史记录
+                operation = OperationFactory.create_page_add_operation(page_number, page_data)
+                self.add_operation_to_history(operation.operation_type, **{
+                    'description': operation.description,
+                    'parameters': operation.parameters,
+                    'after_state': operation.after_state
+                })
+                return True, "页面添加成功"
+            else:
+                return False, "页面添加失败"
+                
+        except Exception as e:
+            return False, f"添加页面失败: {str(e)}"
+    
+    def delete_page(self, page_number: int) -> tuple[bool, str]:
+        """删除页面并记录操作"""
+        try:
+            # 获取页面数据用于撤销
+            page_data = self._get_page_data(page_number)
+            
+            # 实际删除页面的逻辑
+            success = self._delete_page_by_number(page_number - 1)
+            
+            if success:
+                # 记录操作到历史记录
+                operation = OperationFactory.create_page_delete_operation(page_number, page_data)
+                self.add_operation_to_history(operation.operation_type, **{
+                    'description': operation.description,
+                    'parameters': operation.parameters,
+                    'before_state': operation.before_state
+                })
+                return True, "页面删除成功"
+            else:
+                return False, "页面删除失败"
+                
+        except Exception as e:
+            return False, f"删除页面失败: {str(e)}"
+    
+    def _get_page_data(self, page_number: int) -> dict:
+        """获取页面数据（用于撤销操作）"""
+        # 实际实现需要获取页面的完整数据
+        return {
+            'page_number': page_number,
+            'content': f"页面{page_number}的内容"
+        }
+    
+    def rotate_page(self, page_number: int, angle: int) -> tuple[bool, str]:
+        """旋转页面并记录操作"""
+        try:
+            # 实际旋转页面的逻辑
+            success = self._rotate_page(page_number - 1, angle)
+            
+            if success:
+                # 记录操作到历史记录
+                operation = OperationFactory.create_rotation_operation(page_number, angle)
+                self.add_operation_to_history(operation.operation_type, **{
+                    'description': operation.description,
+                    'parameters': operation.parameters
+                })
+                return True, "页面旋转成功"
+            else:
+                return False, "页面旋转失败"
+                
+        except Exception as e:
+            return False, f"旋转页面失败: {str(e)}"

@@ -40,6 +40,10 @@ class AuroraPDF(QMainWindow):
         
         # 性能优化相关
         self.use_optimizations = True  # 强制启用优化
+        self.show_thumbnails = False
+        self.progress_dialog = None
+        self.render_width = 800
+        self.render_height = 1000
         self.use_virtual_scroll = True  # 强制启用虚拟滚动
         self.performance_timer = QTimer()
         self.performance_timer.timeout.connect(self._monitor_performance)
@@ -48,9 +52,11 @@ class AuroraPDF(QMainWindow):
         
         # 连接PDF处理器信号（确保无论是否使用优化版本都连接信号）
         self.pdf_processor.loading_progress.connect(self._on_loading_progress)
-        self.pdf_processor.loading_finished.connect(self._on_pdf_loaded)
+        self.pdf_processor.loading_finished.connect(self._on_pdf_loading_finished)
         self.pdf_processor.page_rendered.connect(self._on_page_rendered)
         self.pdf_processor.thumbnail_ready.connect(self._on_thumbnail_ready)
+        self.pdf_processor.operation_history_changed.connect(self._on_operation_history_changed)
+        self.pdf_processor.operation_history_changed.connect(self._on_operation_history_changed)
         
         # 搜索相关属性
         self.search_results = []
@@ -81,7 +87,13 @@ class AuroraPDF(QMainWindow):
         self.thumbnails = []
         self.show_thumbnails = False
         
+        # 创建定时器用于定期更新撤销/重做按钮状态
+        self.update_actions_timer = QTimer(self)
+        self.update_actions_timer.timeout.connect(self.update_save_actions_state)
+        self.update_actions_timer.start(500)  # 每500毫秒更新一次
+        
         self.init_ui()
+        self.apply_styles()
         
     def init_ui(self):
         """初始化UI界面 - 按照极光PDF布局设计"""
@@ -169,6 +181,10 @@ class AuroraPDF(QMainWindow):
         # 连接信号
         self.thumbnail_list.thumbnail_clicked.connect(self.on_thumbnail_clicked)
         self.thumbnail_list.thumbnail_right_clicked.connect(self.on_thumbnail_right_clicked)
+        
+        # 连接PageEditor状态变化信号
+        if hasattr(self.thumbnail_list, 'page_editor') and self.thumbnail_list.page_editor:
+            self.thumbnail_list.page_editor.state_changed.connect(self.update_save_actions_state)
         
         self.thumbnail_dock.setWidget(self.thumbnail_list)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.thumbnail_dock)
@@ -280,6 +296,14 @@ class AuroraPDF(QMainWindow):
         split_action = QAction("✂️ 分割PDF", self)
         split_action.triggered.connect(self.split_pdf)
         tools_menu.addAction(split_action)
+        
+        # 转换菜单
+        convert_menu = menubar.addMenu("🔄 转换")
+        
+        convert_to_image_action = QAction("🖼️ 转为图片", self)
+        convert_to_image_action.setShortcut("Ctrl+I")
+        convert_to_image_action.triggered.connect(self.convert_pdf_to_images)
+        convert_menu.addAction(convert_to_image_action)
         
         # 帮助菜单
         help_menu = menubar.addMenu("❓ 帮助")
@@ -410,6 +434,16 @@ class AuroraPDF(QMainWindow):
         self.thumbnail_btn.setToolTip("显示/隐藏缩略图")
         self.thumbnail_btn.triggered.connect(self.toggle_thumbnails)
         toolbar.addAction(self.thumbnail_btn)
+        
+        toolbar.addSeparator()
+        
+        # === 转换工具组 ===
+        
+        # PDF转图片按钮
+        convert_to_image_btn = QAction("🖼️ 转为图片", self)
+        convert_to_image_btn.setToolTip("将PDF转换为单张图片")
+        convert_to_image_btn.triggered.connect(self.convert_pdf_to_images)
+        toolbar.addAction(convert_to_image_btn)
 
     def create_statusbar(self):
         """创建状态栏"""
@@ -428,325 +462,40 @@ class AuroraPDF(QMainWindow):
         self.statusBar.addPermanentWidget(self.performance_label)
         
     def update_save_actions_state(self):
-        """更新保存操作状态"""
-        has_changes = (hasattr(self.pdf_processor, 'page_editor') and 
-                      self.pdf_processor.page_editor and 
-                      self.pdf_processor.page_editor.has_unsaved_changes())
+        """更新保存操作的状态 - 基于操作历史记录管理器"""
+        # 检查是否有未保存的更改（基于操作历史记录）
+        has_changes = self.pdf_processor.has_unsaved_changes()
         
+        # 更新保存/放弃更改按钮状态
         self.save_changes_action.setEnabled(has_changes)
         self.discard_changes_action.setEnabled(has_changes)
-        self.undo_action.setEnabled(has_changes and 
-                                   hasattr(self.pdf_processor.page_editor, 'history') and
-                                   len(self.pdf_processor.page_editor.history) > 0)
-        self.redo_action.setEnabled(has_changes and 
-                                   hasattr(self.pdf_processor.page_editor, 'redo_stack') and
-                                   len(self.pdf_processor.page_editor.redo_stack) > 0)
+        
+        # 更新撤销/重做状态（直接使用PDF处理器的操作历史记录）
+        can_undo = self.pdf_processor.can_undo()
+        can_redo = self.pdf_processor.can_redo()
+        
+        logger.debug(f"操作历史状态 - 可撤销: {can_undo}, 可重做: {can_redo}, 有更改: {has_changes}")
+        
+        # 更新菜单项状态
+        self.undo_action.setEnabled(can_undo)
+        self.redo_action.setEnabled(can_redo)
         
         # 更新工具栏按钮状态
         if hasattr(self, 'undo_btn'):
-            self.undo_btn.setEnabled(self.undo_action.isEnabled())
+            self.undo_btn.setEnabled(can_undo)
         if hasattr(self, 'redo_btn'):
-            self.redo_btn.setEnabled(self.redo_action.isEnabled())
-
-    def undo_operation(self):
-        """撤销操作"""
-        if (hasattr(self.pdf_processor, 'page_editor') and 
-            self.pdf_processor.page_editor):
-            success, message = self.pdf_processor.page_editor.undo_operation()
-            if success:
-                self.show_message(f"✅ {message}")
-                # 更新保存操作状态
-                self.update_save_actions_state()
-                # 重新加载缩略图
-                self.load_thumbnails()
-                # 更新预览
-                self.update_preview()
-            else:
-                QMessageBox.warning(self, "撤销失败", message)
-
-    def redo_operation(self):
-        """重做操作"""
-        if (hasattr(self.pdf_processor, 'page_editor') and 
-            self.pdf_processor.page_editor):
-            success, message = self.pdf_processor.page_editor.redo_operation()
-            if success:
-                self.show_message(f"✅ {message}")
-                # 更新保存操作状态
-                self.update_save_actions_state()
-                # 重新加载缩略图
-                self.load_thumbnails()
-                # 更新预览
-                self.update_preview()
-            else:
-                QMessageBox.warning(self, "重做失败", message)
-
-    def open_file(self):
-        """打开PDF文件"""
-        logger.info("开始打开文件...")
-        # 获取上次打开的目录
-        last_dir = AppSettings.get_last_open_dir()
-        
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "选择PDF文件", last_dir, "PDF文件 (*.pdf)")
-        
-        if file_path:
-            logger.info(f"选择了文件: {file_path}")
-            # 异步加载模式
-            logger.info("使用异步加载模式...")
-            self.show_progress_dialog("正在加载PDF文件...")
-            success, message = self.pdf_processor.open_pdf(file_path, async_mode=True)
+            self.redo_btn.setEnabled(can_redo)
             
-            if success:
-                logger.info("异步加载启动成功")
-                # 记忆打开文件的目录
-                AppSettings.set_last_open_dir(file_path)
-            else:
-                logger.error(f"异步加载启动失败: {message}")
-                self.hide_progress_dialog()
-                QMessageBox.critical(self, "错误", message)
+        # 更新状态栏信息
+        operation_summary = self.pdf_processor.get_operation_summary()
+        if has_changes:
+            self.show_message(f"● 文档已修改 | {operation_summary}")
         else:
-            logger.info("未选择文件")
+            self.show_message(operation_summary)
             
-    def _on_pdf_loaded(self, success, message):
-        """PDF加载完成回调"""
-        # 隐藏进度对话框
-        self.hide_progress_dialog()
-        
-        if success:
-            # 更新界面标题
-            if self.pdf_processor.current_file:
-                self.setWindowTitle(f"{AppSettings.APP_NAME} - {os.path.basename(self.pdf_processor.current_file)}")
-            
-            # 显示PDF信息
-            pdf_info = self.pdf_processor.get_pdf_info()
-            if pdf_info:
-                info_text = f"📄 {pdf_info['filename']} | 📖 共{pdf_info['page_count']}页 | 💾 {pdf_info['file_size']}"
-                if pdf_info['is_encrypted']:
-                    info_text += " | 🔒 已加密"
-                
-                self.show_message(info_text)
-                logger.debug(f"PDF信息: {info_text}")
-                
-                # 确保显示第一页
-                self.pdf_processor.go_to_page(1)
-                logger.debug("已跳转到第1页")
-                
-                # 更新页码控件的最大值和总页数显示
-                total_pages = self.pdf_processor.get_total_pages()
-                self.page_spinbox.setMaximum(total_pages)
-                self.total_pages_label.setText(f"/ {total_pages}")
-                
-                # 延迟更新预览区域，确保所有组件初始化完成
-                from PyQt5.QtCore import QTimer
-                QTimer.singleShot(100, self._delayed_update_preview)
-                logger.debug("已安排延迟更新预览区域")
-                                
-                # 如果缩略图面板是显示状态，加载缩略图
-                if self.show_thumbnails:
-                    logger.debug("开始加载缩略图...")
-                    self.load_thumbnails()
-                    logger.debug("缩略图加载完成")
-        else:
-            QMessageBox.critical(self, "错误", message)
-    
-    def _delayed_update_preview(self):
-        """延迟更新预览区域，确保所有组件初始化完成"""
-        logger.debug("延迟更新预览区域开始...")
-        self.update_preview()
-        logger.debug("延迟更新预览区域完成")
-    
-    def update_preview(self):
-        """更新PDF预览显示"""
-        logger.debug("开始更新预览...")
-        if not self.pdf_processor.fitz_document:
-            logger.debug("没有PDF文档加载")
-            # 没有PDF文件时显示欢迎信息
-            self.preview_label.clear()
-            self.preview_label.setText("📄 请点击上方'打开'按钮选择PDF文件")
-            self.preview_label.setAlignment(Qt.AlignCenter)
-            self.preview_label.setFont(QFont("微软雅黑", 14))
-            return
-        
-        try:
-            logger.debug("PDF文档已加载")
-            # 更新标题栏显示文件名
-            if self.pdf_processor.current_file:
-                # 显示原始文件名而不是临时文件名
-                display_filename = self.pdf_processor.current_file
-                if (hasattr(self.pdf_processor, 'page_editor') and 
-                    self.pdf_processor.page_editor and 
-                    self.pdf_processor.page_editor.get_original_filename()):
-                    display_filename = self.pdf_processor.page_editor.get_original_filename()
-                
-                filename = os.path.basename(display_filename)
-                self.setWindowTitle(f"{AppSettings.APP_NAME} - {filename}")
-            
-            # 更新页码控件范围
-            total_pages = self.pdf_processor.get_total_pages()
-            self.page_spinbox.setMaximum(total_pages)
-            
-            # 更新总页数标签
-            self.total_pages_label.setText(f"/ {total_pages}")
-            
-            # 更新缩略图
-            if self.show_thumbnails:
-                self.load_thumbnails()
-            
-            # 使用虚拟滚动模式
-            logger.debug("使用虚拟滚动模式")
-            self._setup_virtual_scroll_data()
-            self.virtual_scroll.update_content()
-            
-            logger.debug("预览更新完成")
-        except Exception as e:
-            logger.error(f"更新预览时出错: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-    
-    def save_file(self):
-        """保存PDF文件"""
-        if not self.pdf_processor.current_file:
-            QMessageBox.information(self, "提示", "📝 请先打开PDF文件")
-            return
-        
-        # 如果有未保存的更改，直接保存到原文件
-        if (hasattr(self.pdf_processor, 'page_editor') and 
-            self.pdf_processor.page_editor and 
-            self.pdf_processor.page_editor.has_unsaved_changes()):
-            
-            success, message = self.pdf_processor.page_editor.save_changes()
-            if success:
-                self.show_message("✅ 更改已保存到原文件")
-                # 更新保存操作状态
-                self.update_save_actions_state()
-                # 重新加载缩略图
-                self.load_thumbnails()
-            else:
-                QMessageBox.critical(self, "保存失败", message)
-        else:
-            # 没有更改时执行另存为操作
-            self.save_as_file()
-    
-    def save_as_file(self):
-        """另存为PDF文件"""
-        if not self.pdf_processor.current_file:
-            QMessageBox.information(self, "提示", "📝 请先打开PDF文件")
-            return
-        
-        # 获取上次保存的目录，如果没有则使用上次打开的目录
-        last_save_dir = AppSettings.get_last_save_dir()
-        
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "另存为PDF文件", last_save_dir, "PDF文件 (*.pdf)")
-        
-        if file_path:
-            success, message = self.pdf_processor.save_pdf(file_path)
-            
-            if success:
-                # 记忆保存文件的目录
-                AppSettings.set_last_save_dir(file_path)
-                QMessageBox.information(self, "保存成功", message)
-            else:
-                QMessageBox.critical(self, "保存失败", message)
-    
-    def save_changes(self):
-        """保存更改"""
-        if (hasattr(self.pdf_processor, 'page_editor') and 
-            self.pdf_processor.page_editor and 
-            self.pdf_processor.page_editor.has_unsaved_changes()):
-            
-            success, message = self.pdf_processor.page_editor.save_changes()
-            if success:
-                self.show_message("✅ 更改已保存")
-                self.save_changes_action.setEnabled(False)
-                self.discard_changes_action.setEnabled(False)
-                self.undo_action.setEnabled(False)
-                self.redo_action.setEnabled(False)
-                # 重新加载缩略图
-                self.load_thumbnails()
-            else:
-                QMessageBox.critical(self, "保存失败", message)
-        else:
-            self.show_message("ℹ️ 没有需要保存的更改")
-    
-    def discard_changes(self):
-        """放弃更改"""
-        if (hasattr(self.pdf_processor, 'page_editor') and 
-            self.pdf_processor.page_editor and 
-            self.pdf_processor.page_editor.has_unsaved_changes()):
-            
-            reply = QMessageBox.question(
-                self, 
-                "确认放弃更改", 
-                "确定要放弃所有未保存的更改吗？", 
-                QMessageBox.Yes | QMessageBox.No, 
-                QMessageBox.No
-            )
-            
-            if reply == QMessageBox.Yes:
-                success, message = self.pdf_processor.page_editor.discard_changes()
-                if success:
-                    self.show_message("❌ 更改已放弃")
-                    self.save_changes_action.setEnabled(False)
-                    self.discard_changes_action.setEnabled(False)
-                    self.undo_action.setEnabled(False)
-                    self.redo_action.setEnabled(False)
-                    # 重新加载缩略图
-                    self.load_thumbnails()
-                else:
-                    QMessageBox.critical(self, "操作失败", message)
-        else:
-            self.show_message("ℹ️ 没有需要放弃的更改")
-    
-    def undo(self):
-        """撤销操作"""
-        if (hasattr(self.pdf_processor, 'page_editor') and 
-            self.pdf_processor.page_editor):
-            
-            success, message = self.pdf_processor.page_editor.undo()
-            if success:
-                self.show_message(f"↩️ {message}")
-                # 更新操作状态
-                self.update_save_actions_state()
-                # 重新加载缩略图
-                self.load_thumbnails()
-            else:
-                QMessageBox.information(self, "撤销失败", message)
-    
-    def redo(self):
-        """重做操作"""
-        if (hasattr(self.pdf_processor, 'page_editor') and 
-            self.pdf_processor.page_editor):
-            
-            success, message = self.pdf_processor.page_editor.redo()
-            if success:
-                self.show_message(f"↪️ {message}")
-                # 更新操作状态
-                self.update_save_actions_state()
-                # 重新加载缩略图
-                self.load_thumbnails()
-            else:
-                QMessageBox.information(self, "重做失败", message)
-    
-    def update_save_actions_state(self):
-        """更新保存操作的状态"""
-        has_changes = (hasattr(self.pdf_processor, 'page_editor') and 
-                      self.pdf_processor.page_editor and 
-                      self.pdf_processor.page_editor.has_unsaved_changes())
-        
-        self.save_changes_action.setEnabled(has_changes)
-        self.discard_changes_action.setEnabled(has_changes)
-        
-        # 更新撤销/重做状态
-        can_undo = (hasattr(self.pdf_processor, 'page_editor') and 
-                   self.pdf_processor.page_editor and 
-                   self.pdf_processor.page_editor.can_undo())
-        can_redo = (hasattr(self.pdf_processor, 'page_editor') and 
-                   self.pdf_processor.page_editor and 
-                   self.pdf_processor.page_editor.can_redo())
-        
-        self.undo_action.setEnabled(can_undo)
-        self.redo_action.setEnabled(can_redo)
+        # 立即强制更新界面状态
+        if hasattr(self, 'repaint'):
+            self.repaint()
     
     # ===== 页面导航功能 =====
     
@@ -938,7 +687,300 @@ class AuroraPDF(QMainWindow):
         
     def show_message(self, message):
         """显示状态消息"""
-        self.status_label.setText(f"📢 {message}")
+        # 检查是否有未保存的更改
+        has_changes = (hasattr(self.pdf_processor, 'page_editor') and 
+                      self.pdf_processor.page_editor and 
+                      self.pdf_processor.page_editor.has_unsaved_changes())
+        modified_indicator = " ● 文档已修改 | " if has_changes else ""
+        self.status_label.setText(f"📢 {modified_indicator}{message}")
+    
+    def convert_pdf_to_images(self):
+        """将PDF转换为单张图片"""
+        from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+                                   QComboBox, QSpinBox, QPushButton, QGroupBox,
+                                   QFileDialog, QProgressBar, QMessageBox,
+                                   QRadioButton, QLineEdit)
+        
+        if not self.pdf_processor.fitz_document:
+            QMessageBox.information(self, "提示", "📝 请先打开PDF文件")
+            return
+        
+        class ConvertToImagesDialog(QDialog):
+            def __init__(self, parent, pdf_processor):
+                super().__init__(parent)
+                self.pdf_processor = pdf_processor
+                
+                # 设置默认输出目录：当前文件所在目录，目录名与文件名一致（去掉后缀）
+                if self.pdf_processor.current_file:
+                    file_dir = os.path.dirname(self.pdf_processor.current_file)
+                    file_name = os.path.basename(self.pdf_processor.current_file)
+                    file_name_without_ext = os.path.splitext(file_name)[0]
+                    self.output_dir = os.path.join(file_dir, file_name_without_ext)
+                else:
+                    self.output_dir = ""
+                
+                self.init_ui()
+            
+            def init_ui(self):
+                self.setWindowTitle("PDF转图片")
+                self.setFixedSize(500, 550)
+                
+                layout = QVBoxLayout()
+                
+                # 输出目录设置
+                dir_group = QGroupBox("输出目录")
+                dir_layout = QVBoxLayout()
+                
+                dir_btn_layout = QHBoxLayout()
+                if self.output_dir:
+                    self.dir_label = QLabel(self.output_dir)
+                    self.dir_label.setStyleSheet("QLabel { color: #333; padding: 5px; background-color: #f0f8ff; border: 1px solid #4CAF50; border-radius: 3px; }")
+                else:
+                    self.dir_label = QLabel("未选择目录")
+                    self.dir_label.setStyleSheet("QLabel { color: #666; padding: 5px; background-color: #f5f5f5; border: 1px solid #ddd; border-radius: 3px; }")
+                dir_btn_layout.addWidget(self.dir_label)
+                
+                select_dir_btn = QPushButton("选择目录")
+                select_dir_btn.clicked.connect(self.select_output_dir)
+                dir_btn_layout.addWidget(select_dir_btn)
+                
+                dir_layout.addLayout(dir_btn_layout)
+                dir_group.setLayout(dir_layout)
+                layout.addWidget(dir_group)
+                
+                # 页面选择设置
+                page_group = QGroupBox("页面选择")
+                page_layout = QVBoxLayout()
+                
+                # 页面范围选项
+                page_range_layout = QHBoxLayout()
+                page_range_layout.addWidget(QLabel("转换页面:"))
+                
+                self.all_pages_radio = QRadioButton("全部页面")
+                self.all_pages_radio.setChecked(True)
+                self.all_pages_radio.toggled.connect(self.on_page_range_changed)
+                page_range_layout.addWidget(self.all_pages_radio)
+                
+                self.custom_pages_radio = QRadioButton("指定页面:")
+                self.custom_pages_radio.toggled.connect(self.on_page_range_changed)
+                page_range_layout.addWidget(self.custom_pages_radio)
+                
+                self.page_range_edit = QLineEdit()
+                self.page_range_edit.setPlaceholderText("如: 1,3,5-9,11-14")
+                self.page_range_edit.setEnabled(False)
+                page_range_layout.addWidget(self.page_range_edit)
+                
+                page_layout.addLayout(page_range_layout)
+                
+                # 页面范围提示
+                total_pages = self.pdf_processor.get_total_pages()
+                page_hint = QLabel(f"提示: 总页数 {total_pages} 页，支持格式: 单个页码(1,3,5)，连续范围(1-5)，混合(1,3,5-9)")
+                page_hint.setStyleSheet("QLabel { color: #666; font-size: 10px; }")
+                page_layout.addWidget(page_hint)
+                
+                page_group.setLayout(page_layout)
+                layout.addWidget(page_group)
+                
+                # 图片格式设置
+                format_group = QGroupBox("图片设置")
+                format_layout = QVBoxLayout()
+                
+                # 图片格式
+                format_row = QHBoxLayout()
+                format_row.addWidget(QLabel("图片格式:"))
+                self.format_combo = QComboBox()
+                formats = self.pdf_processor.get_supported_image_formats()
+                self.format_combo.addItems(formats)
+                # 默认选择JPEG格式
+                jpeg_index = self.format_combo.findText("JPEG")
+                if jpeg_index >= 0:
+                    self.format_combo.setCurrentIndex(jpeg_index)
+                format_row.addWidget(self.format_combo)
+                format_row.addStretch()
+                format_layout.addLayout(format_row)
+                
+                # 图片分辨率
+                dpi_row = QHBoxLayout()
+                dpi_row.addWidget(QLabel("分辨率 (DPI):"))
+                self.dpi_combo = QComboBox()
+                recommended_dpi = self.pdf_processor.get_recommended_dpi()
+                for quality, dpi in recommended_dpi.items():
+                    self.dpi_combo.addItem(f"{quality} ({dpi} DPI)", dpi)
+                self.dpi_combo.setCurrentIndex(1)  # 默认选择普通打印
+                dpi_row.addWidget(self.dpi_combo)
+                dpi_row.addStretch()
+                format_layout.addLayout(dpi_row)
+                
+                format_group.setLayout(format_layout)
+                layout.addWidget(format_group)
+                
+                # 转换信息
+                info_group = QGroupBox("转换信息")
+                info_layout = QVBoxLayout()
+                
+                total_pages = self.pdf_processor.get_total_pages()
+                self.info_label = QLabel(f"总页数: {total_pages} 页")
+                info_layout.addWidget(self.info_label)
+                
+                info_group.setLayout(info_layout)
+                layout.addWidget(info_group)
+                
+                # 进度条
+                self.progress_bar = QProgressBar()
+                self.progress_bar.setVisible(False)
+                layout.addWidget(self.progress_bar)
+                
+                # 按钮
+                button_layout = QHBoxLayout()
+                
+                convert_btn = QPushButton("开始转换")
+                convert_btn.clicked.connect(self.start_conversion)
+                convert_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; padding: 8px 16px; border: none; border-radius: 4px; }")
+                
+                cancel_btn = QPushButton("取消")
+                cancel_btn.clicked.connect(self.reject)
+                
+                button_layout.addWidget(convert_btn)
+                button_layout.addStretch()
+                button_layout.addWidget(cancel_btn)
+                layout.addLayout(button_layout)
+                
+                self.setLayout(layout)
+            
+            def _set_ui_enabled(self, enabled: bool):
+                """设置界面控件启用状态"""
+                # 设置所有按钮状态
+                for btn in self.findChildren(QPushButton):
+                    if btn.text() in ["开始转换", "选择目录", "取消"]:
+                        btn.setEnabled(enabled)
+                
+                # 设置其他控件状态
+                self.format_combo.setEnabled(enabled)
+                self.dpi_combo.setEnabled(enabled)
+                self.all_pages_radio.setEnabled(enabled)
+                self.custom_pages_radio.setEnabled(enabled)
+                self.page_range_edit.setEnabled(enabled and self.custom_pages_radio.isChecked())
+                self.dir_label.setEnabled(enabled)
+            
+            def on_page_range_changed(self):
+                """页面范围选择改变事件"""
+                self.page_range_edit.setEnabled(self.custom_pages_radio.isChecked())
+            
+            def select_output_dir(self):
+                """选择输出目录"""
+                directory = QFileDialog.getExistingDirectory(self, "选择图片保存目录")
+                if directory:
+                    self.output_dir = directory
+                    self.dir_label.setText(directory)
+                    self.dir_label.setStyleSheet("QLabel { color: #333; padding: 5px; background-color: #f0f8ff; border: 1px solid #4CAF50; border-radius: 3px; }")
+            
+            def start_conversion(self):
+                """开始转换"""
+                if not self.output_dir:
+                    QMessageBox.warning(self, "警告", "请选择输出目录")
+                    return
+                
+                # 获取页面范围
+                if self.all_pages_radio.isChecked():
+                    page_range = "all"
+                else:
+                    page_range = self.page_range_edit.text().strip()
+                    if not page_range:
+                        QMessageBox.warning(self, "警告", "请输入要转换的页面范围")
+                        return
+                
+                # 获取用户选择的设置
+                image_format = self.format_combo.currentText()
+                dpi = self.dpi_combo.currentData()
+                
+                # 显示进度条
+                self.progress_bar.setVisible(True)
+                self.progress_bar.setRange(0, 0)  # 无限进度条
+                
+                # 禁用界面控件，防止用户操作
+                self._set_ui_enabled(False)
+                
+                # 执行转换（在子线程中执行以避免界面冻结）
+                from PyQt5.QtCore import QThread, pyqtSignal
+                
+                class ConversionThread(QThread):
+                    finished = pyqtSignal(bool, str)
+                    
+                    def __init__(self, pdf_processor, output_dir, dpi, image_format, page_range):
+                        super().__init__()
+                        self.pdf_processor = pdf_processor
+                        self.output_dir = output_dir
+                        self.dpi = dpi
+                        self.image_format = image_format
+                        self.page_range = page_range
+                    
+                    def run(self):
+                        try:
+                            success, message = self.pdf_processor.convert_pdf_to_images(
+                                self.output_dir, self.dpi, self.image_format, self.page_range
+                            )
+                            self.finished.emit(success, message)
+                        except Exception as e:
+                            self.finished.emit(False, f"转换过程中发生错误: {str(e)}")
+                
+                self.conversion_thread = ConversionThread(
+                    self.pdf_processor, self.output_dir, dpi, image_format, page_range
+                )
+                self.conversion_thread.finished.connect(self.on_conversion_finished)
+                self.conversion_thread.start()
+            
+            def on_conversion_finished(self, success, message):
+                """转换完成回调"""
+                # 隐藏进度条
+                self.progress_bar.setVisible(False)
+                
+                # 恢复界面控件状态
+                self._set_ui_enabled(True)
+                
+                if success:
+                    # 创建自定义消息框，包含打开目录选项
+                    msg_box = QMessageBox(self)
+                    msg_box.setWindowTitle("转换成功")
+                    msg_box.setText(message)
+                    msg_box.setIcon(QMessageBox.Information)
+                    
+                    # 添加打开目录按钮
+                    open_dir_btn = msg_box.addButton("📂 打开目录", QMessageBox.ActionRole)
+                    msg_box.addButton("确定", QMessageBox.AcceptRole)
+                    
+                    msg_box.exec_()
+                    
+                    # 如果点击了打开目录按钮
+                    if msg_box.clickedButton() == open_dir_btn:
+                        import subprocess
+                        import platform
+                        import os
+                        
+                        try:
+                            # 根据操作系统打开目录
+                            system = platform.system()
+                            if system == "Windows":
+                                # Windows需要特定的explorer命令格式
+                                # 使用os.startfile()或者正确的explorer语法
+                                if os.path.exists(self.output_dir):
+                                    os.startfile(self.output_dir)
+                                else:
+                                    # 备用方法：使用explorer命令
+                                    subprocess.Popen(['explorer', self.output_dir], shell=True)
+                            elif system == "Darwin":  # macOS
+                                subprocess.Popen(['open', self.output_dir])
+                            else:  # Linux
+                                subprocess.Popen(['xdg-open', self.output_dir])
+                        except Exception as e:
+                            QMessageBox.warning(self, "警告", f"无法打开目录: {str(e)}")
+                    
+                    self.accept()
+                else:
+                    QMessageBox.critical(self, "转换失败", message)
+        
+        # 显示转换对话框
+        dialog = ConvertToImagesDialog(self, self.pdf_processor)
+        dialog.exec_()
     
     def show_about(self):
         """显示关于对话框"""
@@ -947,10 +989,133 @@ class AuroraPDF(QMainWindow):
         <p>一个功能强大的PDF文档处理工具</p>
         <p>支持PDF查看、编辑、转换、合并、分割等功能</p>
         <p>🎯 设计理念: 简单易用，功能强大</p>
+        <p>新增功能: PDF转图片转换器</p>
         """
         
         QMessageBox.about(self, "关于", about_text)
         
+    def open_file(self):
+        """打开PDF文件"""
+        logger.info("开始打开文件...")
+        # 获取上次打开的目录
+        last_dir = AppSettings.get_last_open_dir()
+        
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "选择PDF文件", last_dir, "PDF文件 (*.pdf)")
+        
+        if file_path:
+            logger.info(f"选择了文件: {file_path}")
+            # 异步加载模式
+            logger.info("使用异步加载模式...")
+            self.show_progress_dialog("正在加载PDF文件...")
+            success, message = self.pdf_processor.open_pdf(file_path, async_mode=True)
+            
+            if success:
+                logger.info("异步加载启动成功")
+                # 记忆打开文件的目录
+                AppSettings.set_last_open_dir(file_path)
+            else:
+                logger.error(f"异步加载启动失败: {message}")
+                self.hide_progress_dialog()
+                QMessageBox.critical(self, "错误", message)
+        else:
+            logger.info("未选择文件")
+            
+    def save_file(self):
+        """保存PDF文件"""
+        if not self.pdf_processor.current_file:
+            QMessageBox.information(self, "提示", "📝 请先打开PDF文件")
+            return
+        
+        # 如果有未保存的更改，直接保存到原文件
+        if (hasattr(self.pdf_processor, 'page_editor') and 
+            self.pdf_processor.page_editor and 
+            self.pdf_processor.page_editor.has_unsaved_changes()):
+            
+            success, message = self.pdf_processor.page_editor.save_changes()
+            if success:
+                self.show_message("✅ 更改已保存到原文件")
+                # 更新保存操作状态
+                self.update_save_actions_state()
+                # 重新加载缩略图
+                self.load_thumbnails()
+            else:
+                QMessageBox.critical(self, "保存失败", message)
+        else:
+            # 没有更改时执行另存为操作
+            self.save_as_file()
+    
+    def save_as_file(self):
+        """另存为PDF文件"""
+        if not self.pdf_processor.current_file:
+            QMessageBox.information(self, "提示", "📝 请先打开PDF文件")
+            return
+        
+        # 获取上次保存的目录，如果没有则使用上次打开的目录
+        last_save_dir = AppSettings.get_last_save_dir()
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "另存为PDF文件", last_save_dir, "PDF文件 (*.pdf)")
+        
+        if file_path:
+            success, message = self.pdf_processor.save_pdf(file_path)
+            
+            if success:
+                # 记忆保存文件的目录
+                AppSettings.set_last_save_dir(file_path)
+                QMessageBox.information(self, "保存成功", message)
+            else:
+                QMessageBox.critical(self, "保存失败", message)
+    
+    def save_changes(self):
+        """保存更改"""
+        if (hasattr(self.pdf_processor, 'page_editor') and 
+            self.pdf_processor.page_editor and 
+            self.pdf_processor.page_editor.has_unsaved_changes()):
+            
+            success, message = self.pdf_processor.page_editor.save_changes()
+            if success:
+                self.show_message("✅ 更改已保存")
+                self.save_changes_action.setEnabled(False)
+                self.discard_changes_action.setEnabled(False)
+                self.undo_action.setEnabled(False)
+                self.redo_action.setEnabled(False)
+                # 重新加载缩略图
+                self.load_thumbnails()
+            else:
+                QMessageBox.critical(self, "保存失败", message)
+        else:
+            self.show_message("ℹ️ 没有需要保存的更改")
+    
+    def discard_changes(self):
+        """放弃更改"""
+        if (hasattr(self.pdf_processor, 'page_editor') and 
+            self.pdf_processor.page_editor and 
+            self.pdf_processor.page_editor.has_unsaved_changes()):
+            
+            reply = QMessageBox.question(
+                self, 
+                "确认放弃更改", 
+                "确定要放弃所有未保存的更改吗？", 
+                QMessageBox.Yes | QMessageBox.No, 
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                success, message = self.pdf_processor.page_editor.discard_changes()
+                if success:
+                    self.show_message("❌ 更改已放弃")
+                    self.save_changes_action.setEnabled(False)
+                    self.discard_changes_action.setEnabled(False)
+                    self.undo_action.setEnabled(False)
+                    self.redo_action.setEnabled(False)
+                    # 重新加载缩略图
+                    self.load_thumbnails()
+                else:
+                    QMessageBox.critical(self, "操作失败", message)
+        else:
+            self.show_message("ℹ️ 没有需要放弃的更改")
+    
     def merge_pdfs(self):
         """合并PDF功能"""
         from PyQt5.QtWidgets import QFileDialog, QMessageBox
@@ -1231,6 +1396,58 @@ class AuroraPDF(QMainWindow):
         if self.thumbnail_list:
             self.thumbnail_list.update_thumbnail_selection(current_page)
     
+    def undo_operation(self):
+        """撤销操作 - 使用操作历史记录管理器"""
+        try:
+            # 直接使用PDF处理器的撤销功能
+            success, message = self.pdf_processor.undo_operation()
+            if success:
+                self.show_message(f"✅ {message}")
+                # 立即更新撤销/重做按钮状态
+                self.update_save_actions_state()
+                # 重新加载缩略图
+                self.load_thumbnails()
+                # 更新预览
+                self.update_preview()
+                # 强制界面刷新
+                if hasattr(self, 'repaint'):
+                    self.repaint()
+            else:
+                # 如果只是没有可撤销的操作，显示提示信息而不是错误
+                if "没有可撤销的操作" in message:
+                    self.show_message(f"ℹ️ {message}")
+                else:
+                    QMessageBox.warning(self, "撤销失败", message)
+        except Exception as e:
+            logger.error(f"撤销操作异常: {e}")
+            QMessageBox.critical(self, "撤销失败", f"撤销操作发生异常: {str(e)}")
+
+    def redo_operation(self):
+        """重做操作 - 使用操作历史记录管理器"""
+        try:
+            # 直接使用PDF处理器的重做功能
+            success, message = self.pdf_processor.redo_operation()
+            if success:
+                self.show_message(f"✅ {message}")
+                # 立即更新撤销/重做按钮状态
+                self.update_save_actions_state()
+                # 重新加载缩略图
+                self.load_thumbnails()
+                # 更新预览
+                self.update_preview()
+                # 强制界面刷新
+                if hasattr(self, 'repaint'):
+                    self.repaint()
+            else:
+                # 如果只是没有可重做的操作，显示提示信息而不是错误
+                if "没有可重做的操作" in message:
+                    self.show_message(f"ℹ️ {message}")
+                else:
+                    QMessageBox.warning(self, "重做失败", message)
+        except Exception as e:
+            logger.error(f"重做操作异常: {e}")
+            QMessageBox.critical(self, "重做失败", f"重做操作发生异常: {str(e)}")
+    
     def clear_cache(self):
         """清理缓存"""
         # 清理PDF处理器缓存
@@ -1251,12 +1468,122 @@ class AuroraPDF(QMainWindow):
 
     # ===== 性能优化相关方法 =====
     
+    def _on_operation_history_changed(self):
+        """操作历史记录发生变化时更新界面状态"""
+        logger.debug("操作历史记录发生变化，更新界面状态")
+        # 立即更新撤销/重做按钮状态
+        self.update_save_actions_state()
+        
     def _on_loading_progress(self, value, message):
         """加载进度更新"""
         if self.progress_dialog:
             self.progress_dialog.setValue(value)
             self.progress_dialog.setLabelText(message)
             
+    def _on_pdf_loading_finished(self, success, message):
+        """PDF加载完成"""
+        # 隐藏进度对话框
+        self.hide_progress_dialog()
+        
+        if success:
+            # 更新缩略图管理器中的PDF处理器
+            if hasattr(self, 'thumbnail_list') and self.thumbnail_list:
+                logger.debug("更新缩略图管理器中的PDF处理器")
+                self.thumbnail_list.set_pdf_processor(self.pdf_processor)
+            
+            # 更新界面标题
+            if self.pdf_processor.current_file:
+                self.setWindowTitle(f"{AppSettings.APP_NAME} - {os.path.basename(self.pdf_processor.current_file)}")
+            
+            # 显示PDF信息
+            pdf_info = self.pdf_processor.get_pdf_info()
+            if pdf_info:
+                info_text = f"📄 {pdf_info['filename']} | 📖 共{pdf_info['page_count']}页 | 💾 {pdf_info['file_size']}"
+                if pdf_info['is_encrypted']:
+                    info_text += " | 🔒 已加密"
+                
+                self.show_message(info_text)
+                logger.debug(f"PDF信息: {info_text}")
+                
+                # 确保显示第一页
+                self.pdf_processor.go_to_page(1)
+                logger.debug("已跳转到第1页")
+                
+                # 更新页码控件的最大值和总页数显示
+                total_pages = self.pdf_processor.get_total_pages()
+                self.page_spinbox.setMaximum(total_pages)
+                self.total_pages_label.setText(f"/ {total_pages}")
+                
+                # 延迟更新预览区域，确保所有组件初始化完成
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(100, self._delayed_update_preview)
+                logger.debug("已安排延迟更新预览区域")
+                                
+                # 如果缩略图面板是显示状态，加载缩略图
+                if self.show_thumbnails:
+                    logger.debug("开始加载缩略图...")
+                    self.load_thumbnails()
+                    logger.debug("缩略图加载完成")
+                
+                # 更新按钮状态
+                self.update_save_actions_state()
+        else:
+            QMessageBox.critical(self, "错误", message)
+    
+    def _delayed_update_preview(self):
+        """延迟更新预览区域，确保所有组件初始化完成"""
+        logger.debug("延迟更新预览区域开始...")
+        self.update_preview()
+        logger.debug("延迟更新预览区域完成")
+    
+    def update_preview(self):
+        """更新PDF预览显示"""
+        logger.debug("开始更新预览...")
+        if not self.pdf_processor.fitz_document:
+            logger.debug("没有PDF文档加载")
+            return
+        
+        try:
+            logger.debug("PDF文档已加载")
+            # 更新标题栏显示文件名
+            if self.pdf_processor.current_file:
+                # 显示原始文件名而不是临时文件名
+                display_filename = self.pdf_processor.current_file
+                if (hasattr(self.pdf_processor, 'page_editor') and 
+                    self.pdf_processor.page_editor and 
+                    self.pdf_processor.page_editor.get_original_filename()):
+                    display_filename = self.pdf_processor.page_editor.get_original_filename()
+                
+                filename = os.path.basename(display_filename)
+                # 检查是否有未保存的更改
+                has_changes = (hasattr(self.pdf_processor, 'page_editor') and 
+                              self.pdf_processor.page_editor and 
+                              self.pdf_processor.page_editor.has_unsaved_changes())
+                modified_indicator = " ●" if has_changes else ""
+                self.setWindowTitle(f"{AppSettings.APP_NAME} - {filename}{modified_indicator}")
+            
+            # 更新页码控件范围
+            total_pages = self.pdf_processor.get_total_pages()
+            self.page_spinbox.setMaximum(total_pages)
+            
+            # 更新总页数标签
+            self.total_pages_label.setText(f"/ {total_pages}")
+            
+            # 更新缩略图
+            if self.show_thumbnails:
+                self.load_thumbnails()
+            
+            # 使用虚拟滚动模式
+            logger.debug("使用虚拟滚动模式")
+            self._setup_virtual_scroll_data()
+            self.virtual_scroll.update_content()
+            
+            logger.debug("预览更新完成")
+        except Exception as e:
+            logger.error(f"更新预览时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    
     def _setup_virtual_scroll_data(self):
         """设置虚拟滚动数据"""
         logger.debug("开始设置虚拟滚动数据...")
@@ -1296,7 +1623,7 @@ class AuroraPDF(QMainWindow):
             # 确保信号连接以处理页面渲染
             if hasattr(self.virtual_scroll, 'page_visible'):
                 try:
-                    self.virtual_scroll.page_visible.connect(self._on_virtual_page_visible)
+                    self.virtual_scroll.page_visible.connect(self._on_page_visible)
                     logger.debug("虚拟滚动信号连接成功")
                 except Exception as signal_error:
                     logger.debug(f"信号连接失败（可能已连接）: {signal_error}")
@@ -1397,11 +1724,39 @@ class AuroraPDF(QMainWindow):
 
     def closeEvent(self, event):
         """处理窗口关闭事件"""
+        logger.debug("开始处理窗口关闭事件")
+        
+        # 停止定时器
+        if hasattr(self, 'update_actions_timer'):
+            self.update_actions_timer.stop()
+        
         # 检查是否有未保存的更改
-        if (hasattr(self.pdf_processor, 'page_editor') and 
-            self.pdf_processor.page_editor and 
-            self.pdf_processor.page_editor.has_unsaved_changes()):
-            
+        has_unsaved_changes = False
+        page_editor = None
+        
+        # 首先检查PDF处理器中的页面编辑器
+        if hasattr(self.pdf_processor, 'page_editor') and self.pdf_processor.page_editor:
+            page_editor = self.pdf_processor.page_editor
+            has_unsaved_changes = page_editor.has_unsaved_changes()
+            logger.debug(f"PDF处理器中的页面编辑器存在: {page_editor is not None}")
+            logger.debug(f"是否有未保存的更改: {has_unsaved_changes}")
+            logger.debug(f"临时文件: {getattr(page_editor, 'temp_file', 'None')}")
+            logger.debug(f"原始文件: {getattr(page_editor, 'original_file', 'None')}")
+            logger.debug(f"是否已修改: {getattr(page_editor, 'is_modified', 'None')}")
+        # 然后检查缩略图管理器中的页面编辑器
+        elif hasattr(self, 'thumbnail_list') and self.thumbnail_list and hasattr(self.thumbnail_list, 'page_editor') and self.thumbnail_list.page_editor:
+            page_editor = self.thumbnail_list.page_editor
+            has_unsaved_changes = page_editor.has_unsaved_changes()
+            logger.debug(f"缩略图管理器中的页面编辑器存在: {page_editor is not None}")
+            logger.debug(f"是否有未保存的更改: {has_unsaved_changes}")
+            logger.debug(f"临时文件: {getattr(page_editor, 'temp_file', 'None')}")
+            logger.debug(f"原始文件: {getattr(page_editor, 'original_file', 'None')}")
+            logger.debug(f"是否已修改: {getattr(page_editor, 'is_modified', 'None')}")
+        else:
+            logger.debug("页面编辑器不存在")
+        
+        if has_unsaved_changes:
+            logger.debug("检测到未保存的更改，显示确认对话框")
             # 显示确认对话框
             reply = QMessageBox.question(
                 self, 
@@ -1412,18 +1767,24 @@ class AuroraPDF(QMainWindow):
             )
             
             if reply == QMessageBox.Save:
+                logger.debug("用户选择保存更改")
                 # 保存更改
-                success, message = self.pdf_processor.page_editor.save_changes()
+                success, message = page_editor.save_changes()
                 if not success:
+                    logger.error(f"保存失败: {message}")
                     QMessageBox.critical(self, "保存失败", message)
                     event.ignore()
                     return
             elif reply == QMessageBox.Cancel:
+                logger.debug("用户取消关闭")
                 # 取消关闭
                 event.ignore()
                 return
+        else:
+            logger.debug("没有未保存的更改")
         
         # 正常关闭
+        logger.debug("正常关闭程序")
         event.accept()
 
 def main():

@@ -353,14 +353,43 @@ class SmartThumbnailManager(QListWidget):
     def _on_copy_page(self, page_num):
         """复制页面（简化处理）"""
         logger.debug(f"复制第 {page_num} 页")
+        # TODO: 实现页面复制功能
         
     def _on_delete_page(self, page_num):
-        """删除页面（简化处理）"""
+        """删除页面 - 调用PDF处理器的删除方法"""
         logger.debug(f"删除第 {page_num} 页")
         
+        if self.pdf_processor:
+            success, message = self.pdf_processor.delete_page(page_num)
+            if success:
+                logger.info(f"页面删除成功: {message}")
+                # 通知主窗口更新界面
+                if hasattr(self, 'parent') and self.parent:
+                    self.parent.update_save_actions_state()
+                    self.parent.load_thumbnails()
+                    self.parent.update_preview()
+            else:
+                logger.error(f"页面删除失败: {message}")
+        else:
+            logger.error("PDF处理器未设置，无法删除页面")
+        
     def _on_rotate_page(self, page_num):
-        """旋转页面（简化处理）"""
+        """旋转页面 - 调用PDF处理器的旋转方法"""
         logger.debug(f"旋转第 {page_num} 页")
+        
+        if self.pdf_processor:
+            success, message = self.pdf_processor.rotate_page(page_num, 90)  # 默认旋转90度
+            if success:
+                logger.info(f"页面旋转成功: {message}")
+                # 通知主窗口更新界面
+                if hasattr(self, 'parent') and self.parent:
+                    self.parent.update_save_actions_state()
+                    self.parent.load_thumbnails()
+                    self.parent.update_preview()
+            else:
+                logger.error(f"页面旋转失败: {message}")
+        else:
+            logger.error("PDF处理器未设置，无法旋转页面")
         
     def update_thumbnail_selection(self, current_page):
         """更新缩略图选中状态"""

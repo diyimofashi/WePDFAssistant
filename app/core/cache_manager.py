@@ -243,15 +243,33 @@ class DiskCache:
                         # 检查是否是QPixmap对象的序列化数据
                         if isinstance(data['value'], dict) and 'pixmap_data' in data['value']:
                             # 从字节数据重建QPixmap
-                            from PyQt5.QtGui import QPixmap
-                            pixmap = QPixmap()
-                            pixmap.loadFromData(data['value']['pixmap_data'])
-                            return pixmap
+                            try:
+                                from PyQt5.QtGui import QPixmap
+                                pixmap = QPixmap()
+                                pixmap_data = data['value']['pixmap_data']
+                                # 确保pixmap_data是bytes类型
+                                if isinstance(pixmap_data, str):
+                                    pixmap_data = pixmap_data.encode('latin1')
+                                elif not isinstance(pixmap_data, bytes):
+                                    pixmap_data = bytes(pixmap_data)
+                                    
+                                if pixmap.loadFromData(pixmap_data):
+                                    return pixmap
+                                else:
+                                    # 如果loadFromData失败，尝试其他方法
+                                    from PyQt5.QtCore import QByteArray
+                                    byte_array = QByteArray(pixmap_data)
+                                    if pixmap.loadFromData(byte_array):
+                                        return pixmap
+                            except Exception as e:
+                                logger.error(f"重建QPixmap对象失败: {e}")
+                                pass  # 如果重建失败，返回None
                         return data['value']
                     else:
                         # 过期，删除文件
                         os.remove(cache_path)
-            except:
+            except Exception as e:
+                logger.error(f"读取磁盘缓存失败: {e}")
                 pass
         return None
         
@@ -260,19 +278,33 @@ class DiskCache:
         cache_path = self._get_cache_path(key)
         try:
             # 如果是QPixmap对象，先转换为字节数据
-            if hasattr(value, 'saveToData'):  # 检查是否是QPixmap对象
-                # 将QPixmap转换为字节数据
-                pixmap_data = value.saveToData()
-                if pixmap_data:  # 如果转换成功
-                    value = {'pixmap_data': pixmap_data}
-                else:
-                    # 如果saveToData失败，尝试其他方法
-                    from PyQt5.QtCore import QByteArray, QBuffer, QIODevice
-                    byte_array = QByteArray()
-                    buffer = QBuffer(byte_array)
-                    buffer.open(QIODevice.WriteOnly)
-                    value.save(buffer, "PNG")
-                    value = {'pixmap_data': byte_array.data()}
+            if str(type(value)).find('QPixmap') != -1 or hasattr(value, 'saveToData'):  # 更可靠的QPixmap检测
+                try:
+                    # 尝试使用saveToData方法
+                    pixmap_data = value.saveToData()
+                    if pixmap_data:  # 如果转换成功
+                        value = {'pixmap_data': pixmap_data}
+                    else:
+                        # 如果saveToData失败，尝试其他方法
+                        from PyQt5.QtCore import QByteArray, QBuffer, QIODevice
+                        byte_array = QByteArray()
+                        buffer = QBuffer(byte_array)
+                        buffer.open(QIODevice.WriteOnly)
+                        value.save(buffer, "PNG")
+                        value = {'pixmap_data': bytes(byte_array.data())}  # 确保转换为bytes
+                except Exception as e:
+                    # 如果上面的方法都失败了，使用另一种方法
+                    try:
+                        from PyQt5.QtCore import QByteArray, QBuffer, QIODevice
+                        byte_array = QByteArray()
+                        buffer = QBuffer(byte_array)
+                        buffer.open(QIODevice.WriteOnly)
+                        value.save(buffer, "PNG")
+                        value = {'pixmap_data': bytes(byte_array.data())}
+                    except Exception as e2:
+                        # 如果所有方法都失败，记录错误但不中断主流程
+                        logger.error(f"无法序列化QPixmap对象: {e2}")
+                        return  # 不缓存这个对象
             
             data = {
                 'value': value,
