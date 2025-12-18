@@ -1,0 +1,25 @@
+{
+  "default": {
+    "filter_config": {
+      "enabled_types": [
+        "ALL_TYPES"
+      ],
+      "min_length": 1,
+      "max_length": 1000,
+      "include_keywords": [
+        "HK"
+      ],
+      "exclude_keywords": [],
+      "include_regex": "",
+      "exclude_regex": ""
+    },
+    "output_config": {
+      "output_dir": "D:/FNPData/Barcode/Forms",
+      "use_barcode_filename": true,
+      "filename_template": "{barcode}_{index}",
+      "duplicate_handling": "merge",
+      "multi_barcode_handling": "first"
+    },
+    "last_used": true
+  }
+}

@@ -184,3 +184,9 @@ class ToolbarManager(QObject):
         split_btn.setToolTip("拆分PDF文档")
         split_btn.triggered.connect(self.parent.split_pdf)
         toolbar.addAction(split_btn)
+        
+        # 条码拆分
+        barcode_split_btn = QAction("📟 条码拆分", self.parent)
+        barcode_split_btn.setToolTip("根据条码拆分PDF文档")
+        barcode_split_btn.triggered.connect(self.parent.barcode_split_pdf)
+        toolbar.addAction(barcode_split_btn)
