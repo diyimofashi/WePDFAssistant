@@ -228,8 +228,6 @@ class AuroraPDF(QMainWindow):
         can_undo = self.pdf_processor.can_undo()
         can_redo = self.pdf_processor.can_redo()
         
-        logger.debug(f"操作历史状态 - 可撤销: {can_undo}, 可重做: {can_redo}, 有更改: {has_changes}")
-        
         self.undo_action.setEnabled(can_undo)
         self.redo_action.setEnabled(can_redo)
         
