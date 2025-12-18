@@ -178,3 +178,9 @@ class ToolbarManager(QObject):
         import_images_btn.setToolTip("导入图片到PDF (Ctrl+Shift+I)")
         import_images_btn.triggered.connect(self.parent.import_images)
         toolbar.addAction(import_images_btn)
+        
+        # 拆分PDF
+        split_btn = QAction("✂️ 拆分", self.parent)
+        split_btn.setToolTip("拆分PDF文档")
+        split_btn.triggered.connect(self.parent.split_pdf)
+        toolbar.addAction(split_btn)

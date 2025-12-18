@@ -28,6 +28,7 @@ from app.ui.toolbar_manager import ToolbarManager
 from app.managers.file_manager import FileManager
 from app.managers.view_controller import ViewController
 from app.managers.search_manager import SearchManager
+from app.managers.split_manager import SplitManager
 
 
 class AuroraPDF(QMainWindow):
@@ -90,6 +91,7 @@ class AuroraPDF(QMainWindow):
         self.file_manager = FileManager(self)
         self.view_controller = ViewController(self)
         self.search_manager = SearchManager(self)
+        self.split_manager = SplitManager(self)
         
     def _connect_signals(self):
         """连接PDF处理器信号"""
@@ -310,6 +312,14 @@ class AuroraPDF(QMainWindow):
     def _on_operation_history_changed(self):
         """操作历史变化处理"""
         self.update_save_actions_state()
+    
+    def split_pdf(self):
+        """PDF拆分功能"""
+        if not self.pdf_processor.pdf_document:
+            QMessageBox.warning(self, "警告", "请先打开PDF文件")
+            return
+        
+        self.split_manager.show_split_dialog()
     
     def convert_pdf_to_images(self):
         """PDF转图片功能"""
@@ -567,32 +577,6 @@ class AuroraPDF(QMainWindow):
         
         dialog = ConvertToImagesDialog(self, self.pdf_processor)
         dialog.exec_()
-    
-    def split_pdf(self):
-        """分割PDF功能"""
-        from PyQt5.QtWidgets import QFileDialog, QMessageBox, QInputDialog
-        
-        if not self.pdf_processor.current_file:
-            QMessageBox.information(self, "分割PDF", "请先打开PDF文件")
-            return
-        
-        output_dir = QFileDialog.getExistingDirectory(self, "选择分割文件保存目录")
-        
-        if not output_dir:
-            return
-        
-        pages_per_file, ok = QInputDialog.getInt(
-            self, "分割PDF", "每份文件的页数（0表示按单页分割）:", 0, 0, 1000, 1)
-        
-        if not ok:
-            return
-        
-        success, message = self.pdf_processor.split_pdf(output_dir, pages_per_file if pages_per_file > 0 else None)
-        
-        if success:
-            QMessageBox.information(self, "分割PDF", "PDF文件分割成功！")
-        else:
-            QMessageBox.critical(self, "分割PDF", f"分割失败：{message}")
     
     def show_about(self):
         """显示关于对话框"""
