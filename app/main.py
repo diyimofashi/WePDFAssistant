@@ -29,6 +29,10 @@ from app.managers.file_manager import FileManager
 from app.managers.view_controller import ViewController
 from app.managers.search_manager import SearchManager
 from app.managers.split_manager import SplitManager
+# 导入OCR相关模块
+from app.managers.ocr_plugin_manager import OCRPluginManager
+from app.config.ocr_plugin_config import ocr_config_manager
+from app.core.ocr_plugin_interface import OCRErrorCode
 
 
 class AuroraPDF(QMainWindow):
@@ -95,6 +99,11 @@ class AuroraPDF(QMainWindow):
         self.view_controller = ViewController(self)
         self.search_manager = SearchManager(self)
         self.split_manager = SplitManager(self)
+        # 初始化OCR管理器
+        self.ocr_plugin_manager = OCRPluginManager()
+        self.ocr_config_manager = ocr_config_manager
+        # 自动加载所有OCR插件
+        self.ocr_plugin_manager.load_all_plugins()
         
     def _connect_signals(self):
         """连接PDF处理器信号"""
@@ -1138,8 +1147,164 @@ class AuroraPDF(QMainWindow):
         
     def search_previous(self):
         return self.search_manager.search_previous()
-
-
+    
+    def show_ocr_settings(self):
+        """显示OCR设置对话框"""
+        try:
+            from app.ui.ocr_settings_dialog import OCRSettingsDialog
+            dialog = OCRSettingsDialog(self)
+            dialog.exec_()
+        except Exception as e:
+            logger.error(f"显示OCR设置对话框时出错: {e}")
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "错误", f"无法打开OCR设置: {str(e)}")
+    
+    def perform_ocr_on_current_page(self):
+        """对当前页面执行OCR识别"""
+        try:
+            # 检查是否有打开的PDF文档
+            if not self.pdf_processor.pdf_document:
+                QMessageBox.warning(self, "警告", "请先打开PDF文件")
+                return
+            
+            # 获取当前页面
+            current_page = self.pdf_processor.current_page
+            if current_page < 0:
+                QMessageBox.warning(self, "警告", "请先选择一个页面")
+                return
+            
+            # 获取当前使用的OCR插件
+            current_plugin_name = self.ocr_config_manager.get_current_plugin()
+            if not current_plugin_name:
+                QMessageBox.warning(self, "警告", "请先在OCR设置中选择一个OCR插件")
+                return
+            
+            # 检查插件是否已加载
+            if current_plugin_name not in self.ocr_plugin_manager.plugins:
+                QMessageBox.critical(self, "错误", f"OCR插件 '{current_plugin_name}' 未加载")
+                return
+            
+            # 在状态栏显示加载信息，防止重复点击
+            self.show_message("正在执行OCR识别...")
+            QApplication.processEvents()  # 确保状态栏更新立即显示
+            
+            try:
+                # 获取插件实例
+                plugin = self.ocr_plugin_manager.plugins[current_plugin_name]
+                
+                # 初始化插件（如果尚未初始化）
+                if not plugin.is_initialized:
+                    plugin_config = self.ocr_config_manager.get_plugin_config(current_plugin_name)
+                    init_result = self.ocr_plugin_manager.initialize_plugin(current_plugin_name, plugin_config)
+                    if not init_result.is_success():
+                        QMessageBox.critical(self, "OCR初始化失败", f"插件初始化失败: {init_result.message}")
+                        return
+                
+                # 获取当前页面的图像数据
+                page_image_data = self.pdf_processor.get_page_image_data(current_page)
+                if not page_image_data:
+                    QMessageBox.critical(self, "错误", "无法获取页面图像数据")
+                    return
+                
+                # 尝试不同的OCR识别方法
+                # 方法1: 直接使用字节数据
+                ocr_result = plugin.recognize_from_bytes(page_image_data)
+                
+                # 如果方法1失败，尝试方法2: 转换为Base64字符串
+                if not ocr_result.is_success():
+                    from base64 import b64encode
+                    image_base64 = b64encode(page_image_data).decode('utf-8')
+                    # 移除可能存在的前缀
+                    if image_base64.startswith('data:image'):
+                        # 提取纯Base64数据
+                        image_base64 = image_base64.split(',')[1] if ',' in image_base64 else image_base64
+                    ocr_result = plugin.recognize_from_base64(image_base64)
+                
+                # 如果方法2也失败，尝试方法3: 保存为临时文件并使用文件路径
+                if not ocr_result.is_success():
+                    import tempfile
+                    import uuid
+                    # 使用完整路径避免短文件名问题
+                    temp_dir = os.path.realpath(tempfile.gettempdir())
+                    temp_filename = f"ocr_temp_{uuid.uuid4().hex}.png"
+                    tmp_file_path = os.path.join(temp_dir, temp_filename)
+                    
+                    try:
+                        # 将图像数据写入临时文件
+                        with open(tmp_file_path, 'wb') as tmp_file:
+                            tmp_file.write(page_image_data)
+                        
+                        # 确保文件已正确写入
+                        if os.path.exists(tmp_file_path):
+                            ocr_result = plugin.recognize_from_file(tmp_file_path)
+                        else:
+                            logger.error(f"临时文件创建失败: {tmp_file_path}")
+                            ocr_result = OCRResult(
+                                code=OCRErrorCode.FILE_NOT_FOUND,
+                                message=f"临时文件创建失败: {tmp_file_path}",
+                                plugin_name=plugin.plugin_name
+                            )
+                    except Exception as file_error:
+                        logger.error(f"创建或写入临时文件时出错: {file_error}")
+                        ocr_result = OCRResult(
+                            code=OCRErrorCode.UNKNOWN_ERROR,
+                            message=f"创建临时文件失败: {str(file_error)}",
+                            plugin_name=plugin.plugin_name
+                        )
+                    finally:
+                        # 清理临时文件
+                        try:
+                            if os.path.exists(tmp_file_path):
+                                os.unlink(tmp_file_path)
+                        except Exception as cleanup_error:
+                            logger.warning(f"清理临时文件时出错: {cleanup_error}")
+                
+                # 处理OCR结果
+                if ocr_result.is_success():
+                    # 在文档上增加文本层
+                    self.add_text_layer_to_page(current_page, ocr_result)
+                    # 不再显示OCR结果对话框
+                else:
+                    QMessageBox.critical(self, "OCR识别失败", f"识别失败: {ocr_result.message}")
+            
+            finally:
+                # 清除状态栏加载信息
+                self.show_message("")
+                
+        except Exception as e:
+            logger.error(f"执行OCR时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            QMessageBox.critical(self, "错误", f"执行OCR时发生异常: {str(e)}")
+    
+    def add_text_layer_to_page(self, page_num, ocr_result):
+        """在指定页面上添加OCR文本层"""
+        try:
+            # 显示提示信息
+            self.show_message(f"第{page_num+1}页OCR识别完成，共识别到{len(ocr_result.data) if isinstance(ocr_result.data, list) else 0}个文本元素")
+            
+            # 将OCR结果存储到PDF处理器中，供后续渲染使用
+            if hasattr(self.pdf_processor, 'ocr_results'):
+                self.pdf_processor.ocr_results[page_num] = ocr_result
+            else:
+                self.pdf_processor.ocr_results = {page_num: ocr_result}
+            
+            # 刷新页面显示，触发重新渲染
+            self.pdf_processor.clear_render_cache()
+            self.update_preview()
+            
+            # 如果虚拟滚动区域存在，直接更新该页面的OCR文本层
+            if hasattr(self, 'virtual_scroll_area') and self.virtual_scroll_area:
+                # 通知虚拟滚动区域更新指定页面的OCR文本层
+                self.virtual_scroll_area.update_page_ocr_layer(page_num, ocr_result)
+            
+            logger.info(f"已在第{page_num+1}页完成OCR识别")
+            
+        except Exception as e:
+            logger.error(f"添加OCR文本层时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    
 def main():
     """主函数"""
     app = QApplication(sys.argv)

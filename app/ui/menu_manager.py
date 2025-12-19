@@ -127,6 +127,16 @@ class MenuManager(QObject):
         split_action = QAction("✂️ 分割PDF", self.parent)
         split_action.triggered.connect(self.parent.split_pdf)
         tools_menu.addAction(split_action)
+        
+        # OCR设置
+        ocr_settings_action = QAction("🔍 OCR设置", self.parent)
+        ocr_settings_action.triggered.connect(self.parent.show_ocr_settings)
+        tools_menu.addAction(ocr_settings_action)
+        
+        # 执行OCR
+        perform_ocr_action = QAction("🔤 执行OCR", self.parent)
+        perform_ocr_action.triggered.connect(self.parent.perform_ocr_on_current_page)
+        tools_menu.addAction(perform_ocr_action)
     
     def _create_help_menu(self, menubar):
         """创建帮助菜单"""

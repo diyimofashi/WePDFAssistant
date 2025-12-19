@@ -190,3 +190,15 @@ class ToolbarManager(QObject):
         barcode_split_btn.setToolTip("根据条码拆分PDF文档")
         barcode_split_btn.triggered.connect(self.parent.barcode_split_pdf)
         toolbar.addAction(barcode_split_btn)
+        
+        # OCR设置
+        ocr_settings_btn = QAction("🔍 OCR设置", self.parent)
+        ocr_settings_btn.setToolTip("配置OCR引擎参数")
+        ocr_settings_btn.triggered.connect(self.parent.show_ocr_settings)
+        toolbar.addAction(ocr_settings_btn)
+        
+        # 执行OCR
+        perform_ocr_btn = QAction("🔤 执行OCR", self.parent)
+        perform_ocr_btn.setToolTip("对当前页面执行OCR识别")
+        perform_ocr_btn.triggered.connect(self.parent.perform_ocr_on_current_page)
+        toolbar.addAction(perform_ocr_btn)

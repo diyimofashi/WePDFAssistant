@@ -69,6 +69,9 @@ class PDFProcessor(QObject):
         # 页面编辑器
         self.page_editor = None
         
+        # OCR结果存储
+        self.ocr_results = {}
+        
         # 操作历史记录管理器
         self.operation_history = OperationHistory(max_history_size=100)
         # 连接操作历史记录变化信号
@@ -387,6 +390,39 @@ class PDFProcessor(QObject):
         if self.current_page > 0:
             self.current_page -= 1
             return True, f"已跳转到第{self.current_page + 1}页"
+    
+    def get_page_image_data(self, page_num):
+        """获取指定页面的图像数据（用于OCR识别）"""
+        try:
+            if not self.fitz_document:
+                logger.error("PDF文档未打开")
+                return None
+            
+            # 检查页面范围
+            if page_num < 0 or page_num >= len(self.fitz_document):
+                logger.error(f"页面号超出范围: {page_num}")
+                return None
+            
+            # 获取页面
+            page = self.fitz_document[page_num]
+            
+            # 设置渲染参数（300 DPI以获得高质量图像）
+            zoom = 2.0  # 2倍缩放以获得更好的OCR效果
+            mat = fitz.Matrix(zoom, zoom)
+            
+            # 渲染页面为图像
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            
+            # 统一转换为PNG格式，确保OCR引擎兼容性
+            img_data = pix.tobytes("png")
+            
+            return img_data
+            
+        except Exception as e:
+            logger.error(f"获取页面图像数据时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
         else:
             # 已经是第一页时，可选择循环到最后一页
             if total_pages > 1:
