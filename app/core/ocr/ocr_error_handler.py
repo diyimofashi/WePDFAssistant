@@ -7,7 +7,7 @@ import traceback
 import threading
 from typing import Dict, Any, Optional
 from datetime import datetime
-from app.core.ocr_plugin_interface import OCRErrorCode, OCRResult
+from .ocr_plugin_interface import OCRErrorCode, OCRResult
 from app.utils.logger import get_logger
 
 # 获取模块特定的日志记录器

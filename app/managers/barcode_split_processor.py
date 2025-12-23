@@ -86,6 +86,7 @@ class BarcodeSplitProcessor:
         Returns:
             拆分结果
         """
+        doc = None
         try:
             if progress_callback:
                 progress_callback(5, "正在读取PDF文件...")
@@ -150,7 +151,6 @@ class BarcodeSplitProcessor:
             )
             
             if not filtered_barcodes:
-                doc.close()
                 return SplitResult(
                     success=False,
                     message="没有找到符合条件的条码",
@@ -209,17 +209,6 @@ class BarcodeSplitProcessor:
                         doc, all_barcodes, config, output_dir
                     )
             
-            doc.close()
-            
-            if progress_callback:
-                progress_callback(95, "清理临时文件...")
-            
-            # 清理
-            self._cleanup()
-            
-            if progress_callback:
-                progress_callback(100, "拆分完成")
-            
             logger.info(f"PDF条码拆分完成，共创建 {len(files_created)} 个文件")
             
             return SplitResult(
@@ -240,6 +229,13 @@ class BarcodeSplitProcessor:
                 barcodes_found=0,
                 pages_processed=0
             )
+        finally:
+            # 确保文档被正确关闭
+            if doc is not None:
+                try:
+                    doc.close()
+                except Exception as e:
+                    logger.warning(f"关闭PDF文档时发生错误: {e}")
     
     def _create_split_file(self, doc: fitz.Document, barcodes: List[BarcodeInfo], 
                           config: BarcodeSplitConfig, output_dir: str, 
@@ -392,14 +388,14 @@ class BarcodeSplitProcessor:
             barcode_file_counts = {}
             
             # 保存所有条码组
-            for barcode_value, pages in barcode_groups.items():
+            for barcode_value, pages in list(barcode_groups.items()):
                 if pages:
                     # 创建新的PDF文档
                     new_doc = fitz.open()
                     
                     # 复制页面
                     for page_num in pages:
-                    	new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
+                        new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
                     
                     # 为当前条码值增加计数
                     if barcode_value not in barcode_file_counts:
@@ -599,7 +595,8 @@ class BarcodeSplitProcessor:
             # 为每个条码创建对应的文件
             barcode_file_map = {}  # 记录每个条码对应的文件
             
-            for page_num, barcodes_on_page in page_groups.items():
+            # 遍历页面组的副本，避免在迭代时修改字典（虽然这里理论上不会修改）
+            for page_num, barcodes_on_page in list(page_groups.items()):
                 # 对于每一页上的每个条码，都要复制该页面到对应的文档中
                 for i, barcode in enumerate(barcodes_on_page):
                     if barcode.data not in barcode_file_map:
@@ -634,7 +631,7 @@ class BarcodeSplitProcessor:
             # 创建实际的文件
             created_files = []
             barcode_index = 0
-            for barcode_data, entries in barcode_file_map.items():
+            for barcode_data, entries in list(barcode_file_map.items()):
                 barcode_index += 1
                 for i, entry in enumerate(entries):
                     pages = entry['pages']
@@ -683,6 +680,7 @@ class BarcodeSplitProcessor:
         Returns:
             预览信息字典
         """
+        doc = None
         try:
             if not os.path.exists(pdf_path):
                 return {"error": "PDF文件不存在"}
@@ -702,13 +700,10 @@ class BarcodeSplitProcessor:
             # 检测条码
             # 使用both方法同时检测嵌入图片和渲染页面中的条码
             def page_progress_callback(current, total, message):
-                if progress_callback:
-                    # 将页面进度映射到总体进度(15-30%)
-                    overall_percent = 15 + int((current / total) * 15)
-                    progress_callback(overall_percent, message)
+                # 这里不需要进度回调，因为preview_split函数没有progress_callback参数
+                pass
             
-            if progress_callback:
-                progress_callback(15, "正在检测条码...")
+            # 这里不需要进度回调，因为preview_split函数没有progress_callback参数
             all_barcodes = self.detector.detect_barcodes_in_document(doc, method="both", progress_callback=page_progress_callback)
             
             # 过滤条码
@@ -744,7 +739,8 @@ class BarcodeSplitProcessor:
                 
                 # 为每个条码生成预览
                 barcode_file_map = {}
-                for page_num, barcodes_on_page in page_groups.items():
+                # 遍历页面组的副本，避免在迭代时修改字典（虽然这里理论上不会修改）
+                for page_num, barcodes_on_page in list(page_groups.items()):
                     for i, barcode in enumerate(barcodes_on_page):
                         if barcode.data not in barcode_file_map:
                             barcode_file_map[barcode.data] = []
@@ -773,7 +769,7 @@ class BarcodeSplitProcessor:
                 
                 # 生成预览
                 file_index = 0
-                for barcode_data, entries in barcode_file_map.items():
+                for barcode_data, entries in list(barcode_file_map.items()):
                     for entry in entries:
                         pages = sorted(entry['pages'])
                         filename = config.output_config.get_filename(barcode_data, file_index) + ".pdf"
@@ -786,7 +782,7 @@ class BarcodeSplitProcessor:
                         file_index += 1
             else:
                 # 默认模式
-                for barcode_data, barcode_list in barcode_groups.items():
+                for barcode_data, barcode_list in list(barcode_groups.items()):
                     pages = sorted(set(barcode.page_num for barcode in barcode_list))
                     
                     if config.output_config.duplicate_handling == "merge":
@@ -809,8 +805,6 @@ class BarcodeSplitProcessor:
                                 "page_count": 1
                             })
             
-            doc.close()
-            
             return {
                 "total_pages": total_pages,
                 "total_barcodes": len(all_barcodes),
@@ -823,6 +817,13 @@ class BarcodeSplitProcessor:
         except Exception as e:
             logger.error(f"预览拆分结果失败: {e}")
             return {"error": f"预览失败: {str(e)}"}
+        finally:
+            # 确保文档被正确关闭
+            if doc is not None:
+                try:
+                    doc.close()
+                except Exception as e:
+                    logger.warning(f"关闭PDF文档时发生错误: {e}")
     
     def _cleanup(self):
         """清理临时资源"""

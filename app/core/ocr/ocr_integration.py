@@ -10,8 +10,8 @@ from typing import Dict, List, Any, Callable, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.managers.ocr_plugin_manager import ocr_plugin_manager
 from app.config.ocr_plugin_config import ocr_config_manager
-from app.core.ocr_plugin_interface import OCRResult, OCRErrorCode
-from app.core.ocr_plugin_security import security_manager
+from .ocr_plugin_interface import OCRResult, OCRErrorCode
+from .ocr_plugin_security import security_manager
 from app.utils.logger import get_logger
 
 logger = get_logger('ocr_integration')

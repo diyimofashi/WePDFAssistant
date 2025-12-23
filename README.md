@@ -13,23 +13,68 @@
 
 ```
 PyPDF/
-├── app/                    # 应用主包
-│   ├── config/            # 配置模块
-│   │   └── settings.py    # 应用设置和配置管理
-│   ├── core/              # 核心功能模块
-│   │   └── pdf_processor.py # PDF处理核心逻辑
-│   ├── ui/                # UI界面模块
-│   │   └── styles.py      # 界面样式定义
-│   └── main.py            # 主程序入口
-├── docs/                  # 文档目录
-│   ├── 产品需求文档.md      # 产品功能需求
-│   ├── 极光PDF布局分析.md   # 界面布局设计
-│   └── 极灵PDF开发计划.md  # 开发进度计划
-├── pypdf/                # 虚拟环境目录
-├── requirements.txt       # 依赖包列表
-├── run.bat               # 一键启动脚本
-├── start.py              # 主启动脚本
-└── README.md             # 项目说明
+├── app/                          # 应用主包
+│   ├── config/                    # 配置模块
+│   │   ├── settings.py           # 应用设置和配置管理
+│   │   ├── ocr_plugin_config.py  # OCR插件配置管理
+│   │   └── barcode_split_config.json # 条码分割配置
+│   ├── core/                      # 核心功能模块
+│   │   ├── processing/           # PDF处理与渲染
+│   │   │   ├── pdf_processor.py  # PDF处理核心功能
+│   │   │   ├── async_loader.py   # 异步PDF加载器
+│   │   │   └── thumbnail_manager.py # 缩略图管理
+│   │   ├── performance/          # 缓存与性能优化
+│   │   │   ├── cache_manager.py  # 缓存管理器
+│   │   │   └── ocr_performance_optimizer.py # OCR性能优化器
+│   │   ├── ocr/                  # OCR系统
+│   │   │   ├── ocr_integration.py # OCR系统集成
+│   │   │   ├── ocr_error_handler.py # OCR错误处理
+│   │   │   ├── ocr_plugin_interface.py # OCR插件接口
+│   │   │   ├── ocr_plugin_security.py # OCR插件安全
+│   │   │   └── ocr_searchable_pdf.py # OCR可搜索PDF生成
+│   │   └── editing/              # 编辑与历史记录
+│   │       ├── operation_history.py # 操作历史记录管理
+│   │       └── page_editor.py    # 页面编辑功能
+│   ├── managers/                  # 管理器模块
+│   │   ├── file_manager.py       # 文件管理器
+│   │   ├── ocr_plugin_manager.py # OCR插件管理器
+│   │   ├── search_manager.py     # 搜索管理器
+│   │   ├── split_manager.py      # 分割管理器
+│   │   ├── view_controller.py    # 视图控制器
+│   │   ├── barcode_detector.py  # 条码检测器
+│   │   ├── barcode_split_processor.py # 条码分割处理器
+│   │   └── barcode_detection_thread.py # 条码检测线程
+│   ├── ui/                        # UI界面模块
+│   │   ├── styles.py             # 界面样式定义
+│   │   ├── menu_manager.py       # 菜单管理器
+│   │   ├── toolbar_manager.py    # 工具栏管理器
+│   │   ├── virtual_scroll.py     # 虚拟滚动组件
+│   │   ├── barcode_result_dialog.py # 条码结果对话框
+│   │   ├── barcode_split_dialog.py # 条码分割对话框
+│   │   ├── ocr_page_label.py     # OCR页面标签
+│   │   ├── ocr_settings_dialog.py # OCR设置对话框
+│   │   ├── smart_thumbnail.py    # 智能缩略图
+│   │   └── styles.py             # 样式定义
+│   ├── utils/                     # 工具模块
+│   │   └── logger.py             # 日志工具
+│   ├── plugins/                   # 插件系统
+│   │   ├── template/             # 插件模板
+│   │   └── win7_x64_RapidOCR_json/ # RapidOCR插件
+│   └── main.py                   # 主程序入口
+├── docs/                         # 文档目录
+│   ├── development_plan.md       # 开发计划
+│   ├── ocr_plugin_development_template.md # OCR插件开发模板
+│   ├── ocr_plugin_system_design.md # OCR插件系统设计
+│   └── split_guide.md           # 分割指南
+├── tests/                        # 测试目录
+├── pypdf/                        # 虚拟环境目录
+├── cache/                        # 缓存目录
+├── logs/                         # 日志目录
+├── requirements.txt              # 依赖包列表
+├── run.bat                      # 一键启动脚本
+├── start.py                     # 主启动脚本
+├── project_rule.md              # 项目规则
+└── README.md                    # 项目说明
 
 ## 🚀 快速开始
 

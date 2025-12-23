@@ -18,9 +18,9 @@ from PyQt5.QtGui import QFont
 
 from app.config.settings import AppSettings
 from app.ui.styles import AppStyles
-from app.core.pdf_processor import PDFProcessor
+from app.core.processing.pdf_processor import PDFProcessor
 from app.ui.virtual_scroll import VirtualScrollArea
-from app.core.thumbnail_manager import ThumbnailManager
+from app.core.processing.thumbnail_manager import ThumbnailManager
 
 # 导入管理器模块
 from app.ui.menu_manager import MenuManager
@@ -32,7 +32,7 @@ from app.managers.split_manager import SplitManager
 # 导入OCR相关模块
 from app.managers.ocr_plugin_manager import OCRPluginManager
 from app.config.ocr_plugin_config import ocr_config_manager
-from app.core.ocr_plugin_interface import OCRErrorCode
+from app.core.ocr.ocr_plugin_interface import OCRErrorCode
 
 
 class AuroraPDF(QMainWindow):
@@ -1329,7 +1329,7 @@ class AuroraPDF(QMainWindow):
             
             def run(self):
                 try:
-                    from app.core.ocr_searchable_pdf import create_searchable_pdf
+                    from app.core.ocr.ocr_searchable_pdf import create_searchable_pdf
                     self.progress_updated.emit(10, "正在初始化OCR引擎...")
                     
                     success = create_searchable_pdf(

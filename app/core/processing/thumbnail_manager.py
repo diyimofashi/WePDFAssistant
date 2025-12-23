@@ -10,7 +10,7 @@ import os
 import logging
 
 # 导入页面编辑功能
-from app.features.editor.page_editor import PageEditor
+from ..editing.page_editor import PageEditor
 
 logger = logging.getLogger(__name__)
 

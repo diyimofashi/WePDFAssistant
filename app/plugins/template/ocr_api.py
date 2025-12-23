@@ -6,8 +6,8 @@ OCR插件模板 - 核心实现
 import os
 import time
 from typing import Dict, List, Any
-from app.core.ocr_plugin_interface import OCRPluginInterface, OCRResult, OCRErrorCode
-from app.core.ocr_performance_optimizer import cached_ocr_result
+from app.core.ocr.ocr_plugin_interface import OCRPluginInterface, OCRResult, OCRErrorCode
+from app.core.performance.ocr_performance_optimizer import cached_ocr_result
 
 
 class TemplateOCR(OCRPluginInterface):

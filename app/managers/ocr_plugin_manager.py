@@ -8,7 +8,7 @@ import sys
 import importlib.util
 import traceback
 from typing import Dict, List, Any, Optional
-from app.core.ocr_plugin_interface import OCRPluginInterface, OCRResult, OCRErrorCode
+from app.core.ocr.ocr_plugin_interface import OCRPluginInterface, OCRResult, OCRErrorCode
 from app.utils.logger import get_logger
 
 logger = get_logger('ocr_plugin_manager')

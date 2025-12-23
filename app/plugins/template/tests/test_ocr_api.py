@@ -11,7 +11,7 @@ import base64
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 from app.plugins.template.ocr_api import TemplateOCR
-from app.core.ocr_plugin_interface import OCRErrorCode
+from app.core.ocr.ocr_plugin_interface import OCRErrorCode
 
 
 class TestTemplateOCR(unittest.TestCase):

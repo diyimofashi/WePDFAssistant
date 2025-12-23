@@ -21,10 +21,10 @@ from PyQt5.QtCore import Qt as QtCore
 
 # 导入新的异步加载器和缓存管理器
 from .async_loader import AsyncPDFLoader, AsyncThumbnailLoader, AsyncPageRenderer
-from .cache_manager import RenderCache, DiskCache
+from ..performance.cache_manager import RenderCache, DiskCache
 
 # 导入操作历史记录管理器
-from .operation_history import OperationHistory, OperationType, OperationFactory
+from ..editing.operation_history import OperationHistory, OperationType, OperationFactory
 
 class PDFProcessor(QObject):
     """PDF处理器 - 提供稳定可靠的PDF文件处理和渲染功能"""

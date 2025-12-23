@@ -5,7 +5,7 @@ RapidOCR插件实现
 
 import os
 from typing import Dict, List, Any
-from app.core.ocr_plugin_interface import OCRPluginInterface, OCRResult, OCRErrorCode
+from app.core.ocr.ocr_plugin_interface import OCRPluginInterface, OCRResult, OCRErrorCode
 from .rapidocr import Rapid_pipe
 from .config import LangDict, global_options, local_options
 
