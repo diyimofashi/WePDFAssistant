@@ -202,3 +202,9 @@ class ToolbarManager(QObject):
         perform_ocr_btn.setToolTip("对当前页面执行OCR识别")
         perform_ocr_btn.triggered.connect(self.parent.perform_ocr_on_current_page)
         toolbar.addAction(perform_ocr_btn)
+        
+        # 创建可搜索PDF
+        create_searchable_btn = QAction("📄 创建可搜索PDF", self.parent)
+        create_searchable_btn.setToolTip("将当前PDF转换为可搜索的PDF文档")
+        create_searchable_btn.triggered.connect(self.parent.create_searchable_pdf)
+        toolbar.addAction(create_searchable_btn)

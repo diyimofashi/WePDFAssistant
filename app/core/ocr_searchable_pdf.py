@@ -1,0 +1,367 @@
+import os
+import base64
+import requests
+import fitz  # PyMuPDF
+from io import BytesIO
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+import json
+
+
+from app.utils.logger import get_logger
+
+logger = get_logger('ocr_searchable_pdf')
+
+
+class OCRSearchablePDF:
+    def __init__(self, ocr_plugin_manager=None, ocr_config_manager=None):
+        self.ocr_plugin_manager = ocr_plugin_manager
+        self.ocr_config_manager = ocr_config_manager
+
+    def pdf_to_searchable_pdf(self, pdf_path, output_path, show_text_boxes=False):
+        """
+        将PDF文件进行OCR处理，生成可搜索的PDF
+        
+        :param pdf_path: 输入PDF文件路径
+        :param output_path: 输出可搜索PDF文件路径
+        :param show_text_boxes: 是否显示文本框背景色（用于调试）
+        :return: 是否成功
+        """
+        try:
+            # 打开PDF文档
+            doc = fitz.open(pdf_path)
+            
+            # 创建新的PDF文档用于输出
+            output_doc = fitz.open()
+            
+            # 用于存储每页的OCR结果
+            ocr_results = {}
+            
+            # 使用线程池进行页级并发OCR处理
+            with ThreadPoolExecutor(max_workers=4) as executor:  # 最多4个并发线程
+                # 提交所有OCR任务
+                future_to_page = {}
+                for page_num in range(len(doc)):
+                    logger.info(f"提交第 {page_num + 1}/{len(doc)} 页OCR任务...")
+                    
+                    # 获取当前页
+                    page = doc[page_num]
+                    
+                    # 将页面渲染为图像（使用较高的DPI以获得更好的OCR效果）
+                    matrix = fitz.Matrix(2.0, 2.0)  # 2倍缩放
+                    pix = page.get_pixmap(matrix=matrix)
+                    
+                    # 将图像转换为bytes
+                    img_data = pix.tobytes("png")
+                    
+                    # 转换为base64
+                    img_base64 = base64.b64encode(img_data).decode('utf-8')
+                    
+                    # 提交OCR任务
+                    future = executor.submit(self.call_ocr_api, img_base64)
+                    future_to_page[future] = {
+                        'page_num': page_num,
+                        'page': page,
+                        'img_data': img_data,
+                        'pix': pix
+                    }
+                
+                # 收集OCR结果
+                for future in as_completed(future_to_page):
+                    page_info = future_to_page[future]
+                    page_num = page_info['page_num']
+                    try:
+                        ocr_result = future.result()
+                        ocr_results[page_num] = {
+                            'ocr_result': ocr_result,
+                            'page': page_info['page'],
+                            'img_data': page_info['img_data'],
+                            'pix': page_info['pix']
+                        }
+                        logger.info(f"第 {page_num + 1} 页OCR处理完成")
+                    except Exception as e:
+                        logger.error(f"第 {page_num + 1} 页OCR处理失败: {e}")
+                        ocr_results[page_num] = {
+                            'ocr_result': None,
+                            'page': page_info['page'],
+                            'img_data': page_info['img_data'],
+                            'pix': page_info['pix']
+                        }
+            # 按页码顺序处理结果并生成PDF
+            for page_num in sorted(ocr_results.keys()):
+                logger.info(f"处理第 {page_num + 1}/{len(doc)} 页...")
+                
+                result_info = ocr_results[page_num]
+                page = result_info['page']
+                img_data = result_info['img_data']
+                pix = result_info['pix']
+                ocr_result = result_info['ocr_result']
+                with open(f"page_{page_num + 1}_ocr_result.json", "w", encoding="utf-8") as f:
+                    json.dump(ocr_result, f, ensure_ascii=False, indent=4, sort_keys=True)
+                
+                # 创建新页面（保持原始页面尺寸）
+                new_page = output_doc.new_page(width=page.rect.width, height=page.rect.height)
+                
+                # 将原始图像插入到新页面
+                new_page.insert_image(new_page.rect, stream=img_data)
+                
+                # 如果OCR成功，添加文本层
+                if ocr_result and ocr_result.get("code") == 100:
+                    # 计算缩放比例
+                    scale_x = new_page.rect.width / pix.width
+                    scale_y = new_page.rect.height / pix.height
+                    
+                    self.add_text_layer(new_page, ocr_result.get("data", []), scale_x, scale_y, show_text_boxes)
+            
+            # 保存输出PDF
+            output_doc.save(output_path, garbage=4, deflate=True, clean=True)
+            output_doc.close()
+            doc.close()
+            
+            logger.info(f"可搜索PDF已保存到: {output_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"生成可搜索PDF失败: {e}")
+            return False
+
+    def call_ocr_api(self, image_base64):
+        """
+        调用OCR插件进行文本识别
+        
+        :param image_base64: 图像的base64编码
+        :return: OCR结果
+        """
+        if not self.ocr_plugin_manager or not self.ocr_config_manager:
+            logger.error("OCR插件管理器或配置管理器未初始化")
+            return None
+            
+        try:
+            # 获取当前使用的OCR插件
+            current_plugin_name = self.ocr_config_manager.get_current_plugin()
+            if not current_plugin_name:
+                logger.error("未配置OCR插件")
+                return None
+            
+            # 获取插件实例
+            plugin = self.ocr_plugin_manager.get_plugin(current_plugin_name)
+            if not plugin:
+                logger.error(f"OCR插件 '{current_plugin_name}' 未加载")
+                return None
+            
+            # 初始化插件（如果尚未初始化）
+            if not plugin.is_initialized:
+                plugin_config = self.ocr_config_manager.get_plugin_config(current_plugin_name)
+                init_result = self.ocr_plugin_manager.initialize_plugin(current_plugin_name, plugin_config)
+                if not init_result.is_success():
+                    logger.error(f"OCR插件初始化失败: {init_result.message}")
+                    return None
+            
+            # 调用插件进行OCR识别
+            ocr_result = plugin.recognize_from_base64(image_base64)
+            
+            # 转换为兼容的格式
+            if ocr_result.is_success():
+                return {
+                    "code": 100,
+                    "data": ocr_result.data,
+                    "message": ocr_result.message
+                }
+            else:
+                logger.error(f"OCR识别失败: {ocr_result.message}")
+                return {
+                    "code": ocr_result.code.value if hasattr(ocr_result.code, 'value') else 1000,
+                    "data": None,
+                    "message": ocr_result.message
+                }
+                
+        except Exception as e:
+            logger.error(f"OCR插件调用失败: {e}")
+            return None
+
+    def add_text_layer(self, page, text_blocks, scale_x, scale_y, show_text_boxes=False):
+        """
+        在页面上添加文本层
+        
+        :param page: PDF页面对象
+        :param text_blocks: OCR识别的文本块列表
+        :param scale_x: X轴缩放比例
+        :param scale_y: Y轴缩放比例
+        :param show_text_boxes: 是否显示文本框背景色（用于调试）
+        """
+        # 内容流清理、语法更正，减少错误
+        page.clean_contents()
+        
+        # 为支持多语言文本搜索，在页面上插入通用字体
+        try:
+            # 首先尝试使用用户提供的字体文件
+            import os
+            custom_font_path = os.path.join(os.path.dirname(__file__), "fonts", "msyh.ttf")
+            logger.debug(f"正在尝试插入用户字体: {custom_font_path}")
+            if os.path.exists(custom_font_path):
+                page.insert_font(fontfile=custom_font_path, fontname="UniversalFont")
+                logger.debug(f"成功插入用户字体: {custom_font_path}")
+            else:
+                # 如果用户字体不存在，尝试使用系统字体
+                system_font_paths = [
+                    r"C:\\Windows\\Fonts\\msyh.ttc",     # 微软雅黑
+                    r"C:\\Windows\\Fonts\\simhei.ttf",   # 黑体
+                    r"C:\\Windows\\Fonts\\simsun.ttc",   # 宋体
+                    r"C:\\Windows\\Fonts\\mingliu.ttc",  # 繁体明体
+                ]
+                
+                font_inserted = False
+                for font_path in system_font_paths:
+                    if os.path.exists(font_path):
+                        try:
+                            page.insert_font(fontfile=font_path, fontname="UniversalFont")
+                            logger.debug(f"成功插入系统字体: {font_path}")
+                            font_inserted = True
+                            break
+                        except Exception as font_error:
+                            logger.warning(f"插入系统字体失败 {font_path}: {font_error}")
+                
+                if not font_inserted:
+                    logger.debug("未找到合适的字体文件，使用默认字体")
+        except Exception as e:
+            logger.warning(f"插入通用字体失败: {e}")
+        
+        # 获取页面旋转角度
+        protation = page.rotation
+        
+        # 遍历所有文本块
+        for block in text_blocks:
+            text = block.get("text", "")
+            # 兼容不同的OCR插件格式：box或bbox
+            box = block.get("box", block.get("bbox", []))
+            
+            if not text or len(box) != 4:
+                continue
+                
+            # 根据缩放比例调整坐标
+            scaled_box = []
+            for point in box:
+                scaled_x = point[0] * scale_x
+                scaled_y = point[1] * scale_y
+                scaled_box.append([scaled_x, scaled_y])
+                
+            # 获取文本框坐标
+            x0, y0 = scaled_box[0]
+            x2, y2 = scaled_box[2]
+            
+            # 计算合适的字体大小
+            width = x2 - x0
+            height = y2 - y0
+            
+            # 根据文本长度和边界框宽度动态调整字体大小
+            # 平衡防止文本溢出和保持合适字体大小的需求
+            if width > 0 and len(text) > 0:
+                # 计算每个字符的平均宽度
+                avg_char_width = width / len(text)
+                # 基于高度计算字体大小
+                fontsize_by_height = height * 0.75
+                # 基于宽度计算字体大小（增加系数以保持更大字体）
+                fontsize_by_width = avg_char_width * 1.2  # 增加系数以保持更大字体
+                # 取较小值以确保文本不会超出边界，但不要太小
+                fontsize = min(fontsize_by_height, fontsize_by_width)
+                # 如果计算出的字体太小，使用基于高度的字体大小并适当缩小
+                if fontsize < fontsize_by_height * 0.6:  # 如果字体小于高度计算的60%
+                    fontsize = fontsize_by_height * 0.7  # 使用高度计算的70%
+            else:
+                fontsize = height * 0.75
+            
+            # 限制字体大小范围
+            fontsize = max(min(fontsize, 25), 6)  # 稍微放宽限制
+            
+            # 不再按空格拆分文本，而是将整个文本作为一个整体插入
+            # 这样可以确保文本在文本框内正确显示和定位
+            
+            # 如果需要显示文本框背景色（用于调试位置）
+            if show_text_boxes:
+                # 绘制半透明黄色背景矩形（透明度0.3）
+                rect = fitz.Rect(x0, y0, x2, y2)
+                page.draw_rect(rect, color=(1, 1, 0), fill=(1, 1, 0), width=0, fill_opacity=0.3, overlay=True)
+            
+            # 插入点的旋转后坐标（文本垂直居中）
+            # 计算文本基线位置，使其在框内垂直居中
+            baseline_y = (y0 + y2) / 2 + fontsize / 2  # 垂直居中并考虑字体基线
+            point = fitz.Point(x0, baseline_y) * page.derotation_matrix
+            
+            # 检查坐标是否在页面范围内
+            page_rect = page.rect
+            if point.x < 0:
+                point.x = 0
+            if point.y < 0:
+                point.y = fontsize
+            if point.x > page_rect.width:
+                point.x = page_rect.width - width if width < page_rect.width else 0
+            if point.y > page_rect.height:
+                point.y = page_rect.height - fontsize if fontsize < page_rect.height else page_rect.height
+            
+            # 插入文本
+            try:
+                if show_text_boxes:
+                    # 带背景色的文本（用于调试）
+                    page.insert_text(
+                        point,
+                        text,
+                        fontsize=fontsize,
+                        rotate=protation,  # 文本角度设定
+                        fontname="UniversalFont",  # 使用通用字体
+                        color=(0, 0, 0),  # 黑色文本
+                        fill_opacity=0.7,  # 半透明填充
+                        stroke_opacity=0.7  # 半透明描边
+                    )
+                else:
+                    # 透明文本（生产环境使用）
+                    page.insert_text(
+                        point,
+                        text,
+                        fontsize=fontsize,
+                        rotate=protation,  # 文本角度设定
+                        fontname="UniversalFont",  # 使用通用字体
+                        fill_opacity=0,  # 透明度为0，完全透明
+                        stroke_opacity=0  # 描边透明度为0
+                    )
+            except Exception as e:
+                logger.warning(f"插入文本失败: {text}, 错误: {e}")
+                # 尝试使用更小的字体
+                try:
+                    if show_text_boxes:
+                        page.insert_text(
+                            point,
+                            text,
+                            fontsize=max(fontsize/2, 3),
+                            rotate=protation,
+                            fontname="UniversalFont",  # 使用通用字体
+                            color=(0, 0, 0),
+                            fill_opacity=0.7,
+                            stroke_opacity=0.7
+                        )
+                    else:
+                        page.insert_text(
+                            point,
+                            text,
+                            fontsize=max(fontsize/2, 3),
+                            rotate=protation,
+                            fontname="UniversalFont",  # 使用通用字体
+                            fill_opacity=0,
+                            stroke_opacity=0
+                        )
+                except Exception as e2:
+                    logger.error(f"再次插入文本也失败: {text}, 错误: {e2}")
+
+
+def create_searchable_pdf(input_pdf_path, output_pdf_path, ocr_plugin_manager=None, ocr_config_manager=None, show_text_boxes=False):
+    """
+    创建可搜索PDF的便捷函数
+    
+    :param input_pdf_path: 输入PDF文件路径
+    :param output_pdf_path: 输出PDF文件路径
+    :param ocr_plugin_manager: OCR插件管理器
+    :param ocr_config_manager: OCR配置管理器
+    :param show_text_boxes: 是否显示文本框背景色（用于调试）
+    :return: 是否成功
+    """
+    processor = OCRSearchablePDF(ocr_plugin_manager, ocr_config_manager)
+    return processor.pdf_to_searchable_pdf(input_pdf_path, output_pdf_path, show_text_boxes)
