@@ -37,13 +37,13 @@ class OCRSearchablePDF:
             # 用于存储每页的OCR结果
             ocr_results = {}
             
-            # 使用线程池进行页级并发OCR处理
-            with ThreadPoolExecutor(max_workers=4) as executor:  # 最多4个并发线程
-                # 提交所有OCR任务
-                future_to_page = {}
-                for page_num in range(len(doc)):
-                    logger.info(f"提交第 {page_num + 1}/{len(doc)} 页OCR任务...")
-                    
+            # 改用顺序处理，避免OCR插件并发冲突
+            logger.info(f"开始处理 {len(doc)} 页PDF，使用顺序OCR处理模式...")
+            
+            for page_num in range(len(doc)):
+                logger.info(f"开始处理第 {page_num + 1}/{len(doc)} 页...")
+                
+                try:
                     # 获取当前页
                     page = doc[page_num]
                     
@@ -57,36 +57,40 @@ class OCRSearchablePDF:
                     # 转换为base64
                     img_base64 = base64.b64encode(img_data).decode('utf-8')
                     
-                    # 提交OCR任务
-                    future = executor.submit(self.call_ocr_api, img_base64)
-                    future_to_page[future] = {
-                        'page_num': page_num,
+                    # 进行OCR识别
+                    logger.info(f"正在对第 {page_num + 1} 页进行OCR识别...")
+                    ocr_result = self.call_ocr_api(img_base64)
+                    
+                    # 保存结果
+                    ocr_results[page_num] = {
+                        'ocr_result': ocr_result,
                         'page': page,
                         'img_data': img_data,
                         'pix': pix
                     }
-                
-                # 收集OCR结果
-                for future in as_completed(future_to_page):
-                    page_info = future_to_page[future]
-                    page_num = page_info['page_num']
-                    try:
-                        ocr_result = future.result()
-                        ocr_results[page_num] = {
-                            'ocr_result': ocr_result,
-                            'page': page_info['page'],
-                            'img_data': page_info['img_data'],
-                            'pix': page_info['pix']
-                        }
+                    
+                    if ocr_result:
                         logger.info(f"第 {page_num + 1} 页OCR处理完成")
-                    except Exception as e:
-                        logger.error(f"第 {page_num + 1} 页OCR处理失败: {e}")
+                    else:
+                        logger.warning(f"第 {page_num + 1} 页OCR识别返回空结果")
+                        
+                except Exception as e:
+                    logger.error(f"第 {page_num + 1} 页OCR处理失败: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    
+                    # 即使失败也要保存页面信息，避免后续处理出错
+                    if 'page' in locals() and 'img_data' in locals() and 'pix' in locals():
                         ocr_results[page_num] = {
                             'ocr_result': None,
-                            'page': page_info['page'],
-                            'img_data': page_info['img_data'],
-                            'pix': page_info['pix']
+                            'page': page,
+                            'img_data': img_data,
+                            'pix': pix
                         }
+                    else:
+                        # 如果连页面信息都没获取到，创建一个空的占位符
+                        logger.error(f"第 {page_num + 1} 页基础信息获取失败，跳过此页")
+                        continue
             # 按页码顺序处理结果并生成PDF
             for page_num in sorted(ocr_results.keys()):
                 logger.info(f"处理第 {page_num + 1}/{len(doc)} 页...")
@@ -149,34 +153,48 @@ class OCRSearchablePDF:
                 logger.error(f"OCR插件 '{current_plugin_name}' 未加载")
                 return None
             
-            # 初始化插件（如果尚未初始化）
+            # 初始化插件（如果尚未初始化）- 只初始化一次
             if not plugin.is_initialized:
+                logger.info(f"正在初始化OCR插件: {current_plugin_name}")
                 plugin_config = self.ocr_config_manager.get_plugin_config(current_plugin_name)
                 init_result = self.ocr_plugin_manager.initialize_plugin(current_plugin_name, plugin_config)
                 if not init_result.is_success():
                     logger.error(f"OCR插件初始化失败: {init_result.message}")
                     return None
+                else:
+                    logger.info(f"OCR插件初始化成功: {current_plugin_name}")
+            
+            # 检查base64数据长度，避免过大数据
+            if len(image_base64) > 10 * 1024 * 1024:  # 10MB限制
+                logger.warning(f"图像数据过大: {len(image_base64)} 字符，可能影响处理速度")
             
             # 调用插件进行OCR识别
+            logger.debug(f"开始OCR识别，图像数据长度: {len(image_base64)}")
             ocr_result = plugin.recognize_from_base64(image_base64)
+            logger.debug(f"OCR识别完成，结果类型: {type(ocr_result)}")
             
             # 转换为兼容的格式
-            if ocr_result.is_success():
+            if ocr_result and ocr_result.is_success():
+                logger.debug(f"OCR识别成功，数据项数: {len(ocr_result.data) if ocr_result.data else 0}")
                 return {
                     "code": 100,
                     "data": ocr_result.data,
                     "message": ocr_result.message
                 }
             else:
-                logger.error(f"OCR识别失败: {ocr_result.message}")
+                error_msg = ocr_result.message if ocr_result else "OCR识别返回空结果"
+                error_code = ocr_result.code.value if ocr_result and hasattr(ocr_result.code, 'value') else 1000
+                logger.error(f"OCR识别失败: {error_msg}")
                 return {
-                    "code": ocr_result.code.value if hasattr(ocr_result.code, 'value') else 1000,
+                    "code": error_code,
                     "data": None,
-                    "message": ocr_result.message
+                    "message": error_msg
                 }
                 
         except Exception as e:
             logger.error(f"OCR插件调用失败: {e}")
+            import traceback
+            logger.debug(f"详细错误信息: {traceback.format_exc()}")
             return None
 
     def add_text_layer(self, page, text_blocks, scale_x, scale_y, show_text_boxes=False):
