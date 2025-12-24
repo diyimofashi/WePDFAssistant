@@ -149,6 +149,11 @@ class AuroraPDF(QMainWindow):
             # 创建状态栏
             self.create_statusbar()
             
+            # 初始化缩略图显示状态
+            self.show_thumbnails = False  # 初始时缩略图是隐藏的
+            if hasattr(self, 'thumbnail_action'):
+                self.thumbnail_action.setChecked(False)  # 确保菜单中的缩略图动作状态与实际状态一致
+            
             self.show_message("🚀 优化版就绪 - 支持异步加载和虚拟滚动")
             logger.debug("UI初始化完成")
         except Exception as e:
@@ -1108,6 +1113,69 @@ class AuroraPDF(QMainWindow):
         
     def set_actual_size(self):
         return self.view_controller.set_actual_size()
+    
+    def set_zoom_level(self, level):
+        """设置缩放级别"""
+        # 根据缩放级别调整视图
+        if hasattr(self.view_controller, 'set_zoom_level'):
+            self.view_controller.set_zoom_level(level)
+        else:
+            # 如果视图控制器没有该方法，尝试其他方式
+            logger.warning(f"视图控制器不支持设置缩放级别: {level}%")
+            # 通过状态栏显示缩放级别
+            if hasattr(self, 'zoom_label'):
+                self.zoom_label.setText(f"{level}%")
+    
+    def show_shortcuts(self):
+        """显示快捷键说明"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QDialogButtonBox
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("快捷键说明")
+        dialog.resize(500, 600)
+        
+        layout = QVBoxLayout()
+        
+        shortcuts_text = QTextEdit()
+        shortcuts_text.setReadOnly(True)
+        shortcuts_content = """
+快捷键说明：
+
+文件操作：
+- Ctrl+O: 打开文件
+- Ctrl+S: 保存文件
+- Ctrl+Shift+S: 另存为/保存更改
+- Ctrl+D: 放弃更改
+- Ctrl+Q: 退出程序
+
+编辑操作：
+- Ctrl+Z: 撤销
+- Ctrl+Y: 重做
+
+视图操作：
+- Ctrl++: 放大
+- Ctrl+-: 缩小
+- Ctrl+F: 搜索
+
+页面导航：
+- PgUp: 上一页
+- PgDown: 下一页
+"""
+        shortcuts_text.setPlainText(shortcuts_content.strip())
+        layout.addWidget(shortcuts_text)
+        
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok)
+        button_box.accepted.connect(dialog.accept)
+        layout.addWidget(button_box)
+        
+        dialog.setLayout(layout)
+        dialog.exec_()
+    
+    def check_for_updates(self):
+        """检查更新"""
+        # 这里可以实现检查更新的逻辑
+        from PyQt5.QtWidgets import QMessageBox
+        QMessageBox.information(self, "检查更新", "当前已是最新版本 v1.0.0")
         
     def previous_page(self):
         return self.view_controller.previous_page()

@@ -50,15 +50,37 @@ class ViewController:
             self.parent.update_preview()
         self.parent.show_message("显示原始尺寸")
     
+    def set_zoom_level(self, level):
+        """设置缩放级别"""
+        zoom_factor = level / 100.0
+        success, message = self.parent.pdf_processor.set_zoom(zoom_factor)
+        if success:
+            self.parent.update_preview()
+        self.parent.show_message(f"缩放到 {level}%")
+        # 更新状态栏显示
+        if hasattr(self.parent, 'zoom_label'):
+            self.parent.zoom_label.setText(f"{level}%")
+    
     def previous_page(self):
         """上一页"""
-        self.parent.virtual_scroll.scroll_page(-1)
-        self.parent.show_message("向上滚动")
+        # 获取当前页面，VirtualScrollArea的get_current_page返回1基索引
+        current_page = self.parent.virtual_scroll.get_current_page() - 1  # 转换为0基索引
+        if current_page > 0:
+            self.parent.virtual_scroll.scroll_to_page(current_page - 1)  # 滚动到上一页（0基索引）
+            self.parent.show_message("已跳转到上一页")
+        else:
+            self.parent.show_message("已是第一页")
     
     def next_page(self):
         """下一页"""
-        self.parent.virtual_scroll.scroll_page(1)
-        self.parent.show_message("向下滚动")
+        # 获取当前页面，VirtualScrollArea的get_current_page返回1基索引
+        current_page = self.parent.virtual_scroll.get_current_page() - 1  # 转换为0基索引
+        total_pages = self.parent.pdf_processor.get_total_pages()
+        if current_page < total_pages - 1:
+            self.parent.virtual_scroll.scroll_to_page(current_page + 1)  # 滚动到下一页（0基索引）
+            self.parent.show_message("已跳转到下一页")
+        else:
+            self.parent.show_message("已是最后一页")
     
     def go_to_page(self, page_number=None):
         """跳转到指定页面"""
@@ -87,7 +109,9 @@ class ViewController:
     def toggle_thumbnails(self):
         """切换缩略图显示/隐藏"""
         self.parent.show_thumbnails = not self.parent.show_thumbnails
-        self.parent.thumbnail_btn.setChecked(self.parent.show_thumbnails)
+        # 更新菜单中的缩略图动作状态
+        if hasattr(self.parent, 'thumbnail_action'):
+            self.parent.thumbnail_action.setChecked(self.parent.show_thumbnails)
         
         if self.parent.show_thumbnails:
             self.parent.thumbnail_dock.show()

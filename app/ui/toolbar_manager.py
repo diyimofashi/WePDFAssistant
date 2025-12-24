@@ -1,6 +1,6 @@
 """工具栏管理器模块"""
 
-from PyQt5.QtWidgets import QToolBar, QAction, QSpinBox, QLabel
+from PyQt5.QtWidgets import QToolBar, QAction, QSpinBox, QLabel, QMenu
 from PyQt5.QtCore import QObject, QSize, Qt
 from PyQt5.QtGui import QIcon
 from app.utils.logger import get_logger
@@ -110,18 +110,6 @@ class ToolbarManager(QObject):
         fit_width_btn.setToolTip("适应页面宽度")
         fit_width_btn.triggered.connect(lambda: self.parent.fit_to_width())
         toolbar.addAction(fit_width_btn)
-        
-        # 适应高度
-        fit_height_btn = QAction("↕️ 适应高度", self.parent)
-        fit_height_btn.setToolTip("适应页面高度")
-        fit_height_btn.triggered.connect(lambda: self.parent.fit_to_height())
-        toolbar.addAction(fit_height_btn)
-        
-        # 原始尺寸
-        actual_size_btn = QAction("1:1 原始尺寸", self.parent)
-        actual_size_btn.setToolTip("显示原始尺寸")
-        actual_size_btn.triggered.connect(lambda: self.parent.set_actual_size())
-        toolbar.addAction(actual_size_btn)
     
     def _add_navigation_actions(self, toolbar):
         """添加导航按钮"""
@@ -162,49 +150,35 @@ class ToolbarManager(QObject):
         search_btn.setShortcut("Ctrl+F")
         search_btn.triggered.connect(self.parent.show_search_options)
         toolbar.addAction(search_btn)
-        
-        # 缩略图
-        self.parent.thumbnail_btn = QAction("📋 缩略图", self.parent)
-        self.parent.thumbnail_btn.setCheckable(True)
-        self.parent.thumbnail_btn.setChecked(False)
-        self.parent.thumbnail_btn.setToolTip("显示/隐藏缩略图")
-        self.parent.thumbnail_btn.triggered.connect(self.parent.toggle_thumbnails)
-        toolbar.addAction(self.parent.thumbnail_btn)
     
     def _add_convert_actions(self, toolbar):
         """添加转换工具按钮"""
-        # 导入图片
-        import_images_btn = QAction("📷 导入图片", self.parent)
-        import_images_btn.setToolTip("导入图片到PDF (Ctrl+Shift+I)")
-        import_images_btn.triggered.connect(self.parent.import_images)
-        toolbar.addAction(import_images_btn)
-        
-        # 拆分PDF
-        split_btn = QAction("✂️ 拆分", self.parent)
-        split_btn.setToolTip("拆分PDF文档")
-        split_btn.triggered.connect(self.parent.split_pdf)
-        toolbar.addAction(split_btn)
-        
         # 条码拆分
         barcode_split_btn = QAction("📟 条码拆分", self.parent)
         barcode_split_btn.setToolTip("根据条码拆分PDF文档")
         barcode_split_btn.triggered.connect(self.parent.barcode_split_pdf)
         toolbar.addAction(barcode_split_btn)
         
+        # OCR工具 - 使用下拉按钮
+        ocr_menu = QMenu("🔍 OCR工具", self.parent)
+        
         # OCR设置
-        ocr_settings_btn = QAction("🔍 OCR设置", self.parent)
-        ocr_settings_btn.setToolTip("配置OCR引擎参数")
-        ocr_settings_btn.triggered.connect(self.parent.show_ocr_settings)
-        toolbar.addAction(ocr_settings_btn)
+        ocr_settings_action = QAction("⚙️ OCR设置", self.parent)
+        ocr_settings_action.triggered.connect(self.parent.show_ocr_settings)
+        ocr_menu.addAction(ocr_settings_action)
         
         # 执行OCR
-        perform_ocr_btn = QAction("🔤 执行OCR", self.parent)
-        perform_ocr_btn.setToolTip("对当前页面执行OCR识别")
-        perform_ocr_btn.triggered.connect(self.parent.perform_ocr_on_current_page)
-        toolbar.addAction(perform_ocr_btn)
+        perform_ocr_action = QAction("🔤 执行OCR", self.parent)
+        perform_ocr_action.triggered.connect(self.parent.perform_ocr_on_current_page)
+        ocr_menu.addAction(perform_ocr_action)
         
         # 创建可搜索PDF
-        create_searchable_btn = QAction("📄 创建可搜索PDF", self.parent)
-        create_searchable_btn.setToolTip("将当前PDF转换为可搜索的PDF文档")
-        create_searchable_btn.triggered.connect(self.parent.create_searchable_pdf)
-        toolbar.addAction(create_searchable_btn)
+        create_searchable_action = QAction("📄 创建可搜索PDF", self.parent)
+        create_searchable_action.triggered.connect(self.parent.create_searchable_pdf)
+        ocr_menu.addAction(create_searchable_action)
+        
+        # 创建下拉按钮
+        ocr_dropdown_btn = QAction("🔍 OCR工具", self.parent)
+        ocr_dropdown_btn.setMenu(ocr_menu)
+        ocr_dropdown_btn.setToolTip("OCR相关工具")
+        toolbar.addAction(ocr_dropdown_btn)

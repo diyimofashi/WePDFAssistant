@@ -104,39 +104,134 @@ class MenuManager(QObject):
         self.parent.thumbnail_action.setChecked(True)
         self.parent.thumbnail_action.triggered.connect(self.parent.toggle_thumbnails)
         view_menu.addAction(self.parent.thumbnail_action)
+        
+        # 缩放子菜单
+        view_menu.addSeparator()
+        zoom_menu = view_menu.addMenu("🔍 缩放")
+        
+        # 基本缩放操作
+        zoom_in_action = QAction("➕ 放大", self.parent)
+        zoom_in_action.setShortcut("Ctrl++")
+        zoom_in_action.triggered.connect(self.parent.zoom_in)
+        zoom_menu.addAction(zoom_in_action)
+        
+        zoom_out_action = QAction("➖ 缩小", self.parent)
+        zoom_out_action.setShortcut("Ctrl+-")
+        zoom_out_action.triggered.connect(self.parent.zoom_out)
+        zoom_menu.addAction(zoom_out_action)
+        
+        fit_width_action = QAction("↔️ 适应宽度", self.parent)
+        fit_width_action.triggered.connect(lambda: self.parent.fit_to_width())
+        zoom_menu.addAction(fit_width_action)
+        
+        fit_height_action = QAction("↕️ 适应高度", self.parent)
+        fit_height_action.triggered.connect(lambda: self.parent.fit_to_height())
+        zoom_menu.addAction(fit_height_action)
+        
+        actual_size_action = QAction("1:1 原始尺寸", self.parent)
+        actual_size_action.triggered.connect(lambda: self.parent.set_actual_size())
+        zoom_menu.addAction(actual_size_action)
+        
+        zoom_menu.addSeparator()
+        
+        # 预设缩放比例
+        zoom_levels = [25, 50, 75, 100, 125, 150, 200]
+        for level in zoom_levels:
+            zoom_action = QAction(f"{level}%", self.parent)
+            zoom_action.triggered.connect(lambda checked=False, l=level: self.parent.set_zoom_level(l))
+            zoom_menu.addAction(zoom_action)
+        
+        # 页面布局子菜单
+        view_menu.addSeparator()
+        layout_menu = view_menu.addMenu("📄 页面布局")
+        
+        single_page_action = QAction("📖 单页显示", self.parent)
+        single_page_action.setCheckable(True)
+        single_page_action.setChecked(True)
+        # 假设父窗口有相关方法
+        layout_menu.addAction(single_page_action)
+        
+        double_page_action = QAction("📚 双页显示", self.parent)
+        double_page_action.setCheckable(True)
+        # 假设父窗口有相关方法
+        layout_menu.addAction(double_page_action)
+        
+        continuous_action = QAction("📜 连续模式", self.parent)
+        continuous_action.setCheckable(True)
+        # 假设父窗口有相关方法
+        layout_menu.addAction(continuous_action)
     
     def _create_tools_menu(self, menubar):
         """创建工具菜单"""
         tools_menu = menubar.addMenu("🛠️ 工具")
         
+        # PDF处理子菜单
+        pdf_menu = tools_menu.addMenu("📄 PDF处理")
+        
         # 导入图片
         import_images_action = QAction("📷 导入图片", self.parent)
         import_images_action.setShortcut("Ctrl+Shift+I")
         import_images_action.triggered.connect(self.parent.import_images)
-        tools_menu.addAction(import_images_action)
+        pdf_menu.addAction(import_images_action)
         
         # 转为图片
         convert_to_image_action = QAction("🖼️ 转为图片", self.parent)
         convert_to_image_action.setShortcut("Ctrl+I")
         convert_to_image_action.triggered.connect(self.parent.convert_pdf_to_images)
-        tools_menu.addAction(convert_to_image_action)
-        
-        tools_menu.addSeparator()
+        pdf_menu.addAction(convert_to_image_action)
         
         # 分割PDF
         split_action = QAction("✂️ 分割PDF", self.parent)
         split_action.triggered.connect(self.parent.split_pdf)
-        tools_menu.addAction(split_action)
+        pdf_menu.addAction(split_action)
+        
+        # OCR工具子菜单
+        tools_menu.addSeparator()
+        ocr_menu = tools_menu.addMenu("🔍 OCR工具")
         
         # OCR设置
-        ocr_settings_action = QAction("🔍 OCR设置", self.parent)
+        ocr_settings_action = QAction("⚙️ OCR设置", self.parent)
         ocr_settings_action.triggered.connect(self.parent.show_ocr_settings)
-        tools_menu.addAction(ocr_settings_action)
+        ocr_menu.addAction(ocr_settings_action)
         
         # 执行OCR
         perform_ocr_action = QAction("🔤 执行OCR", self.parent)
         perform_ocr_action.triggered.connect(self.parent.perform_ocr_on_current_page)
-        tools_menu.addAction(perform_ocr_action)
+        ocr_menu.addAction(perform_ocr_action)
+        
+        # 创建可搜索PDF
+        searchable_pdf_action = QAction("📄 创建可搜索PDF", self.parent)
+        searchable_pdf_action.triggered.connect(self.parent.create_searchable_pdf)
+        ocr_menu.addAction(searchable_pdf_action)
+        
+        # 条码工具子菜单
+        tools_menu.addSeparator()
+        barcode_menu = tools_menu.addMenu("📟 条码工具")
+        
+        # 条码拆分
+        barcode_split_action = QAction("📟 条码拆分", self.parent)
+        barcode_split_action.triggered.connect(self.parent.barcode_split_pdf)
+        barcode_menu.addAction(barcode_split_action)
+        
+        # 检测条码
+        detect_barcode_action = QAction("🔍 检测条码", self.parent)
+        # 假设父窗口有相关方法
+        barcode_menu.addAction(detect_barcode_action)
+        
+        # 其他工具
+        tools_menu.addSeparator()
+        other_menu = tools_menu.addMenu("⚡ 其他工具")
+        
+        # 搜索
+        search_action = QAction("🔍 搜索", self.parent)
+        search_action.setShortcut("Ctrl+F")
+        search_action.triggered.connect(self.parent.show_search_options)
+        other_menu.addAction(search_action)
+        
+        # 打印
+        print_action = QAction("🖨️ 打印", self.parent)
+        # 假设父窗口有相关方法
+        other_menu.addAction(print_action)
     
     def _create_help_menu(self, menubar):
         """创建帮助菜单"""
@@ -146,3 +241,13 @@ class MenuManager(QObject):
         about_action = QAction("ℹ️ 关于", self.parent)
         about_action.triggered.connect(self.parent.show_about)
         help_menu.addAction(about_action)
+        
+        # 快捷键说明
+        shortcuts_action = QAction("⌨️ 快捷键说明", self.parent)
+        # 假设父窗口有相关方法
+        help_menu.addAction(shortcuts_action)
+        
+        # 检查更新
+        update_action = QAction("🔄 检查更新", self.parent)
+        # 假设父窗口有相关方法
+        help_menu.addAction(update_action)
