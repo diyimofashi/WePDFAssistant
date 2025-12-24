@@ -204,6 +204,20 @@ class MenuManager(QObject):
         searchable_pdf_action.triggered.connect(self.parent.create_searchable_pdf)
         ocr_menu.addAction(searchable_pdf_action)
         
+        # 上传工具子菜单
+        tools_menu.addSeparator()
+        upload_menu = tools_menu.addMenu("📤 上传工具")
+        
+        # 上传设置
+        upload_settings_action = QAction("⚙️ 上传设置", self.parent)
+        upload_settings_action.triggered.connect(self.parent.show_upload_settings)
+        upload_menu.addAction(upload_settings_action)
+        
+        # 上传当前文档
+        upload_current_action = QAction("📄 上传当前文档", self.parent)
+        upload_current_action.triggered.connect(self.parent.upload_current_document)
+        upload_menu.addAction(upload_current_action)
+        
         # 条码工具子菜单
         tools_menu.addSeparator()
         barcode_menu = tools_menu.addMenu("📟 条码工具")
