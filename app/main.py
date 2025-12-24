@@ -339,7 +339,7 @@ class AuroraPDF(QMainWindow):
         
         # 直接打开条码拆分对话框
         from app.ui.barcode_split_dialog import BarcodeSplitDialog
-        from app.managers.barcode_split_processor import BarcodeSplitThread
+        from app.core.barcode.barcode_split_processor import BarcodeSplitThread
         
         current_file_path = self.pdf_processor.current_file
         if not current_file_path:

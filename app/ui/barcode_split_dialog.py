@@ -9,12 +9,12 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGroupBox, QLabe
                            QSizePolicy, QApplication, QLayout)
 from PyQt5.QtCore import Qt, pyqtSignal
 from app.utils.logger import get_logger
-from app.managers.barcode_split_config import (
+from app.config.barcode_split_config import (
     BarcodeSplitConfig, BarcodeSplitConfigManager, 
     BarcodeFilterConfig, BarcodeOutputConfig
 )
-from app.managers.barcode_detector import BarcodeDetector, BarcodeInfo
-from app.managers.barcode_detection_thread import BarcodeDetectionThread
+from app.core.barcode.barcode_detector import BarcodeDetector, BarcodeInfo
+from app.core.barcode.barcode_detection_thread import BarcodeDetectionThread
 
 logger = get_logger('barcode_split_dialog')
 

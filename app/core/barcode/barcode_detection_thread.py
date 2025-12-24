@@ -3,7 +3,7 @@
 import fitz
 from typing import List, Optional, Callable
 from PyQt5.QtCore import QThread, pyqtSignal
-from app.managers.barcode_detector import BarcodeDetector, BarcodeInfo
+from app.core.barcode.barcode_detector import BarcodeDetector, BarcodeInfo
 from app.utils.logger import get_logger
 
 logger = get_logger('barcode_detection_thread')

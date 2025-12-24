@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from app.utils.logger import get_logger
-from app.managers.barcode_detector import BarcodeDetector, BarcodeInfo
-from app.managers.barcode_split_config import BarcodeSplitConfig
+from app.core.barcode.barcode_detector import BarcodeDetector, BarcodeInfo
+from app.config.barcode_split_config import BarcodeSplitConfig
 
 logger = get_logger('barcode_split_processor')
 

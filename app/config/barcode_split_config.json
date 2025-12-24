@@ -17,7 +17,7 @@
       "output_dir": "D:/FNPData/Barcode/Forms",
       "use_barcode_filename": true,
       "filename_template": "{barcode}_{index}",
-      "duplicate_handling": "separate",
+      "duplicate_handling": "merge",
       "multi_barcode_handling": "first"
     },
     "last_used": true
