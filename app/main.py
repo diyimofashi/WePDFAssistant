@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QHBoxLayout,
                              QWidget, QLabel, QStatusBar, QMessageBox,
                              QDockWidget, QProgressDialog, QDialog)
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QPen
 
 from app.config.settings import AppSettings
 from app.ui.styles import AppStyles
@@ -1653,6 +1653,58 @@ class AuroraPDF(QMainWindow):
             logger.error(f"打开远程文件时出错: {e}")
             QMessageBox.critical(self, "错误", f"打开远程文件时发生错误: {str(e)}")
     
+def get_app_icon():
+    """获取应用程序图标，优先使用外部图标文件，否则使用内置生成的图标"""
+    import os
+    
+    # 尝试加载外部图标文件
+    icon_paths = [
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app', 'assets', 'app_icon.ico'),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app', 'assets', 'app_icon.png'),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets', 'app_icon.ico'),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets', 'app_icon.png')
+    ]
+    
+    for icon_path in icon_paths:
+        if os.path.exists(icon_path):
+            return QIcon(icon_path)
+    
+    # 如果外部图标文件不存在，则生成内置图标
+    return create_builtin_icon()
+
+
+def create_builtin_icon():
+    """创建内置应用程序图标"""
+    # 创建一个128x128像素的图标
+    pixmap = QPixmap(128, 128)
+    pixmap.fill(QColor(255, 255, 255))  # 白色背景
+    
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    
+    # 绘制蓝色矩形代表PDF文档
+    painter.setBrush(QColor(0, 100, 200))  # 深蓝色填充
+    painter.setPen(QPen(QColor(0, 80, 160), 4))  # 蓝色边框
+    painter.drawRect(20, 20, 88, 88)  # 主体矩形
+    
+    # 绘制PDF文字
+    font = QFont()
+    font.setPointSize(20)
+    font.setBold(True)
+    painter.setFont(font)
+    painter.setPen(QColor(255, 255, 255))  # 白色文字
+    painter.drawText(35, 70, "PDF")
+    
+    # 绘制一个简单的'A'字母代表Aurora
+    font.setPointSize(16)
+    painter.setFont(font)
+    painter.drawText(45, 95, "A")
+    
+    painter.end()
+    
+    return QIcon(pixmap)
+
+
 def main():
     """主函数"""
     app = QApplication(sys.argv)
@@ -1661,7 +1713,13 @@ def main():
     app.setApplicationVersion(AppSettings.APP_VERSION)
     app.setOrganizationName(AppSettings.ORGANIZATION)
     
+    # 设置应用程序图标
+    app_icon = get_app_icon()
+    app.setWindowIcon(app_icon)
+    
     viewer = AuroraPDF()
+    # 为窗口也设置图标
+    viewer.setWindowIcon(app_icon)
     viewer.show()
     
     sys.exit(app.exec_())
