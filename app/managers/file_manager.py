@@ -65,10 +65,20 @@ class FileManager:
             QMessageBox.information(self.parent, "提示", "📝 请先打开PDF文件")
             return
         
-        last_save_dir = AppSettings.get_last_save_dir()
+        # 获取当前文件的目录和文件名
+        if self.parent.pdf_processor.current_file:
+            current_dir = os.path.dirname(self.parent.pdf_processor.current_file)
+            current_filename = os.path.basename(self.parent.pdf_processor.current_file)
+            # 使用当前文件名作为默认文件名
+            default_path = os.path.join(current_dir, current_filename)
+        else:
+            # 如果没有当前文件，使用上次保存的目录
+            current_dir = AppSettings.get_last_save_dir()
+            current_filename = "document.pdf"  # 默认文件名
+            default_path = os.path.join(current_dir, current_filename)
         
         file_path, _ = QFileDialog.getSaveFileName(
-            self.parent, "另存为PDF文件", last_save_dir, "PDF文件 (*.pdf)")
+            self.parent, "另存为PDF文件", default_path, "PDF文件 (*.pdf)")
         
         if file_path:
             success, message = self.parent.pdf_processor.save_pdf(file_path)

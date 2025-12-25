@@ -330,10 +330,27 @@ class PDFProcessor(QObject):
         return info
     
     def save_pdf(self, file_path):
-        """保存PDF文件"""
+        """保存PDF文件到指定路径"""
         try:
-            # 这里简化处理，实际应该实现PDF编辑功能
-            return True, "PDF文件已保存"
+            if not self.fitz_document:
+                return False, "请先打开PDF文件"
+            
+            # 如果存在页面编辑器且有未保存的更改，则使用编辑器的保存功能
+            if (hasattr(self, 'page_editor') and 
+                self.page_editor and 
+                self.page_editor.has_unsaved_changes()):
+                
+                # 如果page_editor的临时文件存在，则保存临时文件
+                if self.page_editor.temp_file and os.path.exists(self.page_editor.temp_file):
+                    import shutil
+                    shutil.copy2(self.page_editor.temp_file, file_path)
+                    return True, f"PDF文件已保存到: {file_path}"
+            
+            # 如果没有编辑或没有临时文件，则直接保存当前文档
+            # 使用PyMuPDF保存当前文档
+            self.fitz_document.save(file_path)
+            return True, f"PDF文件已保存到: {file_path}"
+            
         except Exception as e:
             return False, f"保存失败: {str(e)}"
     
