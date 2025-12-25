@@ -18,6 +18,7 @@ logger = get_logger('async_loader')
 from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 from PyQt5.QtWidgets import QProgressDialog, QMessageBox
 import PyPDF2
+from PyPDF2.errors import PdfReadError, PdfReadWarning
 import fitz  # PyMuPDF
 
 
@@ -65,19 +66,72 @@ class AsyncPDFLoader(QThread):
             
             try:
                 pdf_document = PyPDF2.PdfReader(self.file_path)
-                
+                            
                 # 检查是否加密
                 if pdf_document.is_encrypted:
                     self.loading_error.emit("PDF文件已加密，需要密码才能打开")
                     return
-                    
+                            
                 total_pages = len(pdf_document.pages)
-                
-            except PyPDF2.PdfReadError as e:
-                self.loading_error.emit(f"PDF文件格式错误: {str(e)}")
-                return
+                            
+                # 额外验证PDF文件完整性
+                try:
+                    # 尝试访问第一页来验证PDF是否可读
+                    if total_pages > 0:
+                        first_page = pdf_document.pages[0]
+                        # 尝试获取页面的基本信息来验证完整性
+                        _ = first_page.get('/MediaBox', [0, 0, 612, 792])
+                except Exception:
+                    # 如果访问页面失败，可能是文件损坏
+                    self.loading_error.emit("PDF文件不完整或已损坏，无法访问页面内容")
+                    return
+                            
+            except PdfReadError as e:
+                error_msg = str(e)
+                # 检查是否是EOF marker错误
+                if "EOF" in error_msg or "marker" in error_msg or "startxref" in error_msg:
+                    # 尝试修复不完整的PDF文件
+                    from app.utils.pdf_fixer import try_fix_pdf_file
+                    fixed_file_path = try_fix_pdf_file(self.file_path)
+                    if fixed_file_path:
+                        try:
+                            # 使用修复后的文件
+                            pdf_document = PyPDF2.PdfReader(fixed_file_path)
+                                        
+                            # 检查是否加密
+                            if pdf_document.is_encrypted:
+                                self.loading_error.emit("PDF文件已加密，需要密码才能打开")
+                                return
+                                        
+                            total_pages = len(pdf_document.pages)
+                                        
+                            # 额外验证PDF文件完整性
+                            try:
+                                # 尝试访问第一页来验证PDF是否可读
+                                if total_pages > 0:
+                                    first_page = pdf_document.pages[0]
+                                    # 尝试获取页面的基本信息来验证完整性
+                                    _ = first_page.get('/MediaBox', [0, 0, 612, 792])
+                            except Exception:
+                                # 如果访问页面失败，可能是文件损坏
+                                self.loading_error.emit("PDF文件不完整或已损坏，无法访问页面内容")
+                                return
+                        except Exception:
+                            self.loading_error.emit(f"PDF文件不完整或已损坏，且自动修复失败: {error_msg}")
+                            return
+                    else:
+                        self.loading_error.emit(f"PDF文件不完整或已损坏: {error_msg}")
+                        return
+                else:
+                    self.loading_error.emit(f"PDF文件格式错误: {error_msg}")
+                    return
             except Exception as e:
-                self.loading_error.emit(f"读取PDF失败: {str(e)}")
+                error_msg = str(e)
+                # 检查是否是EOF marker错误
+                if "EOF" in error_msg or "marker" in error_msg or "startxref" in error_msg:
+                    self.loading_error.emit(f"PDF文件不完整或已损坏: {error_msg}")
+                else:
+                    self.loading_error.emit(f"读取PDF失败: {error_msg}")
                 return
                 
             self.loading_progress.emit(40, "初始化渲染引擎...")
@@ -85,11 +139,16 @@ class AsyncPDFLoader(QThread):
             # 使用PyMuPDF打开文件用于页面渲染
             if self.is_cancelled:
                 return
-                
+                        
             try:
                 fitz_document = fitz.open(self.file_path)
             except Exception as e:
-                self.loading_error.emit(f"初始化渲染引擎失败: {str(e)}")
+                error_msg = str(e)
+                # 检查是否是PyMuPDF无法打开损坏文档的错误
+                if "cannot open" in error_msg.lower() and ("broken" in error_msg.lower() or "damaged" in error_msg.lower()):
+                    self.loading_error.emit(f"PDF文件不完整或已损坏，无法渲染: {error_msg}")
+                else:
+                    self.loading_error.emit(f"初始化渲染引擎失败: {error_msg}")
                 return
                 
             self.loading_progress.emit(60, "提取文档信息...")
@@ -140,6 +199,54 @@ class AsyncPDFLoader(QThread):
         self.is_cancelled = True
         self.should_cancel = True
         
+    def _try_fix_pdf_file(self, file_path):
+        """
+        尝试修复不完整的PDF文件
+        返回修复后的文件路径，如果修复失败则返回None
+        """
+        try:
+            with open(file_path, 'rb') as f:
+                content = f.read()
+            
+            # 检查是否已有EOF标记
+            if b'%%EOF' in content[-20:]:  # 检查最后20个字节
+                return None  # 已有EOF标记，无需修复
+            
+            # 尝试添加基本的PDF尾部结构
+            fixed_content = content + b'\ntrailer\n<<\n/Size 1\n>>\nstartxref\n' + str(len(content)).encode() + b'\n%%EOF\n'
+            
+            # 生成修复后的文件路径（使用临时文件）
+            import tempfile
+            import os
+            temp_fd, temp_path = tempfile.mkstemp(suffix='.pdf', prefix='fixed_')
+            
+            try:
+                with os.fdopen(temp_fd, 'wb') as tmp_file:
+                    tmp_file.write(fixed_content)
+                
+                # 验证修复后的文件是否可以打开
+                import PyPDF2
+                from PyPDF2.errors import PdfReadError
+                
+                try:
+                    test_doc = PyPDF2.PdfReader(temp_path)
+                    # 如果能成功打开，返回临时文件路径
+                    return temp_path
+                except PdfReadError:
+                    # 如果还是打不开，删除临时文件并返回None
+                    os.close(temp_fd)  # 确保文件句柄已关闭
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                    return None
+            except Exception:
+                # 如果写入临时文件失败，确保清理
+                os.close(temp_fd)  # 确保文件句柄已关闭
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                return None
+        except Exception:
+            return None
+    
     def _format_file_size(self, size_bytes):
         """格式化文件大小"""
         if size_bytes < 1024:

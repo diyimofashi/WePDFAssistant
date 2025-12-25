@@ -93,6 +93,13 @@ class MenuManager(QObject):
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.parent.close)
         file_menu.addAction(exit_action)
+        
+        file_menu.addSeparator()
+        
+        # 打开远程文件
+        remote_open_action = QAction("🌐 打开远程文件", self.parent)
+        remote_open_action.triggered.connect(self.parent.open_remote_file)
+        file_menu.addAction(remote_open_action)
     
     def _create_view_menu(self, menubar):
         """创建视图菜单"""
@@ -217,6 +224,20 @@ class MenuManager(QObject):
         upload_current_action = QAction("📄 上传当前文档", self.parent)
         upload_current_action.triggered.connect(self.parent.upload_current_document)
         upload_menu.addAction(upload_current_action)
+        
+        # 下载工具子菜单
+        tools_menu.addSeparator()
+        download_menu = tools_menu.addMenu("📥 下载工具")
+        
+        # 下载设置
+        download_settings_action = QAction("⚙️ 下载设置", self.parent)
+        download_settings_action.triggered.connect(self.parent.show_download_settings)
+        download_menu.addAction(download_settings_action)
+        
+        # 下载远程文件
+        download_remote_action = QAction("🌐 下载远程文件", self.parent)
+        download_remote_action.triggered.connect(self.parent.open_remote_file)
+        download_menu.addAction(download_remote_action)
         
         # 条码工具子菜单
         tools_menu.addSeparator()
