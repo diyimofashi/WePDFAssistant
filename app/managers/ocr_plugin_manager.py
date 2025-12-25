@@ -9,6 +9,7 @@ import importlib.util
 import traceback
 from typing import Dict, List, Any, Optional
 from app.core.ocr.ocr_plugin_interface import OCRPluginInterface, OCRResult, OCRErrorCode
+from app.core.ocr.ocr_error_handler import error_handler, audit_logger
 from app.utils.logger import get_logger
 
 logger = get_logger('ocr_plugin_manager')
@@ -78,7 +79,9 @@ class OCRPluginManager:
             init_file = os.path.join(plugin_path, '__init__.py')
             
             if not os.path.exists(init_file):
-                logger.error(f"插件缺少__init__.py文件: {plugin_path}")
+                error_msg = f"插件缺少__init__.py文件: {plugin_path}"
+                logger.error(error_msg)
+                audit_logger.log_plugin_load(plugin_name, plugin_path, False)
                 return None
             
             # 动态导入插件
@@ -89,14 +92,18 @@ class OCRPluginManager:
             
             # 获取插件信息
             if not hasattr(plugin_module, 'PluginInfo'):
-                logger.error(f"插件缺少PluginInfo定义: {plugin_path}")
+                error_msg = f"插件缺少PluginInfo定义: {plugin_path}"
+                logger.error(error_msg)
+                audit_logger.log_plugin_load(plugin_name, plugin_path, False)
                 return None
             
             plugin_info = plugin_module.PluginInfo
             api_class = plugin_info.get('api_class')
             
             if not api_class:
-                logger.error(f"插件缺少api_class定义: {plugin_path}")
+                error_msg = f"插件缺少api_class定义: {plugin_path}"
+                logger.error(error_msg)
+                audit_logger.log_plugin_load(plugin_name, plugin_path, False)
                 return None
             
             # 创建插件实例
@@ -121,12 +128,13 @@ class OCRPluginManager:
             # 将PluginInfo附加到插件实例上，以便后续访问
             plugin_instance.PluginInfo = plugin_info
             logger.info(f"成功加载插件: {plugin_name}")
+            audit_logger.log_plugin_load(plugin_name, plugin_path, True)
             
             return plugin_instance
             
         except Exception as e:
-            logger.error(f"加载插件失败: {plugin_path}, 错误: {str(e)}")
-            logger.debug(traceback.format_exc())
+            result = error_handler.handle_exception(plugin_name if 'plugin_name' in locals() else 'unknown', e, f"加载插件失败: {plugin_path}")
+            audit_logger.log_plugin_load(plugin_name if 'plugin_name' in locals() else 'unknown', plugin_path, False)
             return None
     
     def load_all_plugins(self) -> Dict[str, bool]:
@@ -163,10 +171,12 @@ class OCRPluginManager:
             OCRResult: 初始化结果
         """
         if plugin_name not in self.plugins:
-            return OCRResult(
+            error_result = OCRResult(
                 code=OCRErrorCode.INIT_ERROR,
                 message=f"插件未加载: {plugin_name}"
             )
+            error_result.plugin_name = plugin_name
+            return error_result
         
         try:
             plugin = self.plugins[plugin_name]
@@ -177,18 +187,17 @@ class OCRPluginManager:
             
             if result.is_success():
                 logger.info(f"插件初始化成功: {plugin_name}")
+                audit_logger.log_configuration_change(plugin_name, "initialize", "pending", "success")
             else:
                 logger.error(f"插件初始化失败: {plugin_name}, 错误: {result.message}")
+                error_handler.log_plugin_initialization_error(plugin_name, result.message)
             
             return result
             
         except Exception as e:
-            logger.error(f"初始化插件时发生异常: {plugin_name}, 错误: {str(e)}")
-            logger.debug(traceback.format_exc())
-            return OCRResult(
-                code=OCRErrorCode.INIT_ERROR,
-                message=f"初始化插件时发生异常: {str(e)}"
-            )
+            result = error_handler.handle_exception(plugin_name, e, "初始化插件时发生异常")
+            error_handler.log_plugin_initialization_error(plugin_name, str(e))
+            return result
     
     def initialize_all_plugins(self, configs: Dict[str, Dict[str, Any]] = None) -> Dict[str, OCRResult]:
         """
@@ -312,12 +321,19 @@ class OCRPluginManager:
         """
         plugin = self.get_plugin(plugin_name)
         if not plugin:
-            return OCRResult(
+            error_result = OCRResult(
                 code=OCRErrorCode.INIT_ERROR,
                 message=f"插件未加载或不存在: {plugin_name}"
             )
+            error_result.plugin_name = plugin_name
+            return error_result
         
         try:
+            # 记录OCR请求
+            input_type = "file" if file_path else ("bytes" if image_bytes else ("base64" if base64_string else "unknown"))
+            file_info = file_path or "bytes" if image_bytes else "base64"
+            audit_logger.log_ocr_request(plugin_name, input_type, file_info)
+            
             # 根据输入类型调用相应的识别方法
             if file_path:
                 result = plugin.recognize_from_file(file_path, language)
@@ -326,21 +342,25 @@ class OCRPluginManager:
             elif base64_string:
                 result = plugin.recognize_from_base64(base64_string, language)
             else:
-                return OCRResult(
+                error_result = OCRResult(
                     code=OCRErrorCode.INVALID_FORMAT,
                     message="未提供有效的输入数据"
                 )
+                error_result.plugin_name = plugin_name
+                return error_result
             
             result.plugin_name = plugin_name
+            
+            # 记录OCR结果
+            audit_logger.log_ocr_result(plugin_name, result.is_success(), 0, len(str(result.data)))
+            
             return result
             
         except Exception as e:
-            logger.error(f"使用插件进行OCR识别时发生异常: {plugin_name}, 错误: {str(e)}")
-            logger.debug(traceback.format_exc())
-            return OCRResult(
-                code=OCRErrorCode.RECOGNITION_FAILED,
-                message=f"OCR识别异常: {str(e)}"
-            )
+            result = error_handler.handle_exception(plugin_name, e, "使用插件进行OCR识别时发生异常")
+            error_handler.log_ocr_recognition_error(plugin_name, str(e), f"file={file_path or 'N/A'}")
+            audit_logger.log_ocr_result(plugin_name, False, 0, 0)
+            return result
     
     def set_plugin_config(self, plugin_name: str, config: Dict[str, Any]) -> None:
         """

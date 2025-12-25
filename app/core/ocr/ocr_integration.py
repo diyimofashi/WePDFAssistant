@@ -12,6 +12,7 @@ from app.managers.ocr_plugin_manager import ocr_plugin_manager
 from app.config.ocr_plugin_config import ocr_config_manager
 from .ocr_plugin_interface import OCRResult, OCRErrorCode
 from .ocr_plugin_security import security_manager
+from .ocr_error_handler import error_handler, audit_logger
 from app.utils.logger import get_logger
 
 logger = get_logger('ocr_integration')
@@ -54,13 +55,20 @@ class OCRIntegration:
                 results[plugin_name] = result.is_success()
                 if result.is_success():
                     logger.info(f"插件初始化成功: {plugin_name}")
+                    # 注册默认权限
+                    self.security_manager.register_plugin_permissions(plugin_name, {
+                        'file_access': True,
+                        'network_access': False,
+                        'execute_commands': True,
+                        'system_calls': False
+                    })
                 else:
                     logger.error(f"插件初始化失败: {plugin_name}, 错误: {result.message}")
             
             return results
             
         except Exception as e:
-            logger.error(f"初始化OCR系统时发生异常: {str(e)}")
+            result = error_handler.handle_exception("OCRSystem", e, "初始化OCR系统时发生异常")
             return {}
     
     def recognize_single(self, plugin_name: str, file_path: str = None, 
@@ -82,6 +90,16 @@ class OCRIntegration:
         start_time = time.time()
         
         try:
+            # 安全检查
+            if not self.security_manager.check_permission(plugin_name, 'execute_commands'):
+                error_result = OCRResult(
+                    code=OCRErrorCode.PERMISSION_DENIED,
+                    message=f"插件没有执行权限: {plugin_name}",
+                    plugin_name=plugin_name
+                )
+                error_handler.log_security_violation(plugin_name, "permission_denied", f"execute_commands permission required")
+                return error_result
+            
             # 执行OCR识别
             result = self.plugin_manager.recognize_with_plugin(
                 plugin_name, file_path, image_bytes, base64_string, language
@@ -94,12 +112,9 @@ class OCRIntegration:
             return result
             
         except Exception as e:
-            logger.error(f"执行OCR识别时发生异常: {plugin_name}, 错误: {str(e)}")
-            return OCRResult(
-                code=OCRErrorCode.RECOGNITION_FAILED,
-                message=f"OCR识别异常: {str(e)}",
-                plugin_name=plugin_name
-            )
+            result = error_handler.handle_exception(plugin_name, e, "执行OCR识别时发生异常")
+            error_handler.log_ocr_recognition_error(plugin_name, str(e), f"file={file_path or 'N/A'}")
+            return result
     
     def recognize_batch(self, plugin_name: str, inputs: List[Dict[str, Any]], 
                        language: str = "auto", max_workers: int = 4) -> List[OCRResult]:
@@ -155,12 +170,9 @@ class OCRIntegration:
             return results
             
         except Exception as e:
-            logger.error(f"批量OCR识别时发生异常: {plugin_name}, 错误: {str(e)}")
-            return [OCRResult(
-                code=OCRErrorCode.RECOGNITION_FAILED,
-                message=f"批量OCR识别异常: {str(e)}",
-                plugin_name=plugin_name
-            )] * len(inputs)
+            result = error_handler.handle_exception(plugin_name, e, "批量OCR识别时发生异常")
+            error_handler.log_ocr_recognition_error(plugin_name, str(e), f"batch_size={len(inputs)}")
+            return [result] * len(inputs)
     
     def recognize_with_multiple_plugins(self, plugin_names: List[str], file_path: str = None,
                                       image_bytes: bytes = None, base64_string: str = None,
@@ -218,13 +230,11 @@ class OCRIntegration:
             return results
             
         except Exception as e:
-            logger.error(f"多插件OCR识别时发生异常: {str(e)}")
+            result = error_handler.handle_exception("MultiPluginOCR", e, "多插件OCR识别时发生异常")
+            for plugin_name in plugin_names:
+                error_handler.log_ocr_recognition_error(plugin_name, str(e), "multi_plugin_recognition")
             return {
-                plugin_name: OCRResult(
-                    code=OCRErrorCode.RECOGNITION_FAILED,
-                    message=f"多插件OCR识别异常: {str(e)}",
-                    plugin_name=plugin_name
-                )
+                plugin_name: result
                 for plugin_name in plugin_names
             }
     
@@ -435,7 +445,7 @@ class OCRIntegration:
             
             logger.info("OCR系统已关闭")
         except Exception as e:
-            logger.error(f"关闭OCR系统时发生异常: {str(e)}")
+            result = error_handler.handle_exception("OCRSystem", e, "关闭OCR系统时发生异常")
 
 
 # 全局OCR集成实例
