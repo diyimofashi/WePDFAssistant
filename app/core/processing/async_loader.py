@@ -24,56 +24,70 @@ import fitz  # PyMuPDF
 
 class AsyncPDFLoader(QThread):
     """异步PDF加载器线程"""
-    
+
     # 信号定义
     loading_progress = pyqtSignal(int, str)  # 进度百分比, 状态信息
     loading_finished = pyqtSignal(bool, str, dict)  # 是否成功, 消息, PDF信息
     loading_error = pyqtSignal(str)  # 错误信息
-    
-    def __init__(self, file_path):
+
+    def __init__(self, file_path, password=None):
         super().__init__()
         self.file_path = file_path
+        self.password = password
         self.is_cancelled = False
         self.should_cancel = False
         
     def run(self):
         """执行异步加载"""
+        pdf_document = None
+
         try:
             self.loading_progress.emit(0, "开始加载PDF文件...")
-            
+
             # 检查文件是否存在和可读
             if self.is_cancelled:
                 return
-                
+
             if not os.path.exists(self.file_path):
                 self.loading_error.emit("文件不存在")
                 return
-                
+
             if not os.access(self.file_path, os.R_OK):
                 self.loading_error.emit("文件不可读")
                 return
-                
+
             self.loading_progress.emit(10, "验证文件格式...")
-            
+
             # 获取文件大小
             file_size = os.path.getsize(self.file_path)
-            
+
             # 使用PyPDF2打开文件获取基本信息
             if self.is_cancelled:
                 return
-                
+
             self.loading_progress.emit(20, "读取PDF结构...")
-            
+
             try:
                 pdf_document = PyPDF2.PdfReader(self.file_path)
-                            
+
                 # 检查是否加密
                 if pdf_document.is_encrypted:
-                    self.loading_error.emit("PDF文件已加密，需要密码才能打开")
-                    return
-                            
+                    if self.password:
+                        # 尝试使用密码解密
+                        try:
+                            result = pdf_document.decrypt(self.password)
+                            if result == 0:
+                                self.loading_error.emit("密码错误，无法解密PDF文件")
+                                return
+                        except Exception as e:
+                            self.loading_error.emit(f"解密失败: {str(e)}")
+                            return
+                    else:
+                        self.loading_error.emit("PDF文件已加密，需要密码才能打开")
+                        return
+
                 total_pages = len(pdf_document.pages)
-                            
+
                 # 额外验证PDF文件完整性
                 try:
                     # 尝试访问第一页来验证PDF是否可读
@@ -85,7 +99,7 @@ class AsyncPDFLoader(QThread):
                     # 如果访问页面失败，可能是文件损坏
                     self.loading_error.emit("PDF文件不完整或已损坏，无法访问页面内容")
                     return
-                            
+
             except PdfReadError as e:
                 error_msg = str(e)
                 # 检查是否是EOF marker错误
@@ -97,14 +111,25 @@ class AsyncPDFLoader(QThread):
                         try:
                             # 使用修复后的文件
                             pdf_document = PyPDF2.PdfReader(fixed_file_path)
-                                        
+
                             # 检查是否加密
                             if pdf_document.is_encrypted:
-                                self.loading_error.emit("PDF文件已加密，需要密码才能打开")
-                                return
-                                        
+                                if self.password:
+                                    # 尝试使用密码解密
+                                    try:
+                                        result = pdf_document.decrypt(self.password)
+                                        if result == 0:
+                                            self.loading_error.emit("密码错误，无法解密PDF文件")
+                                            return
+                                    except Exception as e:
+                                        self.loading_error.emit(f"解密失败: {str(e)}")
+                                        return
+                                else:
+                                    self.loading_error.emit("PDF文件已加密，需要密码才能打开")
+                                    return
+
                             total_pages = len(pdf_document.pages)
-                                        
+
                             # 额外验证PDF文件完整性
                             try:
                                 # 尝试访问第一页来验证PDF是否可读
@@ -133,26 +158,14 @@ class AsyncPDFLoader(QThread):
                 else:
                     self.loading_error.emit(f"读取PDF失败: {error_msg}")
                 return
-                
-            self.loading_progress.emit(40, "初始化渲染引擎...")
-            
-            # 使用PyMuPDF打开文件用于页面渲染
-            if self.is_cancelled:
-                return
-                        
-            try:
-                fitz_document = fitz.open(self.file_path)
-            except Exception as e:
-                error_msg = str(e)
-                # 检查是否是PyMuPDF无法打开损坏文档的错误
-                if "cannot open" in error_msg.lower() and ("broken" in error_msg.lower() or "damaged" in error_msg.lower()):
-                    self.loading_error.emit(f"PDF文件不完整或已损坏，无法渲染: {error_msg}")
-                else:
-                    self.loading_error.emit(f"初始化渲染引擎失败: {error_msg}")
-                return
-                
+
+            self.loading_progress.emit(40, "验证文档可访问性...")
+
+            # 在异步加载中只验证文档基本信息，不创建PyMuPDF文档
+            # PyMuPDF文档将在主线程中创建，避免Graftmaps错误
+
             self.loading_progress.emit(60, "提取文档信息...")
-            
+
             # 提取文档元数据
             metadata = {}
             try:
@@ -160,10 +173,11 @@ class AsyncPDFLoader(QThread):
                     metadata = {str(k): str(v) for k, v in pdf_document.metadata.items()}
             except:
                 pass
-                
+
             self.loading_progress.emit(80, "准备渲染环境...")
-            
-            # 准备PDF信息字典
+
+            # 准备PDF信息字典 - 不包含fitz_document，在主线程中打开
+            # 但需要传递加密状态信息
             pdf_info = {
                 'filepath': self.file_path,
                 'filename': os.path.basename(self.file_path),
@@ -173,24 +187,24 @@ class AsyncPDFLoader(QThread):
                 'is_encrypted': pdf_document.is_encrypted,
                 'metadata': metadata,
                 'pdf_document': pdf_document,
-                'fitz_document': fitz_document
+                'password': self.password
             }
-            
+
             # 模拟加载进度
             for i in range(80, 100, 5):
                 if self.is_cancelled:
-                    fitz_document.close()
                     return
                 self.loading_progress.emit(i, f"加载中... {i}%")
                 self.msleep(50)  # 短暂延迟以显示进度
-                
+
             self.loading_progress.emit(100, "加载完成")
-            
+
             # 发送完成信号
             load_time = time.time() - self.thread().load_start_time if hasattr(self.thread(), 'load_start_time') else 0
             success_message = f"文件加载成功 ({pdf_info['file_size_str']}, {load_time:.2f}秒)"
-            self.loading_finished.emit(True, success_message, pdf_info)
             
+            self.loading_finished.emit(True, success_message, pdf_info)
+
         except Exception as e:
             self.loading_error.emit(f"加载过程中发生未知错误: {str(e)}")
             

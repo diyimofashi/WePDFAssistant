@@ -35,27 +35,37 @@ class MenuManager(QObject):
     def _create_file_menu(self, menubar):
         """创建文件菜单"""
         file_menu = menubar.addMenu("📁 文件")
-        
+
         # 打开
         open_action = QAction("📂 打开", self.parent)
         open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self.parent.open_file)
         file_menu.addAction(open_action)
-        
+
         # 保存
         save_action = QAction("💾 保存", self.parent)
         save_action.setShortcut("Ctrl+S")
         save_action.triggered.connect(self.parent.save_file)
         file_menu.addAction(save_action)
-        
+
         # 另存为
         save_as_action = QAction("💾 另存为", self.parent)
         save_as_action.setShortcut("Ctrl+Shift+S")
         save_as_action.triggered.connect(self.parent.save_as_file)
         file_menu.addAction(save_as_action)
-        
+
+        # 加密保存
+        encrypt_save_action = QAction("🔒 加密保存", self.parent)
+        encrypt_save_action.triggered.connect(self.parent.encrypt_save_file)
+        file_menu.addAction(encrypt_save_action)
+
+        # 加密另存为
+        encrypt_save_as_action = QAction("🔒 加密另存为", self.parent)
+        encrypt_save_as_action.triggered.connect(self.parent.encrypt_save_as_file)
+        file_menu.addAction(encrypt_save_as_action)
+
         file_menu.addSeparator()
-        
+
         # 保存更改
         self.parent.save_changes_action = QAction("✅ 保存更改", self.parent)
         self.parent.save_changes_action.setShortcut("Ctrl+Shift+S")

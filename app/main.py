@@ -1090,18 +1090,27 @@ class AuroraPDF(QMainWindow):
             logger.debug("没有未保存的更改")
         
         logger.debug("正常关闭程序")
+        # 强制清理PDF处理器资源，避免fitz.Document.__del__报错
+        if hasattr(self, 'pdf_processor'):
+            self.pdf_processor.force_cleanup()
         event.accept()
 
     # 代理方法 - 将调用转发给相应的管理器
     def open_file(self):
         return self.file_manager.open_file()
-        
+
     def save_file(self):
         return self.file_manager.save_file()
-        
+
     def save_as_file(self):
         return self.file_manager.save_as_file()
-        
+
+    def encrypt_save_file(self):
+        return self.file_manager.encrypt_save_file()
+
+    def encrypt_save_as_file(self):
+        return self.file_manager.encrypt_save_as_file()
+
     def save_changes(self):
         return self.file_manager.save_changes()
         

@@ -6,6 +6,7 @@ import PyPDF2
 from PyPDF2.errors import PdfReadError, PdfReadWarning
 import fitz  # PyMuPDF - 用于PDF页面渲染
 import sys
+import gc  # 导入垃圾回收模块
 
 # 添加项目根目录到Python路径，解决模块导入问题
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -77,37 +78,103 @@ class PDFProcessor(QObject):
         self.operation_history = OperationHistory(max_history_size=100)
         # 连接操作历史记录变化信号
         self.operation_history.history_changed.connect(self.operation_history_changed.emit)
-        
-    def open_pdf(self, file_path, async_mode=True):
+
+    def __del__(self):
+        """析构函数，确保资源被释放 - 防止Graftmaps错误"""
+        try:
+            # 安全地清理资源，避免访问已删除的属性
+            if hasattr(self, 'fitz_document') and self.fitz_document:
+                try:
+                    self.fitz_document.close()
+                except:
+                    pass
+                self.fitz_document = None
+        except Exception:
+            # 忽略所有析构时的异常，防止打印AttributeError
+            pass
+
+    def close_document(self):
+        """关闭当前文档，释放资源 - 幂等操作"""
+        try:
+            # 安全关闭fitz_document
+            if hasattr(self, 'fitz_document') and self.fitz_document:
+                try:
+                    self.fitz_document.close()
+                except:
+                    pass
+                self.fitz_document = None
+            
+            # 清理其他资源
+            self.pdf_document = None
+            self.current_file = None
+            self.current_page = 0
+            logger.debug("文档已关闭")
+            
+            # 强制垃圾回收，避免解释器退出时fitz.Document.__del__报错
+            gc.collect()
+        except Exception as e:
+            logger.error(f"关闭文档时出错: {e}")
+
+    def force_cleanup(self):
+        """强制清理资源，防止解释器退出时出现Graftmaps错误"""
+        try:
+            # 先调用正常的关闭流程
+            self.close_document()
+            
+            # 额外确保fitz_document被置为None
+            if hasattr(self, 'fitz_document'):
+                self.fitz_document = None
+            
+            # 多次垃圾回收，确保对象被销毁
+            for _ in range(3):
+                gc.collect()
+                
+        except Exception as e:
+            # 静默处理，避免在清理时崩溃
+            pass
+
+    def open_pdf(self, file_path, async_mode=True, password=None):
         """打开PDF文件 - 支持异步和同步模式"""
+        # 在打开新文件前，先关闭旧文档
+        self.close_document()
+
         if async_mode:
-            return self.open_pdf_async(file_path)
+            return self.open_pdf_async(file_path, password)
         else:
-            return self.open_pdf_sync(file_path)
+            return self.open_pdf_sync(file_path, password)
     
-    def open_pdf_sync(self, file_path):
+    def open_pdf_sync(self, file_path, password=None):
         """同步打开PDF文件（原有逻辑）"""
         try:
             # 记录开始时间
             start_time = time.time()
-            
+
             # 检查文件是否存在和可读
             if not os.path.exists(file_path):
                 return False, "文件不存在"
-            
+
             if not os.access(file_path, os.R_OK):
                 return False, "文件不可读"
-            
+
             # 获取文件大小
             self.file_size = os.path.getsize(file_path)
-            
+
             # 使用PyPDF2打开文件获取基本信息
             self.pdf_document = PyPDF2.PdfReader(file_path)
-            
+
             # 检查是否加密
             if self.pdf_document.is_encrypted:
-                return False, "PDF文件已加密，需要密码才能打开"
-            
+                if password:
+                    # 尝试使用密码解密
+                    try:
+                        result = self.pdf_document.decrypt(password)
+                        if result == 0:
+                            return False, "密码错误，无法解密PDF文件"
+                    except Exception as e:
+                        return False, f"解密失败: {str(e)}"
+                else:
+                    return False, "PDF文件已加密，需要密码才能打开"
+
             # 额外验证PDF文件完整性
             total_pages = len(self.pdf_document.pages)
             try:
@@ -125,13 +192,22 @@ class PDFProcessor(QObject):
                     try:
                         # 使用修复后的文件
                         self.pdf_document = PyPDF2.PdfReader(fixed_file_path)
-                        
+
                         # 检查是否加密
                         if self.pdf_document.is_encrypted:
-                            return False, "PDF文件已加密，需要密码才能打开"
-                        
+                            if password:
+                                # 尝试使用密码解密
+                                try:
+                                    result = self.pdf_document.decrypt(password)
+                                    if result == 0:
+                                        return False, "密码错误，无法解密PDF文件"
+                                except Exception as e:
+                                    return False, f"解密失败: {str(e)}"
+                            else:
+                                return False, "PDF文件已加密，需要密码才能打开"
+
                         total_pages = len(self.pdf_document.pages)
-                        
+
                         # 额外验证PDF文件完整性
                         try:
                             # 尝试访问第一页来验证PDF是否可读
@@ -142,15 +218,32 @@ class PDFProcessor(QObject):
                         except Exception:
                             # 如果访问页面失败，可能是文件损坏
                             return False, "PDF文件不完整或已损坏，无法访问页面内容"
-                        
+
                         # 使用PyMuPDF打开修复后的文件用于页面渲染
                         try:
+                            # 先用普通方式打开PyMuPDF文档
                             self.fitz_document = fitz.open(fixed_file_path)
+
+                            # 验证PyMuPDF文档是否可以访问
+                            if self.fitz_document.is_encrypted:
+                                # 如果文档加密，使用密码进行认证
+                                if password:
+                                    auth_status = self.fitz_document.authenticate(password)
+                                    if not auth_status:
+                                        self.fitz_document.close()
+                                        self.fitz_document = None
+                                        return False, "密码错误，无法打开PDF文件"
+                                else:
+                                    self.fitz_document.close()
+                                    self.fitz_document = None
+                                    return False, "PDF文件已加密，需要密码才能打开"
                         except Exception as e:
                             error_msg = str(e)
                             # 检查是否是PyMuPDF无法打开损坏文档的错误
                             if "cannot open" in error_msg.lower() and ("broken" in error_msg.lower() or "damaged" in error_msg.lower()):
                                 return False, f"PDF文件不完整或已损坏，无法渲染: {error_msg}"
+                            elif "password" in error_msg.lower():
+                                return False, "密码错误，无法打开PDF文件"
                             else:
                                 return False, f"初始化渲染引擎失败: {error_msg}"
                     except Exception as e:
@@ -158,32 +251,57 @@ class PDFProcessor(QObject):
                         return False, f"PDF文件不完整或已损坏，且自动修复失败: {error_msg}"
                 else:
                     return False, "PDF文件不完整或已损坏，无法访问页面内容"
-            
+
             # 使用PyMuPDF打开文件用于页面渲染
             try:
+                # 先关闭旧的fitz文档
+                if self.fitz_document:
+                    try:
+                        self.fitz_document.close()
+                    except:
+                        pass
+                    self.fitz_document = None
+
+                # 先用普通方式打开PyMuPDF文档
                 self.fitz_document = fitz.open(file_path)
+
+                # 验证PyMuPDF文档是否可以访问
+                if self.fitz_document.is_encrypted:
+                    # 如果文档加密，使用密码进行认证
+                    if password:
+                        auth_status = self.fitz_document.authenticate(password)
+                        if not auth_status:
+                            self.fitz_document.close()
+                            self.fitz_document = None
+                            return False, "密码错误，无法打开PDF文件"
+                    else:
+                        self.fitz_document.close()
+                        self.fitz_document = None
+                        return False, "PDF文件已加密，需要密码才能打开"
             except Exception as e:
                 error_msg = str(e)
                 # 检查是否是PyMuPDF无法打开损坏文档的错误
                 if "cannot open" in error_msg.lower() and ("broken" in error_msg.lower() or "damaged" in error_msg.lower()):
                     return False, f"PDF文件不完整或已损坏，无法渲染: {error_msg}"
+                elif "password" in error_msg.lower():
+                    return False, "密码错误，无法打开PDF文件"
                 else:
                     return False, f"初始化渲染引擎失败: {error_msg}"
-            
+
             # 重置状态
             self.current_file = file_path
             self.current_page = 0
             self.zoom_factor = self.base_zoom  # 重置为基准缩放（300%作为100%基准）
             self.last_error = ""
-            
+
             # 清除缓存
             self.clear_render_cache()
-            
+
             # 计算加载时间
             self.load_time = time.time() - start_time
-            
+
             return True, f"文件打开成功 ({self.get_file_size_str()}, {self.load_time:.2f}秒)"
-            
+
         except PdfReadError as e:
             error_msg = str(e)
             # 检查是否是EOF marker错误
@@ -201,60 +319,102 @@ class PDFProcessor(QObject):
                 self.last_error = f"无法打开PDF文件: {error_msg}"
             return False, self.last_error
     
-    def open_pdf_async(self, file_path):
+    def open_pdf_async(self, file_path, password=None):
         """异步打开PDF文件"""
         try:
             # 检查文件是否存在和可读
             if not os.path.exists(file_path):
                 return False, "文件不存在"
-            
+
             if not os.access(file_path, os.R_OK):
                 return False, "文件不可读"
-            
+
             # 取消之前的加载任务
             if self.async_loader and self.async_loader.isRunning():
                 self.async_loader.cancel()
                 self.async_loader.wait()
-            
+
             # 创建异步加载器
-            self.async_loader = AsyncPDFLoader(file_path)
-            
+            self.async_loader = AsyncPDFLoader(file_path, password)
+
             # 连接信号
             self.async_loader.loading_progress.connect(self.loading_progress.emit)
             self.async_loader.loading_finished.connect(self._on_pdf_loaded)
             self.async_loader.loading_error.connect(self._on_load_error)
-            
+
             # 记录加载开始时间
             self.async_loader.load_start_time = time.time()
-            
+
             # 开始异步加载
             self.async_loader.start()
-            
+
             return True, "开始异步加载PDF文件..."
-            
+
         except Exception as e:
             return False, f"启动异步加载失败: {str(e)}"
     
     def _on_pdf_loaded(self, success, message, pdf_info):
         """异步加载完成回调"""
         if success:
-            # 更新处理器状态
-            self.current_file = pdf_info['filepath']
-            self.file_size = pdf_info['file_size']
-            self.pdf_document = pdf_info['pdf_document']
-            self.fitz_document = pdf_info['fitz_document']
-            self.current_page = 0
-            self.zoom_factor = self.base_zoom
-            self.last_error = ""
-            
-            # 清除缓存
-            self.clear_render_cache()
-            
-            # 计算加载时间
-            self.load_time = time.time() - self.async_loader.load_start_time
-            
-        # 发送加载完成信号
-        self.loading_finished.emit(success, message)
+            try:
+                # 强制关闭旧的fitz文档，防止重复打开导致Graftmaps错误
+                if self.fitz_document:
+                    try:
+                        self.fitz_document.close()
+                    except:
+                        pass
+                    self.fitz_document = None
+
+                # 在主线程中打开PyMuPDF文档
+                self.fitz_document = fitz.open(pdf_info['filepath'])
+
+                # 验证文档是否可以访问 - 这里需要处理加密验证
+                # 注意：如果文档仍然加密，说明密码不正确
+                if self.fitz_document.is_encrypted:
+                    # 如果文档加密，使用密码进行认证
+                    password = pdf_info.get('password')
+                    if password:
+                        auth_status = self.fitz_document.authenticate(password)
+                        if not auth_status:
+                            self.fitz_document.close()
+                            self.fitz_document = None
+                            self.loading_finished.emit(False, "密码错误，无法打开PDF文件")
+                            return
+                    else:
+                        self.fitz_document.close()
+                        self.fitz_document = None
+                        self.loading_finished.emit(False, "PDF文件已加密，需要密码才能打开")
+                        return
+
+                # 更新处理器状态
+                self.current_file = pdf_info['filepath']
+                self.file_size = pdf_info['file_size']
+                self.pdf_document = pdf_info['pdf_document']
+                self.current_page = 0
+                self.zoom_factor = self.base_zoom
+                self.last_error = ""
+
+                # 清除缓存
+                self.clear_render_cache()
+
+                # 计算加载时间
+                self.load_time = time.time() - self.async_loader.load_start_time
+
+                # 发送加载完成信号
+                self.loading_finished.emit(True, message)
+
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"打开PyMuPDF文档时出错: {error_msg}")
+                # 检查错误信息是否与密码相关
+                if "password" in error_msg.lower() or "incorrect" in error_msg.lower() or "wrong" in error_msg.lower():
+                    self.loading_finished.emit(False, "密码错误，无法打开PDF文件")
+                else:
+                    self.fitz_document = None
+                    self.loading_finished.emit(False, f"初始化渲染引擎失败: {error_msg}")
+        else:
+            # 发送加载失败信号
+            self.loading_finished.emit(False, message)
     
     def _on_load_error(self, error_message):
         """异步加载错误回调"""
