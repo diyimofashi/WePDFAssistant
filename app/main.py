@@ -234,18 +234,7 @@ class AuroraPDF(QMainWindow):
         if app:
             app.setFont(QFont("微软雅黑", 10))
         
-    def create_statusbar(self):
-        """创建状态栏"""
-        self.statusBar = QStatusBar()
-        self.setStatusBar(self.statusBar)
-        
-        self.status_label = QLabel("📢 就绪")
-        self.status_label.setIndent(5)
-        self.statusBar.addWidget(self.status_label)
-        
-        self.performance_label = QLabel()
-        self.performance_label.setIndent(10)
-        self.statusBar.addPermanentWidget(self.performance_label)
+
     
     def update_save_actions_state(self):
         """更新保存操作的状态"""
@@ -276,6 +265,10 @@ class AuroraPDF(QMainWindow):
     
     def show_message(self, message):
         """显示状态消息"""
+        # 确保状态标签存在，避免在UI初始化期间出错
+        if not hasattr(self, 'status_label'):
+            return
+        
         has_changes = (hasattr(self.pdf_processor, 'page_editor') and 
                       self.pdf_processor.page_editor and 
                       self.pdf_processor.page_editor.has_unsaved_changes())
@@ -1662,6 +1655,21 @@ class AuroraPDF(QMainWindow):
             logger.error(f"打开远程文件时出错: {e}")
             QMessageBox.critical(self, "错误", f"打开远程文件时发生错误: {str(e)}")
     
+    def show_batch_crypto_dialog(self):
+        """显示批量加解密对话框"""
+        try:
+            from app.ui.batch_crypto_dialog import BatchCryptoDialog
+            # 检查是否已存在对话框实例，避免重复创建
+            if not hasattr(self, 'batch_crypto_dialog') or self.batch_crypto_dialog is None:
+                self.batch_crypto_dialog = BatchCryptoDialog(self)
+            self.batch_crypto_dialog.show()
+            self.batch_crypto_dialog.raise_()  # 将对话框置于前台
+            self.batch_crypto_dialog.activateWindow()  # 激活对话框窗口
+        except Exception as e:
+            logger.error(f"显示批量加解密对话框时出错: {e}")
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "错误", f"无法打开批量加解密功能: {str(e)}")
+
 def get_app_icon():
     """获取应用程序图标，优先使用外部图标文件，否则使用内置生成的图标"""
     import os

@@ -263,6 +263,15 @@ class MenuManager(QObject):
         # 假设父窗口有相关方法
         barcode_menu.addAction(detect_barcode_action)
         
+        # 批量处理工具
+        tools_menu.addSeparator()
+        batch_menu = tools_menu.addMenu("🔄 批量处理")
+        
+        # 批量加解密
+        batch_crypto_action = QAction("🔐 批量加解密", self.parent)
+        batch_crypto_action.triggered.connect(self.parent.show_batch_crypto_dialog)
+        batch_menu.addAction(batch_crypto_action)
+        
         # 其他工具
         tools_menu.addSeparator()
         other_menu = tools_menu.addMenu("⚡ 其他工具")
