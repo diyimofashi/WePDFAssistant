@@ -1,0 +1,305 @@
+"""OCR管理混入类 - 重构版"""
+
+import os
+from app.utils.logger import get_logger
+
+logger = get_logger('main')
+
+class OCRManagerMixin:
+    """OCR管理混入类 - 处理OCR相关功能"""
+    
+    def show_ocr_settings(self):
+        """显示OCR设置对话框"""
+        try:
+            from app.ui.ocr_settings_dialog import OCRSettingsDialog
+            dialog = OCRSettingsDialog(self)
+            dialog.exec_()
+        except Exception as e:
+            logger.error(f"显示OCR设置对话框时出错: {e}")
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "错误", f"无法打开OCR设置: {str(e)}")
+    
+    def perform_ocr_on_current_page(self):
+        """对当前页面执行OCR识别"""
+        try:
+            from PyQt5.QtWidgets import QMessageBox
+            from PyQt5.QtWidgets import QApplication
+            from app.core.ocr.ocr_plugin_interface import OCRResult
+            
+            # 检查是否有打开的PDF文档
+            if not self.pdf_processor.pdf_document:
+                QMessageBox.warning(self, "警告", "请先打开PDF文件")
+                return
+            
+            # 获取当前页面
+            current_page = self.pdf_processor.current_page
+            if current_page < 0:
+                QMessageBox.warning(self, "警告", "请先选择一个页面")
+                return
+            
+            # 获取当前使用的OCR插件
+            current_plugin_name = self.ocr_config_manager.get_current_plugin()
+            if not current_plugin_name:
+                QMessageBox.warning(self, "警告", "请先在OCR设置中选择一个OCR插件")
+                return
+            
+            # 检查插件是否已加载
+            if current_plugin_name not in self.ocr_plugin_manager.plugins:
+                QMessageBox.critical(self, "错误", f"OCR插件 '{current_plugin_name}' 未加载")
+                return
+            
+            # 在状态栏显示加载信息，防止重复点击
+            self.show_message("正在执行OCR识别...")
+            QApplication.processEvents()  # 确保状态栏更新立即显示
+            
+            try:
+                # 获取插件实例
+                plugin = self.ocr_plugin_manager.plugins[current_plugin_name]
+                
+                # 初始化插件（如果尚未初始化）
+                if not plugin.is_initialized:
+                    plugin_config = self.ocr_config_manager.get_plugin_config(current_plugin_name)
+                    init_result = self.ocr_plugin_manager.initialize_plugin(current_plugin_name, plugin_config)
+                    if not init_result.is_success():
+                        QMessageBox.critical(self, "OCR初始化失败", f"插件初始化失败: {init_result.message}")
+                        return
+                
+                # 获取当前页面的图像数据
+                page_image_data = self.pdf_processor.get_page_image_data(current_page)
+                if not page_image_data:
+                    QMessageBox.critical(self, "错误", "无法获取页面图像数据")
+                    return
+                
+                # 尝试不同的OCR识别方法
+                # 方法1: 直接使用字节数据
+                ocr_result = plugin.recognize_from_bytes(page_image_data)
+                
+                # 如果方法1失败，尝试方法2: 转换为Base64字符串
+                if not ocr_result.is_success():
+                    from base64 import b64encode
+                    image_base64 = b64encode(page_image_data).decode('utf-8')
+                    # 移除可能存在的前缀
+                    if image_base64.startswith('data:image'):
+                        # 提取纯Base64数据
+                        image_base64 = image_base64.split(',')[1] if ',' in image_base64 else image_base64
+                    ocr_result = plugin.recognize_from_base64(image_base64)
+                
+                # 如果方法2也失败，尝试方法3: 保存为临时文件并使用文件路径
+                if not ocr_result.is_success():
+                    import tempfile
+                    import uuid
+                    # 使用完整路径避免短文件名问题
+                    temp_dir = os.path.realpath(tempfile.gettempdir())
+                    temp_filename = f"ocr_temp_{uuid.uuid4().hex}.png"
+                    tmp_file_path = os.path.join(temp_dir, temp_filename)
+                    
+                    try:
+                        # 将图像数据写入临时文件
+                        with open(tmp_file_path, 'wb') as tmp_file:
+                            tmp_file.write(page_image_data)
+                        
+                        # 确保文件已正确写入
+                        if os.path.exists(tmp_file_path):
+                            ocr_result = plugin.recognize_from_file(tmp_file_path)
+                        else:
+                            logger.error(f"临时文件创建失败: {tmp_file_path}")
+                            ocr_result = OCRResult(
+                                code=OCRErrorCode.FILE_NOT_FOUND,
+                                message=f"临时文件创建失败: {tmp_file_path}",
+                                plugin_name=plugin.plugin_name
+                            )
+                    except Exception as file_error:
+                        logger.error(f"创建或写入临时文件时出错: {file_error}")
+                        ocr_result = OCRResult(
+                            code=OCRErrorCode.UNKNOWN_ERROR,
+                            message=f"创建临时文件失败: {str(file_error)}",
+                            plugin_name=plugin.plugin_name
+                        )
+                    finally:
+                        # 清理临时文件
+                        try:
+                            if os.path.exists(tmp_file_path):
+                                os.unlink(tmp_file_path)
+                        except Exception as cleanup_error:
+                            logger.warning(f"清理临时文件时出错: {cleanup_error}")
+                
+                # 处理OCR结果
+                if ocr_result.is_success():
+                    # 在文档上增加文本层
+                    self.add_text_layer_to_page(current_page, ocr_result)
+                    # 不再显示OCR结果对话框
+                else:
+                    QMessageBox.critical(self, "OCR识别失败", f"识别失败: {ocr_result.message}")
+            
+            finally:
+                # 清除状态栏加载信息
+                self.show_message("")
+                
+        except Exception as e:
+            logger.error(f"执行OCR时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            QMessageBox.critical(self, "错误", f"执行OCR时发生异常: {str(e)}")
+    
+    def create_searchable_pdf(self):
+        """创建可搜索PDF"""
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox, QProgressDialog
+        from PyQt5.QtCore import Qt, QThread, pyqtSignal
+        
+        # 检查是否有打开的PDF文档
+        if not self.pdf_processor.pdf_document:
+            QMessageBox.warning(self, "警告", "请先打开PDF文件")
+            return
+        
+        # 检查是否有配置OCR插件
+        current_plugin_name = self.ocr_config_manager.get_current_plugin()
+        if not current_plugin_name:
+            QMessageBox.warning(self, "警告", "请先在OCR设置中选择一个OCR插件")
+            return
+        
+        # 获取输出文件路径
+        current_file = self.pdf_processor.current_file
+        if not current_file:
+            QMessageBox.warning(self, "警告", "无法获取当前文件路径")
+            return
+        
+        # 生成默认输出文件名
+        file_dir = os.path.dirname(current_file)
+        file_name = os.path.basename(current_file)
+        name_without_ext = os.path.splitext(file_name)[0]
+        default_output = os.path.join(file_dir, f"{name_without_ext}_searchable.pdf")
+        
+        output_file, _ = QFileDialog.getSaveFileName(
+            self,
+            "保存可搜索PDF",
+            default_output,
+            "PDF文件 (*.pdf)"
+        )
+        
+        if not output_file:
+            return
+
+        # 创建处理线程
+        class SearchablePDFThread(QThread):
+            progress_updated = pyqtSignal(int, str)
+            finished = pyqtSignal(bool, str)
+            
+            def __init__(self, input_file, output_file, ocr_plugin_manager, ocr_config_manager):
+                super().__init__()
+                self.input_file = input_file
+                self.output_file = output_file
+                self.ocr_plugin_manager = ocr_plugin_manager
+                self.ocr_config_manager = ocr_config_manager
+            
+            def run(self):
+                try:
+                    from app.core.ocr.ocr_searchable_pdf import create_searchable_pdf
+                    self.progress_updated.emit(10, "正在初始化OCR引擎...")
+                    
+                    success = create_searchable_pdf(
+                        self.input_file,
+                        self.output_file,
+                        self.ocr_plugin_manager,
+                        self.ocr_config_manager,
+                        show_text_boxes=False
+                    )
+                    
+                    if success:
+                        self.progress_updated.emit(100, "可搜索PDF创建完成")
+                        self.finished.emit(True, f"可搜索PDF已创建: {self.output_file}")
+                    else:
+                        self.finished.emit(False, "创建可搜索PDF失败")
+                        
+                except Exception as e:
+                    self.finished.emit(False, f"创建过程中出错: {str(e)}")
+        
+        # 显示进度对话框
+        progress_dialog = QProgressDialog("正在创建可搜索PDF...", "取消", 0, 100, self)
+        progress_dialog.setWindowTitle("进度")
+        progress_dialog.setWindowModality(Qt.WindowModal)
+        progress_dialog.show()
+        
+        # 启动处理线程
+        self.searchable_pdf_thread = SearchablePDFThread(
+            current_file, 
+            output_file,
+            self.ocr_plugin_manager,
+            self.ocr_config_manager
+        )
+        self.searchable_pdf_thread.progress_updated.connect(
+            lambda value, msg: progress_dialog.setValue(value)
+        )
+        self.searchable_pdf_thread.finished.connect(
+            lambda success, message: self._on_searchable_pdf_finished(success, message, progress_dialog, output_file)
+        )
+        self.searchable_pdf_thread.start()
+    
+    def _on_searchable_pdf_finished(self, success, message, progress_dialog, output_file):
+        """可搜索PDF创建完成回调"""
+        progress_dialog.close()
+        
+        if success:
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("完成")
+            msg_box.setText(f"✅ {message}")
+            msg_box.setIcon(QMessageBox.Information)
+            
+            open_file_btn = msg_box.addButton("📂 打开文件", QMessageBox.ActionRole)
+            open_dir_btn = msg_box.addButton("📁 打开目录", QMessageBox.ActionRole)
+            msg_box.addButton("确定", QMessageBox.AcceptRole)
+            
+            msg_box.exec_()
+            
+            if msg_box.clickedButton() == open_file_btn:
+                # 打开生成的可搜索PDF文件
+                try:
+                    if os.path.exists(output_file):
+                        os.startfile(output_file)
+                    else:
+                        QMessageBox.warning(self, "警告", "文件不存在")
+                except Exception as e:
+                    logger.error(f"打开文件失败: {e}")
+                    QMessageBox.warning(self, "警告", f"无法打开文件: {str(e)}")
+                    
+            elif msg_box.clickedButton() == open_dir_btn:
+                # 打开文件所在目录
+                try:
+                    output_dir = os.path.dirname(output_file)
+                    import subprocess
+                    subprocess.Popen(['explorer', output_dir])
+                except Exception as e:
+                    logger.error(f"打开目录失败: {e}")
+                    QMessageBox.warning(self, "警告", f"无法打开目录: {str(e)}")
+            
+            self.show_message("✅ 可搜索PDF创建完成")
+        else:
+            QMessageBox.critical(self, "错误", f"❌ {message}")
+            self.show_message("❌ 创建可搜索PDF失败")
+    
+    def add_text_layer_to_page(self, page_num, ocr_result):
+        """在指定页面上添加OCR文本层"""
+        try:
+            # 显示提示信息
+            self.show_message(f"第{page_num+1}页OCR识别完成，共识别到{len(ocr_result.data) if isinstance(ocr_result.data, list) else 0}个文本元素")
+            
+            # 将OCR结果存储到PDF处理器中，供后续渲染使用
+            if hasattr(self.pdf_processor, 'ocr_results'):
+                self.pdf_processor.ocr_results[page_num] = ocr_result
+            else:
+                self.pdf_processor.ocr_results = {page_num: ocr_result}
+            
+            # 刷新页面显示，触发重新渲染
+            self.pdf_processor.clear_render_cache()
+            self.update_preview()
+            
+            # 如果虚拟滚动区域存在，直接更新该页面的OCR文本层
+            if hasattr(self, 'virtual_scroll_area') and self.virtual_scroll_area:
+                # 通知虚拟滚动区域更新指定页面的OCR文本层
+                self.virtual_scroll_area.update_page_ocr_layer(page_num, ocr_result)
+            
+            logger.info(f"已在第{page_num+1}页完成OCR识别")
+            
+        except Exception as e:
+            logger.error(f"添加OCR文本层时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())

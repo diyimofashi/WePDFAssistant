@@ -27,9 +27,26 @@ PyPDF/
 │   │   └── barcode_split_config.json # 条码分割配置
 │   ├── core/                     # 核心功能模块
 │   │   ├── processing/           # PDF处理与渲染
-│   │   │   ├── pdf_processor.py  # PDF处理核心功能
+│   │   │   ├── pdf_processor.py  # PDF处理核心功能（重构版）
+│   │   │   ├── pdf_loader.py     # PDF加载和文件打开功能
+│   │   │   ├── pdf_renderer.py   # 页面渲染和缓存功能
+│   │   │   ├── pdf_navigation.py # 页面导航和缩放功能
+│   │   │   ├── pdf_search.py     # 搜索和高亮功能
+│   │   │   ├── pdf_operations.py # PDF操作和编辑功能
+│   │   │   ├── pdf_conversion.py # PDF转换和导入功能
+│   │   │   ├── pdf_history_manager.py # 操作历史记录功能
 │   │   │   ├── async_loader.py   # 异步PDF加载器
 │   │   │   └── thumbnail_manager.py # 缩略图管理
+│   │   ├── main/                 # 主窗口功能模块（重构版）
+│   │   │   ├── main_window_base.py # 主窗口基础类
+│   │   │   ├── pdf_manager_mixin.py # PDF管理混入类
+│   │   │   ├── view_manager_mixin.py # 视图管理混入类
+│   │   │   ├── thumbnail_manager_mixin.py # 缩略图管理混入类
+│   │   │   ├── search_manager_mixin.py # 搜索管理混入类
+│   │   │   ├── ocr_manager_mixin.py # OCR管理混入类
+│   │   │   ├── upload_manager_mixin.py # 上传管理混入类
+│   │   │   ├── download_manager_mixin.py # 下载管理混入类
+│   │   │   └── operation_manager_mixin.py # 操作管理混入类
 │   │   ├── performance/          # 缓存与性能优化
 │   │   │   ├── cache_manager.py  # 缓存管理器
 │   │   │   └── ocr_performance_optimizer.py # OCR性能优化器
@@ -91,6 +108,7 @@ PyPDF/
 ├── requirements.txt              # 依赖包列表
 ├── run.bat                       # 一键启动脚本
 ├── start.py                      # 主启动脚本
+├── main.py                       # 重构后的主程序入口
 ├── project_rule.md               # 项目规则
 └── README.md                     # 项目说明
 ```
@@ -218,6 +236,7 @@ python start.py
 - **OpenCV** - 计算机视觉处理
 - **模块化设计** - 清晰的分层架构
 - **插件化架构** - 支持功能扩展
+- **混入类设计** - 功能模块化，便于维护
 
 ## ⌨️ 快捷键
 
@@ -252,6 +271,8 @@ python start.py
 - ✅ PDF转图片
 - ✅ 性能优化（异步加载、虚拟滚动、缓存）
 - ✅ 应用图标
+- ✅ 代码模块化重构
+- ✅ 主窗口功能拆分
 
 ### 远期目标
 - [ ] PDF合并功能

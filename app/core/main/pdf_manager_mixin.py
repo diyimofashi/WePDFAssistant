@@ -1,0 +1,703 @@
+"""PDF管理混入类 - 重构版"""
+
+import os
+
+from PyQt5.QtWidgets import QMessageBox
+from app.utils.logger import get_logger
+
+logger = get_logger('main')
+
+class PDFManagerMixin:
+    """PDF管理混入类 - 处理PDF加载和文件操作"""
+    
+    def _on_loading_progress(self, value, message):
+        """加载进度更新"""
+        if self.progress_dialog:
+            self.progress_dialog.setValue(value)
+            self.progress_dialog.setLabelText(message)
+            
+    def _on_pdf_loading_finished(self, success, message):
+        """PDF/图片加载完成"""
+        self.hide_progress_dialog()
+        
+        if success:
+            if hasattr(self, 'thumbnail_list') and self.thumbnail_list:
+                logger.debug("更新缩略图管理器中的PDF处理器")
+                self.thumbnail_list.set_pdf_processor(self.pdf_processor)
+            
+            if self.pdf_processor.current_file:
+                from app.config.settings import AppSettings
+                self.setWindowTitle(f"{AppSettings.APP_NAME} - {os.path.basename(self.pdf_processor.current_file)}")
+            
+            # 更新页面和缩放信息
+            self.update_page_label()
+            self.update_zoom_label()
+            
+            if hasattr(self, 'total_pages_label') and self.pdf_processor:
+                try:
+                    total_pages = self.pdf_processor.get_total_pages()
+                    self.total_pages_label.setText(f"/ {total_pages}")
+                except Exception as e:
+                    logger.error(f"更新总页数显示失败: {e}")
+                    self.total_pages_label.setText("/ 0")
+            
+            # 更新虚拟滚动区域内容
+            if hasattr(self, 'virtual_scroll') and self.pdf_processor.fitz_document:
+                try:
+                    # 构建页面数据
+                    total_pages = self.pdf_processor.get_total_pages()
+                    pages_data = []
+                    for page_num in range(total_pages):
+                        # 获取页面尺寸
+                        page_dimensions = self.pdf_processor.get_page_dimensions(page_num)
+                        if page_dimensions:
+                            width = int(page_dimensions['width'] * self.pdf_processor.zoom_factor)
+                            height = int(page_dimensions['height'] * self.pdf_processor.zoom_factor)
+                        else:
+                            width = 800  # 默认宽度
+                            height = 1100  # 默认高度
+                            
+                        pages_data.append({
+                            'page_num': page_num,
+                            'width': width,
+                            'height': height,
+                            'zoom_factor': self.pdf_processor.zoom_factor
+                        })
+                    
+                    self.virtual_scroll.set_pages_data(pages_data)
+                    
+                    # 立即触发虚拟滚动区域更新和渲染
+                    self.virtual_scroll.update_content()
+                    
+                    # 强制滚动到第一页以确保显示
+                    from PyQt5.QtCore import QTimer
+                    QTimer.singleShot(100, lambda: self.virtual_scroll.scroll_to_page(0) if hasattr(self.virtual_scroll, 'scroll_to_page') else None)
+                    
+                    # 立即开始渲染当前页面
+                    QTimer.singleShot(150, self._start_rendering_current_page)
+                except Exception as e:
+                    logger.error(f"设置虚拟滚动页面数据失败: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
+            # 显示成功消息
+            if self.pdf_processor.fitz_document:
+                current_file = self.pdf_processor.current_file
+                file_name = os.path.basename(current_file) if current_file else "未知文件"
+                total_pages = self.pdf_processor.get_total_pages()
+                
+                # 检查是否为多图片文档
+                if hasattr(self.pdf_processor, 'multi_image_paths') and self.pdf_processor.multi_image_paths:
+                    image_count = len(self.pdf_processor.multi_image_paths)
+                    source_info = ""
+                    if self.pdf_processor.multi_image_source_dir:
+                        source_info = f" | 来源: {os.path.basename(self.pdf_processor.multi_image_source_dir)}"
+                    self.show_message(f"🖼️ 成功加载{image_count}张图片: {file_name} | 共 {total_pages} 页{source_info}")
+                    logger.debug(f"多图片文档加载完成: {image_count}张图片，共{total_pages}页")
+                # 检查是否为图片文件
+                elif current_file and any(current_file.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico']):
+                    self.show_message(f"🖼️ 成功加载图片: {file_name} | 共 {total_pages} 页")
+                    logger.debug(f"图片加载完成: {file_name}")
+                else:
+                    self.show_message(f"✅ 成功加载: {file_name}")
+                    logger.debug(f"PDF加载完成: {file_name}")
+                
+                # 立即渲染当前页面（第一页）
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(200, self._render_current_page_immediately)
+            
+            # 修复图片不显示问题：确保先清除缓存再刷新预览
+            self.pdf_processor.clear_render_cache()
+            self._force_refresh_preview()
+            logger.debug("已强制刷新预览区域")
+            
+            # 额外确保图片立即显示：延迟再次触发渲染
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(200, self._ensure_image_displayed)
+                            
+            if self.show_thumbnails:
+                logger.debug("开始强制重新加载缩略图...")
+                self._force_reload_thumbnails()
+                logger.debug("缩略图强制重新加载完成")
+            
+            self.update_save_actions_state()
+        else:
+            QMessageBox.critical(self, "错误", message)
+    
+    def _render_current_page_immediately(self):
+        """立即渲染当前页面"""
+        try:
+            # 确保PDF处理器和虚拟滚动区域都已准备好
+            if (hasattr(self, 'pdf_processor') and 
+                self.pdf_processor.fitz_document and 
+                hasattr(self, 'virtual_scroll')):
+                
+                # 直接调用PDF处理器渲染当前页面
+                current_page = 0  # 对于图片，总是第一页
+                page_dimensions = self.pdf_processor.get_page_dimensions(current_page)
+                
+                if page_dimensions:
+                    width = int(page_dimensions['width'] * self.pdf_processor.zoom_factor)
+                    height = int(page_dimensions['height'] * self.pdf_processor.zoom_factor)
+                    
+                    # 直接渲染页面
+                    pixmap = self.pdf_processor.render_page_at(current_page, width, height)
+                    
+                    if pixmap:
+                        logger.debug(f"直接渲染页面成功: {pixmap.width()} x {pixmap.height()}")
+                        # 调用虚拟滚动区域的页面渲染完成回调
+                        self.virtual_scroll.on_page_rendered(current_page, pixmap)
+        except Exception as e:
+            logger.error(f"立即渲染当前页面失败: {e}")
+            import traceback
+            traceback.print_exc()
+            
+    def _start_rendering_current_page(self):
+        """开始渲染当前页面"""
+        if hasattr(self, 'virtual_scroll') and hasattr(self.pdf_processor, 'current_page'):
+            try:
+                # 确保虚拟滚动区域已准备好
+                if hasattr(self.virtual_scroll, '_render_visible_pages'):
+                    # 立即渲染可见页面
+                    self.virtual_scroll._render_visible_pages()
+            except Exception as e:
+                logger.error(f"开始渲染当前页面失败: {e}")
+    
+    def _force_refresh_preview(self):
+        """强制刷新预览区域"""
+        self.update_preview()
+        
+        if hasattr(self, 'preview_label') and self.preview_label:
+            self.preview_label.update()
+            self.preview_label.repaint()
+    
+    def _force_reload_thumbnails(self):
+        """强制重新加载缩略图"""
+        if hasattr(self, 'thumbnail_list') and self.thumbnail_list:
+            self.thumbnail_list.clear_thumbnails()
+        
+        self.view_controller.load_thumbnails()
+    
+    def _ensure_image_displayed(self):
+        """确保图片正确显示 - 修复图片加载后不显示的问题"""
+        try:
+            logger.debug("执行额外的图片显示检查...")
+            
+            # 检查PDF处理器是否准备就绪
+            if not self.pdf_processor or not self.pdf_processor.fitz_document:
+                logger.debug("PDF处理器未准备好")
+                return
+            
+            # 强制跳转到第一页（对于图片文件）
+            self.pdf_processor.current_page = 0
+            logger.debug("强制设置当前页面为第0页")
+            
+            # 检查虚拟滚动区域是否有页面数据
+            if not hasattr(self, 'virtual_scroll') or not self.virtual_scroll.pages_data:
+                logger.debug("虚拟滚动区域没有页面数据，重新设置...")
+                self._setup_virtual_scroll_data()
+                
+                # 等待虚拟滚动区域数据设置完成
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(150, self._retry_ensure_image_displayed)
+                return
+            
+            # 强制触发虚拟滚动区域的页面渲染
+            if hasattr(self, 'virtual_scroll'):
+                # 清除虚拟滚动区域的渲染缓存
+                if hasattr(self.virtual_scroll, 'clear_cache'):
+                    self.virtual_scroll.clear_cache()
+                    logger.debug("已清除虚拟滚动区域缓存")
+                
+                # 重新更新内容
+                self.virtual_scroll.update_content()
+                logger.debug("已重新更新虚拟滚动内容")
+                
+                # 延迟触发渲染以确保布局完成
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(100, self._force_render_current_page)
+                QTimer.singleShot(300, self._force_render_current_page)
+                
+                logger.debug("已触发额外的图片显示检查")
+            
+        except Exception as e:
+            logger.error(f"确保图片显示时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    
+    def _retry_ensure_image_displayed(self):
+        """重试确保图片显示"""
+        try:
+            logger.debug("重试图片显示检查...")
+            if hasattr(self, 'virtual_scroll') and self.virtual_scroll.pages_data:
+                self.virtual_scroll.update_content()
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(100, self._force_render_current_page)
+                logger.debug("重试图片显示完成")
+            else:
+                logger.debug("重试时虚拟滚动区域仍未准备好")
+        except Exception as e:
+            logger.error(f"重试确保图片显示时出错: {e}")
+    
+    def _force_render_current_page(self):
+        """强制渲染当前页面"""
+        try:
+            logger.debug("强制渲染当前页面...")
+            
+            if (hasattr(self, 'pdf_processor') and 
+                self.pdf_processor.fitz_document and 
+                hasattr(self, 'virtual_scroll')):
+                
+                # 确保当前页面设置为0（图片的第一页）
+                self.pdf_processor.current_page = 0
+                
+                # 确保虚拟滚动区域已准备好
+                if hasattr(self.virtual_scroll, '_render_visible_pages'):
+                    # 立即渲染可见页面
+                    self.virtual_scroll._render_visible_pages()
+                    logger.debug("已强制渲染可见页面")
+                
+                # 直接渲染第一页（对于图片文件通常是第0页）
+                page_num = 0
+                page_dimensions = self.pdf_processor.get_page_dimensions(page_num)
+                
+                if page_dimensions:
+                    width = int(page_dimensions['width'] * self.pdf_processor.zoom_factor)
+                    height = int(page_dimensions['height'] * self.pdf_processor.zoom_factor)
+                    
+                    logger.debug(f"准备直接渲染页面: {page_num}, 尺寸: {width} x {height}")
+                    
+                    # 直接渲染页面
+                    pixmap = self.pdf_processor.render_page_at(page_num, width, height)
+                    
+                    if pixmap:
+                        logger.debug(f"直接强制渲染页面成功: {pixmap.width()} x {pixmap.height()}")
+                        # 调用虚拟滚动区域的页面渲染完成回调
+                        self.virtual_scroll.on_page_rendered(page_num, pixmap)
+                        
+                        # 额外确保虚拟滚动区域更新显示
+                        self.virtual_scroll.update()
+                        logger.debug("已更新虚拟滚动区域显示")
+                    else:
+                        logger.debug("直接强制渲染页面失败，返回空pixmap")
+                        
+                        # 尝试再次渲染
+                        from PyQt5.QtCore import QTimer
+                        QTimer.singleShot(200, self._retry_force_render_current_page)
+                else:
+                    logger.debug(f"无法获取页面{page_num}的尺寸信息")
+            
+        except Exception as e:
+            logger.error(f"强制渲染当前页面失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    
+    def _retry_force_render_current_page(self):
+        """重试强制渲染当前页面"""
+        try:
+            logger.debug("重试强制渲染当前页面...")
+            if (hasattr(self, 'pdf_processor') and 
+                self.pdf_processor.fitz_document and 
+                hasattr(self, 'virtual_scroll')):
+                
+                page_num = 0
+                page_dimensions = self.pdf_processor.get_page_dimensions(page_num)
+                
+                if page_dimensions:
+                    width = int(page_dimensions['width'] * self.pdf_processor.zoom_factor)
+                    height = int(page_dimensions['height'] * self.pdf_processor.zoom_factor)
+                    
+                    pixmap = self.pdf_processor.render_page_at(page_num, width, height)
+                    
+                    if pixmap:
+                        logger.debug(f"重试渲染页面成功: {pixmap.width()} x {pixmap.height()}")
+                        self.virtual_scroll.on_page_rendered(page_num, pixmap)
+                    else:
+                        logger.debug("重试渲染页面仍然失败")
+        except Exception as e:
+            logger.error(f"重试强制渲染当前页面失败: {e}")
+    
+    def update_preview(self):
+        """更新PDF预览显示"""
+        logger.debug("开始更新预览...")
+        if not self.pdf_processor.fitz_document:
+            logger.debug("没有PDF文档加载")
+            return
+        
+        try:
+            logger.debug("PDF文档已加载")
+            if self.pdf_processor.current_file:
+                display_filename = self.pdf_processor.current_file
+                if (hasattr(self.pdf_processor, 'page_editor') and 
+                    self.pdf_processor.page_editor and 
+                    self.pdf_processor.page_editor.get_original_filename()):
+                    display_filename = self.pdf_processor.page_editor.get_original_filename()
+                
+                filename = os.path.basename(display_filename)
+                has_changes = (hasattr(self.pdf_processor, 'page_editor') and 
+                              self.pdf_processor.page_editor and 
+                              self.pdf_processor.page_editor.has_unsaved_changes())
+                modified_indicator = " ●" if has_changes else ""
+                from app.config.settings import AppSettings
+                self.setWindowTitle(f"{AppSettings.APP_NAME} - {filename}{modified_indicator}")
+            
+            total_pages = self.pdf_processor.get_total_pages()
+            self.page_spinbox.setMaximum(total_pages)
+            self.total_pages_label.setText(f"/ {total_pages}")
+            # 更新工具栏的总页码标签
+            if hasattr(self, 'toolbar_total_pages_label'):
+                self.toolbar_total_pages_label.setText(f"/ {total_pages}")
+            # 更新工具栏的总页码标签
+            if hasattr(self, 'toolbar_total_pages_label'):
+                self.toolbar_total_pages_label.setText(f"/ {total_pages}")
+            
+            if self.show_thumbnails:
+                self.view_controller.load_thumbnails()
+            
+            logger.debug("使用虚拟滚动模式")
+            self._setup_virtual_scroll_data()
+            self.virtual_scroll.update_content()
+            
+            logger.debug("预览更新完成")
+        except Exception as e:
+            logger.error(f"更新预览时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    
+    def _setup_virtual_scroll_data(self):
+        """设置虚拟滚动数据"""
+        logger.debug("开始设置虚拟滚动数据...")
+        if not self.pdf_processor or not self.pdf_processor.fitz_document:
+            logger.debug("PDF处理器未准备好")
+            return
+            
+        try:
+            total_pages = self.pdf_processor.get_total_pages()
+            logger.debug(f"总页数: {total_pages}")
+            
+            pages_data = []
+            for page_num in range(total_pages):
+                dimensions = self.pdf_processor.get_page_dimensions(page_num)
+                if dimensions:
+                    width = int(dimensions['width'] * self.pdf_processor.zoom_factor)
+                    height = int(dimensions['height'] * self.pdf_processor.zoom_factor)
+                else:
+                    width = 800
+                    height = 1100
+                
+                pages_data.append({
+                    'page_num': page_num,
+                    'width': width,
+                    'height': height,
+                    'zoom_factor': self.pdf_processor.zoom_factor
+                })
+            
+            logger.debug(f"准备设置{len(pages_data)}页数据到虚拟滚动区域")
+            self.virtual_scroll.set_pages_data(pages_data)
+            
+            if hasattr(self.virtual_scroll, 'page_visible'):
+                try:
+                    self.virtual_scroll.page_visible.connect(self._on_page_visible)
+                    logger.debug("虚拟滚动信号连接成功")
+                except Exception as signal_error:
+                    logger.debug(f"信号连接失败（可能已连接）: {signal_error}")
+                
+            logger.debug("虚拟滚动数据设置完成")
+        except Exception as e:
+            logger.error(f"设置虚拟滚动数据失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    
+    def convert_pdf_to_images(self):
+        """PDF转图片功能"""
+        from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+                                   QComboBox, QSpinBox, QPushButton, QGroupBox,
+                                   QFileDialog, QProgressBar, QMessageBox,
+                                   QRadioButton, QLineEdit)
+        
+        if not self.pdf_processor.fitz_document:
+            QMessageBox.information(self, "提示", "📝 请先打开PDF文件")
+            return
+        
+        class ConvertToImagesDialog(QDialog):
+            def __init__(self, parent, pdf_processor):
+                super().__init__(parent)
+                self.pdf_processor = pdf_processor
+                
+                if self.pdf_processor.current_file:
+                    file_dir = os.path.dirname(self.pdf_processor.current_file)
+                    file_name = os.path.basename(self.pdf_processor.current_file)
+                    file_name_without_ext = os.path.splitext(file_name)[0]
+                    self.output_dir = os.path.join(file_dir, file_name_without_ext)
+                else:
+                    self.output_dir = ""
+                
+                self.init_ui()
+            
+            def init_ui(self):
+                self.setWindowTitle("PDF转图片")
+                self.setFixedSize(500, 550)
+                layout = QVBoxLayout()
+                
+                # 输出目录设置
+                dir_group = QGroupBox("输出目录")
+                dir_layout = QVBoxLayout()
+                
+                dir_btn_layout = QHBoxLayout()
+                if self.output_dir:
+                    self.dir_label = QLabel(self.output_dir)
+                    self.dir_label.setStyleSheet("QLabel { color: #333; padding: 5px; background-color: #f0f8ff; border: 1px solid #4CAF50; border-radius: 3px; }")
+                else:
+                    self.dir_label = QLabel("未选择目录")
+                    self.dir_label.setStyleSheet("QLabel { color: #666; padding: 5px; background-color: #f5f5f5; border: 1px solid #ddd; border-radius: 3px; }")
+                dir_btn_layout.addWidget(self.dir_label)
+                
+                select_dir_btn = QPushButton("选择目录")
+                select_dir_btn.clicked.connect(self.select_output_dir)
+                dir_btn_layout.addWidget(select_dir_btn)
+                
+                dir_layout.addLayout(dir_btn_layout)
+                dir_group.setLayout(dir_layout)
+                layout.addWidget(dir_group)
+                
+                # 页面选择设置
+                page_group = QGroupBox("页面选择")
+                page_layout = QVBoxLayout()
+                
+                page_range_layout = QHBoxLayout()
+                page_range_layout.addWidget(QLabel("转换页面:"))
+                
+                self.all_pages_radio = QRadioButton("全部页面")
+                self.all_pages_radio.setChecked(True)
+                self.all_pages_radio.toggled.connect(self.on_page_range_changed)
+                page_range_layout.addWidget(self.all_pages_radio)
+                
+                self.custom_pages_radio = QRadioButton("指定页面:")
+                self.custom_pages_radio.toggled.connect(self.on_page_range_changed)
+                page_range_layout.addWidget(self.custom_pages_radio)
+                
+                self.page_range_edit = QLineEdit()
+                self.page_range_edit.setPlaceholderText("如: 1,3,5-9,11-14")
+                self.page_range_edit.setEnabled(False)
+                page_range_layout.addWidget(self.page_range_edit)
+                
+                page_layout.addLayout(page_range_layout)
+                
+                total_pages = self.pdf_processor.get_total_pages()
+                page_hint = QLabel(f"提示: 总页数 {total_pages} 页，支持格式: 单个页码(1,3,5)，连续范围(1-5)，混合(1,3,5-9)")
+                page_hint.setStyleSheet("QLabel { color: #666; font-size: 10px; }")
+                page_layout.addWidget(page_hint)
+                
+                page_group.setLayout(page_layout)
+                layout.addWidget(page_group)
+                
+                # 图片格式设置
+                format_group = QGroupBox("图片设置")
+                format_layout = QVBoxLayout()
+                
+                format_row = QHBoxLayout()
+                format_row.addWidget(QLabel("图片格式:"))
+                self.format_combo = QComboBox()
+                formats = self.pdf_processor.get_supported_image_formats()
+                self.format_combo.addItems(formats)
+                jpeg_index = self.format_combo.findText("JPEG")
+                if jpeg_index >= 0:
+                    self.format_combo.setCurrentIndex(jpeg_index)
+                format_row.addWidget(self.format_combo)
+                format_row.addStretch()
+                format_layout.addLayout(format_row)
+                
+                dpi_row = QHBoxLayout()
+                dpi_row.addWidget(QLabel("分辨率 (DPI):"))
+                self.dpi_combo = QComboBox()
+                recommended_dpi = self.pdf_processor.get_recommended_dpi()
+                for quality, dpi in recommended_dpi.items():
+                    self.dpi_combo.addItem(f"{quality} ({dpi} DPI)", dpi)
+                self.dpi_combo.setCurrentIndex(1)
+                dpi_row.addWidget(self.dpi_combo)
+                dpi_row.addStretch()
+                format_layout.addLayout(dpi_row)
+                
+                format_group.setLayout(format_layout)
+                layout.addWidget(format_group)
+                
+                # 转换信息
+                info_group = QGroupBox("转换信息")
+                info_layout = QVBoxLayout()
+                self.info_label = QLabel(f"总页数: {total_pages} 页")
+                info_layout.addWidget(self.info_label)
+                info_group.setLayout(info_layout)
+                layout.addWidget(info_group)
+                
+                # 进度条
+                self.progress_bar = QProgressBar()
+                self.progress_bar.setVisible(False)
+                layout.addWidget(self.progress_bar)
+                
+                # 按钮
+                button_layout = QHBoxLayout()
+                convert_btn = QPushButton("开始转换")
+                convert_btn.clicked.connect(self.start_conversion)
+                convert_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; padding: 8px 16px; border: none; border-radius: 4px; }")
+                
+                cancel_btn = QPushButton("取消")
+                cancel_btn.clicked.connect(self.reject)
+                
+                button_layout.addWidget(convert_btn)
+                button_layout.addStretch()
+                button_layout.addWidget(cancel_btn)
+                layout.addLayout(button_layout)
+                
+                self.setLayout(layout)
+            
+            def _set_ui_enabled(self, enabled: bool):
+                """设置界面控件启用状态"""
+                for btn in self.findChildren(QPushButton):
+                    if btn.text() in ["开始转换", "选择目录", "取消"]:
+                        btn.setEnabled(enabled)
+                
+                self.format_combo.setEnabled(enabled)
+                self.dpi_combo.setEnabled(enabled)
+                self.all_pages_radio.setEnabled(enabled)
+                self.custom_pages_radio.setEnabled(enabled)
+                self.page_range_edit.setEnabled(enabled and self.custom_pages_radio.isChecked())
+                self.dir_label.setEnabled(enabled)
+            
+            def on_page_range_changed(self):
+                """页面范围选择改变事件"""
+                self.page_range_edit.setEnabled(self.custom_pages_radio.isChecked())
+            
+            def select_output_dir(self):
+                """选择输出目录"""
+                directory = QFileDialog.getExistingDirectory(self, "选择图片保存目录")
+                if directory:
+                    self.output_dir = directory
+                    self.dir_label.setText(directory)
+                    self.dir_label.setStyleSheet("QLabel { color: #333; padding: 5px; background-color: #f0f8ff; border: 1px solid #4CAF50; border-radius: 3px; }")
+            
+            def start_conversion(self):
+                """开始转换"""
+                if not self.output_dir:
+                    QMessageBox.warning(self, "警告", "请选择输出目录")
+                    return
+                
+                if self.all_pages_radio.isChecked():
+                    page_range = "all"
+                else:
+                    page_range = self.page_range_edit.text().strip()
+                    if not page_range:
+                        QMessageBox.warning(self, "警告", "请输入要转换的页面范围")
+                        return
+                
+                image_format = self.format_combo.currentText()
+                dpi = self.dpi_combo.currentData()
+                
+                self.progress_bar.setVisible(True)
+                self.progress_bar.setRange(0, 0)
+                self._set_ui_enabled(False)
+                
+                from PyQt5.QtCore import QThread, pyqtSignal
+                
+                class ConversionThread(QThread):
+                    finished = pyqtSignal(bool, str)
+                    
+                    def __init__(self, pdf_processor, output_dir, dpi, image_format, page_range):
+                        super().__init__()
+                        self.pdf_processor = pdf_processor
+                        self.output_dir = output_dir
+                        self.dpi = dpi
+                        self.image_format = image_format
+                        self.page_range = page_range
+                    
+                    def run(self):
+                        try:
+                            success, message = self.pdf_processor.convert_pdf_to_images(
+                                self.output_dir, self.dpi, self.image_format, self.page_range
+                            )
+                            self.finished.emit(success, message)
+                        except Exception as e:
+                            self.finished.emit(False, f"转换过程中发生错误: {str(e)}")
+                
+                self.conversion_thread = ConversionThread(
+                    self.pdf_processor, self.output_dir, dpi, image_format, page_range
+                )
+                self.conversion_thread.finished.connect(self.on_conversion_finished)
+                self.conversion_thread.start()
+            
+            def on_conversion_finished(self, success, message):
+                """转换完成回调"""
+                self.progress_bar.setVisible(False)
+                self._set_ui_enabled(True)
+                
+                if success:
+                    msg_box = QMessageBox(self)
+                    msg_box.setWindowTitle("转换成功")
+                    msg_box.setText(message)
+                    msg_box.setIcon(QMessageBox.Information)
+                    
+                    open_dir_btn = msg_box.addButton("📂 打开目录", QMessageBox.ActionRole)
+                    msg_box.addButton("确定", QMessageBox.AcceptRole)
+                    
+                    msg_box.exec_()
+                    
+                    if msg_box.clickedButton() == open_dir_btn:
+                        import subprocess
+                        import platform
+                        
+                        try:
+                            system = platform.system()
+                            if system == "Windows":
+                                if os.path.exists(self.output_dir):
+                                    os.startfile(self.output_dir)
+                                else:
+                                    subprocess.Popen(['explorer', self.output_dir], shell=True)
+                            elif system == "Darwin":
+                                subprocess.Popen(['open', self.output_dir])
+                            else:
+                                subprocess.Popen(['xdg-open', self.output_dir])
+                        except Exception as e:
+                            QMessageBox.warning(self, "警告", f"无法打开目录: {str(e)}")
+                    
+                    self.accept()
+                else:
+                    QMessageBox.critical(self, "转换失败", message)
+        
+        dialog = ConvertToImagesDialog(self, self.pdf_processor)
+        dialog.exec_()
+    
+    # 代理方法 - 将调用转发给相应的管理器
+    def open_file(self):
+        return self.file_manager.open_file()
+    
+    def open_multiple_images(self):
+        """打开多张图片"""
+        return self.file_manager.open_multiple_images()
+    
+    def open_image_directory(self):
+        """打开图片目录"""
+        return self.file_manager.open_image_directory()
+
+    def save_file(self):
+        return self.file_manager.save_file()
+
+    def save_as_file(self):
+        return self.file_manager.save_as_file()
+
+    def encrypt_save_file(self):
+        return self.file_manager.encrypt_save_file()
+
+    def encrypt_save_as_file(self):
+        return self.file_manager.encrypt_save_as_file()
+
+    def save_changes(self):
+        return self.file_manager.save_changes()
+        
+    def discard_changes(self):
+        return self.file_manager.discard_changes()
+        
+    def import_images(self):
+        return self.file_manager.import_images()
+        
+    def open_images_from_directory(self):
+        """从目录打开图片文件"""
+        return self.file_manager.open_images_from_directory()
