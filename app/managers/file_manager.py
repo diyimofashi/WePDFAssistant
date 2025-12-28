@@ -16,17 +16,37 @@ class FileManager:
         self.parent = parent_window
         
     def open_file(self):
-        """打开PDF文件"""
+        """打开PDF文件或图片文件"""
         logger.info("开始打开文件...")
         last_dir = AppSettings.get_last_open_dir()
 
+        # 添加图片文件格式支持
         file_path, _ = QFileDialog.getOpenFileName(
-            self.parent, "选择PDF文件", last_dir, "PDF文件 (*.pdf)")
+            self.parent, "选择文件", last_dir, 
+            "所有支持的文件 (*.pdf *.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;PDF文件 (*.pdf);;图片文件 (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;所有文件 (*.*)")
 
         if file_path:
             logger.info(f"选择了文件: {file_path}")
+            
+            # 检查是否为图片文件
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+            file_ext = os.path.splitext(file_path)[1].lower()
+            
+            if file_ext in image_extensions:
+                # 直接打开图片文件
+                self.parent.show_progress_dialog("正在加载图片文件...")
+                success, message = self.parent.pdf_processor.open_pdf(file_path, async_mode=True)
+                
+                if success:
+                    logger.info("异步加载启动成功")
+                    AppSettings.set_last_open_dir(file_path)
+                else:
+                    logger.error(f"异步加载启动失败: {message}")
+                    self.parent.hide_progress_dialog()
+                    QMessageBox.critical(self.parent, "错误", message)
+                return
 
-            # 先检查文件是否加密
+            # 对于PDF文件，检查是否加密
             import PyPDF2
             is_encrypted = False
             try:
@@ -76,6 +96,30 @@ class FileManager:
                 QMessageBox.critical(self.parent, "错误", message)
         else:
             logger.info("未选择文件")
+    
+    def open_images_from_directory(self):
+        """从目录打开所有图片并合并为PDF"""
+        logger.info("开始从目录打开图片...")
+        last_dir = AppSettings.get_last_open_dir()
+        
+        directory_path = QFileDialog.getExistingDirectory(
+            self.parent, "选择包含图片的目录", last_dir)
+        
+        if directory_path:
+            logger.info(f"选择了目录: {directory_path}")
+            
+            self.parent.show_progress_dialog("正在加载图片文件...")
+            success, message = self.parent.pdf_processor.open_images_from_directory(directory_path, async_mode=True)
+            
+            if success:
+                logger.info("异步加载启动成功")
+                AppSettings.set_last_open_dir(directory_path)
+            else:
+                logger.error(f"异步加载启动失败: {message}")
+                self.parent.hide_progress_dialog()
+                QMessageBox.critical(self.parent, "错误", message)
+        else:
+            logger.info("未选择目录")
     
     def save_file(self):
         """保存PDF文件"""

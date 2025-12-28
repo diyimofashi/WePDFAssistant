@@ -286,7 +286,8 @@ class AuroraPDF(QMainWindow):
     def update_zoom_label(self):
         """更新缩放显示"""
         if hasattr(self, 'zoom_label') and hasattr(self, 'pdf_processor'):
-            self.zoom_label.setText(f"{self.pdf_processor.zoom_level:.0f}%")
+            zoom_percent = int(self.pdf_processor.get_zoom() * 100)
+            self.zoom_label.setText(f"{zoom_percent}%")
     
     def _on_page_changed(self):
         """页面变化时的处理"""
@@ -302,23 +303,47 @@ class AuroraPDF(QMainWindow):
         if hasattr(self, 'progress_dialog') and self.progress_dialog:
             self.progress_dialog.setValue(progress)
     
-    def _on_pdf_loading_finished(self):
-        """PDF加载完成处理"""
-        self.hide_progress_dialog()
-        self.update_page_label()
-        self.update_zoom_label()
-        
-        if hasattr(self, 'total_pages_label') and self.pdf_processor:
-            total_pages = self.pdf_processor.get_total_pages()
-            self.total_pages_label.setText(f"/ {total_pages}")
-        
-        if self.pdf_processor.fitz_document:
-            current_file = self.pdf_processor.get_current_filename()
-            file_name = os.path.basename(current_file) if current_file else "未知文件"
-            self.show_message(f"✅ 成功加载: {file_name}")
-        else:
-            self.show_message("❌ 加载失败")
+
     
+    def _render_current_page_immediately(self):
+        """立即渲染当前页面"""
+        try:
+            # 确保PDF处理器和虚拟滚动区域都已准备好
+            if (hasattr(self, 'pdf_processor') and 
+                self.pdf_processor.fitz_document and 
+                hasattr(self, 'virtual_scroll')):
+                
+                # 直接调用PDF处理器渲染当前页面
+                current_page = 0  # 对于图片，总是第一页
+                page_dimensions = self.pdf_processor.get_page_dimensions(current_page)
+                
+                if page_dimensions:
+                    width = int(page_dimensions['width'] * self.pdf_processor.zoom_factor)
+                    height = int(page_dimensions['height'] * self.pdf_processor.zoom_factor)
+                    
+                    # 直接渲染页面
+                    pixmap = self.pdf_processor.render_page_at(current_page, width, height)
+                    
+                    if pixmap:
+                        logger.debug(f"直接渲染页面成功: {pixmap.width()} x {pixmap.height()}")
+                        # 调用虚拟滚动区域的页面渲染完成回调
+                        self.virtual_scroll.on_page_rendered(current_page, pixmap)
+        except Exception as e:
+            logger.error(f"立即渲染当前页面失败: {e}")
+            import traceback
+            traceback.print_exc()
+            
+    def _start_rendering_current_page(self):
+        """开始渲染当前页面"""
+        if hasattr(self, 'virtual_scroll') and hasattr(self.pdf_processor, 'current_page'):
+            try:
+                # 确保虚拟滚动区域已准备好
+                if hasattr(self.virtual_scroll, '_render_visible_pages'):
+                    # 立即渲染可见页面
+                    self.virtual_scroll._render_visible_pages()
+            except Exception as e:
+                logger.error(f"开始渲染当前页面失败: {e}")
+                
     def _on_page_rendered(self, page_num):
         """页面渲染完成处理"""
         if page_num == self.pdf_processor.current_page:
@@ -788,7 +813,7 @@ class AuroraPDF(QMainWindow):
             self.progress_dialog.setLabelText(message)
             
     def _on_pdf_loading_finished(self, success, message):
-        """PDF加载完成"""
+        """PDF/图片加载完成"""
         self.hide_progress_dialog()
         
         if success:
@@ -799,31 +824,88 @@ class AuroraPDF(QMainWindow):
             if self.pdf_processor.current_file:
                 self.setWindowTitle(f"{AppSettings.APP_NAME} - {os.path.basename(self.pdf_processor.current_file)}")
             
-            pdf_info = self.pdf_processor.get_pdf_info()
-            if pdf_info:
-                info_text = f"📄 {pdf_info['filename']} | 📖 共{pdf_info['page_count']}页 | 💾 {pdf_info['file_size']}"
-                if pdf_info['is_encrypted']:
-                    info_text += " | 🔒 已加密"
-                
-                self.show_message(info_text)
-                logger.debug(f"PDF信息: {info_text}")
-                
-                self.pdf_processor.go_to_page(1)
-                logger.debug("已跳转到第1页")
-                
+            # 更新页面和缩放信息
+            self.update_page_label()
+            self.update_zoom_label()
+            
+            if hasattr(self, 'total_pages_label') and self.pdf_processor:
                 total_pages = self.pdf_processor.get_total_pages()
-                self.page_spinbox.setMaximum(total_pages)
                 self.total_pages_label.setText(f"/ {total_pages}")
+            
+            # 更新虚拟滚动区域内容
+            if hasattr(self, 'virtual_scroll') and self.pdf_processor.fitz_document:
+                try:
+                    # 构建页面数据
+                    total_pages = self.pdf_processor.get_total_pages()
+                    pages_data = []
+                    for page_num in range(total_pages):
+                        # 获取页面尺寸
+                        page_dimensions = self.pdf_processor.get_page_dimensions(page_num)
+                        if page_dimensions:
+                            width = int(page_dimensions['width'] * self.pdf_processor.zoom_factor)
+                            height = int(page_dimensions['height'] * self.pdf_processor.zoom_factor)
+                        else:
+                            width = 800  # 默认宽度
+                            height = 1100  # 默认高度
+                            
+                        pages_data.append({
+                            'page_num': page_num,
+                            'width': width,
+                            'height': height,
+                            'zoom_factor': self.pdf_processor.zoom_factor
+                        })
+                    
+                    self.virtual_scroll.set_pages_data(pages_data)
+                    
+                    # 立即触发虚拟滚动区域更新和渲染
+                    self.virtual_scroll.update_content()
+                    
+                    # 强制滚动到第一页以确保显示
+                    from PyQt5.QtCore import QTimer
+                    QTimer.singleShot(100, lambda: self.virtual_scroll.scroll_to_page(0) if hasattr(self.virtual_scroll, 'scroll_to_page') else None)
+                    
+                    # 立即开始渲染当前页面
+                    QTimer.singleShot(150, self._start_rendering_current_page)
+                except Exception as e:
+                    logger.error(f"设置虚拟滚动页面数据失败: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
+            # 显示成功消息
+            if self.pdf_processor.fitz_document:
+                current_file = self.pdf_processor.current_file
+                file_name = os.path.basename(current_file) if current_file else "未知文件"
+                total_pages = self.pdf_processor.get_total_pages()
                 
-                self._force_refresh_preview()
-                logger.debug("已强制刷新预览区域")
-                                
-                if self.show_thumbnails:
-                    logger.debug("开始强制重新加载缩略图...")
-                    self._force_reload_thumbnails()
-                    logger.debug("缩略图强制重新加载完成")
+                # 检查是否为图片文件
+                is_image = current_file and any(current_file.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'])
                 
-                self.update_save_actions_state()
+                if is_image:
+                    self.show_message(f"🖼️ 成功加载图片: {file_name} | 共 {total_pages} 页")
+                    logger.debug(f"图片加载完成: {file_name}")
+                else:
+                    self.show_message(f"✅ 成功加载: {file_name}")
+                    logger.debug(f"PDF加载完成: {file_name}")
+                
+                # 立即渲染当前页面（第一页）
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(200, self._render_current_page_immediately)
+            
+            # 修复图片不显示问题：确保先清除缓存再刷新预览
+            self.pdf_processor.clear_render_cache()
+            self._force_refresh_preview()
+            logger.debug("已强制刷新预览区域")
+            
+            # 额外确保图片立即显示：延迟再次触发渲染
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(200, self._ensure_image_displayed)
+                            
+            if self.show_thumbnails:
+                logger.debug("开始强制重新加载缩略图...")
+                self._force_reload_thumbnails()
+                logger.debug("缩略图强制重新加载完成")
+            
+            self.update_save_actions_state()
         else:
             QMessageBox.critical(self, "错误", message)
     
@@ -841,6 +923,145 @@ class AuroraPDF(QMainWindow):
             self.thumbnail_list.clear_thumbnails()
         
         self.view_controller.load_thumbnails()
+    
+    def _ensure_image_displayed(self):
+        """确保图片正确显示 - 修复图片加载后不显示的问题"""
+        try:
+            logger.debug("执行额外的图片显示检查...")
+            
+            # 检查PDF处理器是否准备就绪
+            if not self.pdf_processor or not self.pdf_processor.fitz_document:
+                logger.debug("PDF处理器未准备好")
+                return
+            
+            # 强制跳转到第一页（对于图片文件）
+            self.pdf_processor.current_page = 0
+            logger.debug("强制设置当前页面为第0页")
+            
+            # 检查虚拟滚动区域是否有页面数据
+            if not hasattr(self, 'virtual_scroll') or not self.virtual_scroll.pages_data:
+                logger.debug("虚拟滚动区域没有页面数据，重新设置...")
+                self._setup_virtual_scroll_data()
+                
+                # 等待虚拟滚动区域数据设置完成
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(150, self._retry_ensure_image_displayed)
+                return
+            
+            # 强制触发虚拟滚动区域的页面渲染
+            if hasattr(self, 'virtual_scroll'):
+                # 清除虚拟滚动区域的渲染缓存
+                if hasattr(self.virtual_scroll, 'clear_cache'):
+                    self.virtual_scroll.clear_cache()
+                    logger.debug("已清除虚拟滚动区域缓存")
+                
+                # 重新更新内容
+                self.virtual_scroll.update_content()
+                logger.debug("已重新更新虚拟滚动内容")
+                
+                # 延迟触发渲染以确保布局完成
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(100, self._force_render_current_page)
+                QTimer.singleShot(300, self._force_render_current_page)
+                
+                logger.debug("已触发额外的图片显示检查")
+            
+        except Exception as e:
+            logger.error(f"确保图片显示时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    
+    def _retry_ensure_image_displayed(self):
+        """重试确保图片显示"""
+        try:
+            logger.debug("重试图片显示检查...")
+            if hasattr(self, 'virtual_scroll') and self.virtual_scroll.pages_data:
+                self.virtual_scroll.update_content()
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(100, self._force_render_current_page)
+                logger.debug("重试图片显示完成")
+            else:
+                logger.debug("重试时虚拟滚动区域仍未准备好")
+        except Exception as e:
+            logger.error(f"重试确保图片显示时出错: {e}")
+    
+    def _force_render_current_page(self):
+        """强制渲染当前页面"""
+        try:
+            logger.debug("强制渲染当前页面...")
+            
+            if (hasattr(self, 'pdf_processor') and 
+                self.pdf_processor.fitz_document and 
+                hasattr(self, 'virtual_scroll')):
+                
+                # 确保当前页面设置为0（图片的第一页）
+                self.pdf_processor.current_page = 0
+                
+                # 确保虚拟滚动区域已准备好
+                if hasattr(self.virtual_scroll, '_render_visible_pages'):
+                    # 立即渲染可见页面
+                    self.virtual_scroll._render_visible_pages()
+                    logger.debug("已强制渲染可见页面")
+                
+                # 直接渲染第一页（对于图片文件通常是第0页）
+                page_num = 0
+                page_dimensions = self.pdf_processor.get_page_dimensions(page_num)
+                
+                if page_dimensions:
+                    width = int(page_dimensions['width'] * self.pdf_processor.zoom_factor)
+                    height = int(page_dimensions['height'] * self.pdf_processor.zoom_factor)
+                    
+                    logger.debug(f"准备直接渲染页面: {page_num}, 尺寸: {width} x {height}")
+                    
+                    # 直接渲染页面
+                    pixmap = self.pdf_processor.render_page_at(page_num, width, height)
+                    
+                    if pixmap:
+                        logger.debug(f"直接强制渲染页面成功: {pixmap.width()} x {pixmap.height()}")
+                        # 调用虚拟滚动区域的页面渲染完成回调
+                        self.virtual_scroll.on_page_rendered(page_num, pixmap)
+                        
+                        # 额外确保虚拟滚动区域更新显示
+                        self.virtual_scroll.update()
+                        logger.debug("已更新虚拟滚动区域显示")
+                    else:
+                        logger.debug("直接强制渲染页面失败，返回空pixmap")
+                        
+                        # 尝试再次渲染
+                        from PyQt5.QtCore import QTimer
+                        QTimer.singleShot(200, self._retry_force_render_current_page)
+                else:
+                    logger.debug(f"无法获取页面{page_num}的尺寸信息")
+            
+        except Exception as e:
+            logger.error(f"强制渲染当前页面失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    
+    def _retry_force_render_current_page(self):
+        """重试强制渲染当前页面"""
+        try:
+            logger.debug("重试强制渲染当前页面...")
+            if (hasattr(self, 'pdf_processor') and 
+                self.pdf_processor.fitz_document and 
+                hasattr(self, 'virtual_scroll')):
+                
+                page_num = 0
+                page_dimensions = self.pdf_processor.get_page_dimensions(page_num)
+                
+                if page_dimensions:
+                    width = int(page_dimensions['width'] * self.pdf_processor.zoom_factor)
+                    height = int(page_dimensions['height'] * self.pdf_processor.zoom_factor)
+                    
+                    pixmap = self.pdf_processor.render_page_at(page_num, width, height)
+                    
+                    if pixmap:
+                        logger.debug(f"重试渲染页面成功: {pixmap.width()} x {pixmap.height()}")
+                        self.virtual_scroll.on_page_rendered(page_num, pixmap)
+                    else:
+                        logger.debug("重试渲染页面仍然失败")
+        except Exception as e:
+            logger.error(f"重试强制渲染当前页面失败: {e}")
     
     def update_preview(self):
         """更新PDF预览显示"""
@@ -1112,6 +1333,10 @@ class AuroraPDF(QMainWindow):
         
     def import_images(self):
         return self.file_manager.import_images()
+        
+    def open_images_from_directory(self):
+        """从目录打开图片文件"""
+        return self.file_manager.open_images_from_directory()
         
     def zoom_in(self):
         return self.view_controller.zoom_in()

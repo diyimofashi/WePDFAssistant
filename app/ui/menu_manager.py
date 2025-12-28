@@ -191,6 +191,11 @@ class MenuManager(QObject):
         import_images_action.triggered.connect(self.parent.import_images)
         pdf_menu.addAction(import_images_action)
         
+        # 从目录导入图片
+        import_images_dir_action = QAction("📂 从目录导入图片", self.parent)
+        import_images_dir_action.triggered.connect(self.parent.open_images_from_directory)
+        pdf_menu.addAction(import_images_dir_action)
+        
         # 转为图片
         convert_to_image_action = QAction("🖼️ 转为图片", self.parent)
         convert_to_image_action.setShortcut("Ctrl+I")

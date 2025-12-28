@@ -77,8 +77,10 @@ class VirtualScrollArea(QScrollArea):
             logger.debug(f"有页面数据，共{len(self.pages_data)}页")
             self._calculate_layout()
             self._update_virtual_widget()
-            # 延迟渲染可见页面，确保布局完成
-            QTimer.singleShot(50, self._render_visible_pages)
+            # 延迟渲染可见页面，确保布局完成，增加延迟时间确保图片加载完成
+            QTimer.singleShot(100, self._render_visible_pages)
+            # 额外延迟再次尝试渲染，确保图片显示
+            QTimer.singleShot(300, self._render_visible_pages)
             logger.debug("虚拟滚动区域内容更新完成")
         else:
             logger.warning("没有页面数据，尝试从父窗口获取")
@@ -124,8 +126,8 @@ class VirtualScrollArea(QScrollArea):
         self.pages_data = pages_data
         self._calculate_layout()
         self._update_virtual_widget()
-        # 不要立即渲染页面，而是延迟渲染以避免界面卡顿
-        QTimer.singleShot(100, self._render_visible_pages)
+        # 立即渲染可见页面，确保内容立即显示
+        QTimer.singleShot(50, self._render_visible_pages)
         logger.debug("页面数据设置完成")
         
     def _calculate_layout(self):
@@ -348,6 +350,10 @@ class VirtualScrollArea(QScrollArea):
         # 渲染新可见的页面，按顺序渲染
         for page_num in sorted(new_visible_pages):
             if page_num not in self.visible_pages:
+                self._render_page(page_num)
+            # 额外检查：即使页面已在visible_pages中，也检查是否需要重新渲染
+            elif page_num not in self.rendered_pages:
+                logger.debug(f"页面{page_num + 1}在visible_pages中但未渲染，尝试重新渲染")
                 self._render_page(page_num)
                 
         # 隐藏不再可见的页面

@@ -43,6 +43,7 @@ class PDFProcessor(QObject):
         self.current_file = None
         self.pdf_document = None
         self.fitz_document = None  # PyMuPDF文档对象
+        self.total_pages = 0  # 总页数
         self.current_page = 0  # 当前页码（从0开始）
         self.zoom_factor = 2.0  # 缩放因子（设置为2.0，即200%作为新的100%基准）
         self.base_zoom = 2.0  # 基准缩放因子（用户看到的100%实际是200%）
@@ -134,14 +135,253 @@ class PDFProcessor(QObject):
             pass
 
     def open_pdf(self, file_path, async_mode=True, password=None):
-        """打开PDF文件 - 支持异步和同步模式"""
-        # 在打开新文件前，先关闭旧文档
-        self.close_document()
-
-        if async_mode:
-            return self.open_pdf_async(file_path, password)
+        """打开PDF文件或图片文件 - 支持异步和同步模式"""
+        # 检查是否为图片文件
+        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+        file_ext = os.path.splitext(file_path)[1].lower()
+        
+        if file_ext in image_extensions:
+            # 如果是图片文件，根据async_mode参数决定使用哪种方法
+            if async_mode:
+                return self.open_image_as_pdf_async(file_path)
+            else:
+                return self.open_image_as_pdf_sync(file_path)
         else:
-            return self.open_pdf_sync(file_path, password)
+            # 否则按原有逻辑处理PDF文件
+            # 在打开新文件前，先关闭旧文档
+            self.close_document()
+
+            if async_mode:
+                return self.open_pdf_async(file_path, password)
+            else:
+                return self.open_pdf_sync(file_path, password)
+    
+    def open_image_as_pdf(self, image_path, async_mode=True):
+        """将图片作为PDF打开"""
+        try:
+            # 使用PyMuPDF打开图片，它会自动将其视为单页PDF
+            self.fitz_document = fitz.open(image_path)
+            self.pdf_document = None  # 图片模式下不需要PyPDF2文档
+            self.current_file = image_path
+            self.total_pages = len(self.fitz_document)
+            self.current_page = 0
+            self.zoom_factor = self.base_zoom  # 重置为基准缩放
+            self.last_error = ""
+            
+            # 清除缓存
+            self.clear_render_cache()
+            
+            # 发送加载完成信号
+            self.loading_finished.emit(True, f"成功打开图片文件，共{self.total_pages}页")
+            
+            return True, f"成功打开图片文件，共{self.total_pages}页"
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"打开图片文件时出错: {error_msg}")
+            return False, f"无法打开图片文件: {error_msg}"
+    
+    def open_image_as_pdf_sync(self, image_path):
+        """同步将图片作为PDF打开"""
+        try:
+            # 使用PyMuPDF打开图片，它会自动将其视为单页PDF
+            self.fitz_document = fitz.open(image_path)
+            self.pdf_document = None  # 图片模式下不需要PyPDF2文档
+            self.current_file = image_path
+            self.total_pages = len(self.fitz_document)
+            self.current_page = 0
+            self.zoom_factor = self.base_zoom  # 重置为基准缩放
+            self.last_error = ""
+            
+            # 清除缓存
+            self.clear_render_cache()
+            
+            return True, f"成功打开图片文件，共{self.total_pages}页"
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"打开图片文件时出错: {error_msg}")
+            return False, f"无法打开图片文件: {error_msg}"
+    
+    def open_image_as_pdf_async(self, image_path):
+        """异步将图片作为PDF打开"""
+        try:
+            # 检查文件是否存在和可读
+            if not os.path.exists(image_path):
+                return False, "文件不存在"
+
+            if not os.access(image_path, os.R_OK):
+                return False, "文件不可读"
+
+            # 取消之前的加载任务
+            if self.async_loader and self.async_loader.isRunning():
+                self.async_loader.cancel()
+                self.async_loader.wait()
+
+            # 创建异步加载器 - 为图片文件使用现有的加载器
+            # 但我们需要在后台线程中验证图片文件
+            from PyQt5.QtCore import QThread
+            
+            class AsyncImageLoader(QThread):
+                def __init__(self, parent, image_path):
+                    super().__init__()
+                    self.parent = parent
+                    self.image_path = image_path
+                    self.result = None
+                    self.error = None
+                    self.load_start_time = time.time()
+                    self.is_cancelled = False
+                    
+                def cancel(self):
+                    """取消加载操作"""
+                    self.is_cancelled = True
+                    
+                def run(self):
+                    try:
+                        # 检查是否被取消
+                        if self.is_cancelled:
+                            return
+                        
+                        # 尝试用PyMuPDF打开图片文件
+                        import fitz
+                        doc = fitz.open(self.image_path)
+                        total_pages = len(doc)
+                        doc.close()
+                        
+                        # 检查是否被取消
+                        if self.is_cancelled:
+                            return
+                        
+                        # 准备图片信息
+                        image_info = {
+                            'filepath': self.image_path,
+                            'total_pages': total_pages,
+                            'file_size': os.path.getsize(self.image_path)
+                        }
+                        
+                        self.result = image_info
+                    except Exception as e:
+                        self.error = str(e)
+                        
+            # 创建加载器
+            loader = AsyncImageLoader(self, image_path)
+            # 保存加载器引用，以便在回调中访问加载开始时间
+            self.async_loader = loader
+            
+            def on_image_load_complete():
+                if loader.error:
+                    self.loading_finished.emit(False, f"无法打开图片文件: {loader.error}")
+                else:
+                    # 调用图片加载完成的处理
+                    self._on_image_loaded(True, f"成功打开图片文件，共{loader.result['total_pages']}页", loader.result)
+            
+            loader.finished.connect(on_image_load_complete)
+            loader.start()
+
+            return True, "开始异步加载图片文件..."
+
+        except Exception as e:
+            return False, f"启动异步加载失败: {str(e)}"
+    
+    def _on_image_loaded(self, success, message, image_info):
+        """图片异步加载完成回调"""
+        if success:
+            try:
+                # 强制关闭旧的fitz文档，防止重复打开导致Graftmaps错误
+                if self.fitz_document:
+                    try:
+                        self.fitz_document.close()
+                    except:
+                        pass
+                    self.fitz_document = None
+
+                # 在主线程中打开PyMuPDF文档
+                self.fitz_document = fitz.open(image_info['filepath'])
+                
+                # 更新处理器状态
+                self.current_file = image_info['filepath']
+                self.total_pages = len(self.fitz_document)
+                self.current_page = 0
+                self.zoom_factor = self.base_zoom
+                self.last_error = ""
+                
+                # 清除缓存
+                self.clear_render_cache()
+                
+                # 计算加载时间
+                if hasattr(self, 'async_loader') and self.async_loader:
+                    self.load_time = time.time() - self.async_loader.load_start_time
+                else:
+                    # 对于图片加载，使用当前时间作为开始时间
+                    self.load_time = 0.0
+                
+                # 发送加载完成信号
+                self.loading_finished.emit(True, message)
+
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"打开PyMuPDF图片文档时出错: {error_msg}")
+                self.loading_finished.emit(False, f"初始化渲染引擎失败: {error_msg}")
+        else:
+            # 发送加载失败信号
+            self.loading_finished.emit(False, message)
+    
+    def open_images_from_directory(self, directory_path, async_mode=True):
+        """从目录打开所有图片并合并为PDF"""
+        try:
+            # 获取目录中的所有图片文件
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+            image_files = []
+            
+            for file_name in os.listdir(directory_path):
+                file_ext = os.path.splitext(file_name)[1].lower()
+                if file_ext in image_extensions:
+                    image_files.append(os.path.join(directory_path, file_name))
+            
+            if not image_files:
+                return False, "目录中没有找到支持的图片文件"
+            
+            # 按文件名排序
+            image_files.sort()
+            
+            # 创建一个新的PDF文档，将所有图片添加为页面
+            new_doc = fitz.open()  # 创建空的PDF文档
+            
+            for image_path in image_files:
+                # 打开图片
+                img_doc = fitz.open(image_path)
+                # 将图片插入到PDF中
+                new_doc.insert_pdf(img_doc)
+                img_doc.close()
+            
+            # 关闭旧文档并设置新文档
+            if self.fitz_document:
+                try:
+                    self.fitz_document.close()
+                except:
+                    pass
+                self.fitz_document = None
+            
+            self.fitz_document = new_doc
+            self.pdf_document = None  # 目录模式下使用PyMuPDF文档
+            self.current_file = f"Directory: {directory_path}"
+            self.total_pages = len(self.fitz_document)
+            self.current_page = 0
+            self.zoom_factor = self.base_zoom  # 重置为基准缩放
+            self.last_error = ""
+            
+            # 清除缓存
+            self.clear_render_cache()
+            
+            # 发送加载完成信号
+            self.loading_finished.emit(True, f"成功加载 {len(image_files)} 张图片，合并为 {self.total_pages} 页")
+            
+            return True, f"成功加载 {len(image_files)} 张图片，合并为 {self.total_pages} 页"
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"从目录打开图片时出错: {error_msg}")
+            return False, f"无法从目录打开图片: {error_msg}"
     
     def open_pdf_sync(self, file_path, password=None):
         """同步打开PDF文件（原有逻辑）"""
@@ -290,6 +530,7 @@ class PDFProcessor(QObject):
 
             # 重置状态
             self.current_file = file_path
+            self.total_pages = len(self.pdf_document.pages) if self.pdf_document else len(self.fitz_document)
             self.current_page = 0
             self.zoom_factor = self.base_zoom  # 重置为基准缩放（300%作为100%基准）
             self.last_error = ""
@@ -390,6 +631,12 @@ class PDFProcessor(QObject):
                 self.current_file = pdf_info['filepath']
                 self.file_size = pdf_info['file_size']
                 self.pdf_document = pdf_info['pdf_document']
+                # 计算总页数 - 考虑到可能是图片文件
+                if self.pdf_document:
+                    self.total_pages = len(self.pdf_document.pages)
+                else:
+                    # 如果是图片文件，使用fitz_document的页面数
+                    self.total_pages = len(self.fitz_document)
                 self.current_page = 0
                 self.zoom_factor = self.base_zoom
                 self.last_error = ""
