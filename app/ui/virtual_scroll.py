@@ -243,9 +243,6 @@ class VirtualScrollArea(QScrollArea):
             # 如果有OCR结果，设置到页面标签
             if ocr_result and hasattr(ocr_result, 'data'):
                 page_label.set_ocr_data(ocr_result.data)
-                logger.debug(f"已为第{page_num + 1}页设置OCR文本层，共{len(ocr_result.data)}个文本元素")
-            else:
-                logger.debug(f"第{page_num + 1}页没有OCR数据")
                 
         except Exception as e:
             logger.error(f"设置第{page_num + 1}页OCR文本层失败: {e}")
@@ -464,7 +461,6 @@ class VirtualScrollArea(QScrollArea):
                         scale_y = pixmap.height() / actual_height if actual_height > 0 else 1.0
                         # 使用平均缩放比例
                         page_scale = (scale_x + scale_y) / 2.0
-                        print(f"页面{page_num + 1}缩放比例: {page_scale}")
                         # 设置页面标签的缩放比例
                         page_label.page_scale = page_scale
             
@@ -472,8 +468,6 @@ class VirtualScrollArea(QScrollArea):
                 
         except Exception as e:
             logger.error(f"显示渲染页面 {page_num} 失败: {e}")
-            import traceback
-            traceback.print_exc()
             
     def clear_cache(self):
         """清除渲染缓存"""
@@ -512,50 +506,7 @@ class VirtualScrollArea(QScrollArea):
             self._pending_ocr_data[page_num] = ocr_result
             logger.debug(f"页面{page_num + 1}尚未渲染，存储OCR数据供后续使用")
     
-    def _set_page_ocr_layer(self, page_num, page_label, ocr_result=None):
-        """设置页面的OCR文本层"""
-        try:
-            print(f"_set_page_ocr_layer 调用，页码: {page_num}, OCR结果: {ocr_result}")
-            # 如果没有提供OCR结果，则尝试从_pending_ocr_data中获取
-            if ocr_result is None:
-                print("OCR结果为None，尝试从_pending_ocr_data获取")
-                if hasattr(self, '_pending_ocr_data') and page_num in self._pending_ocr_data:
-                    ocr_result = self._pending_ocr_data[page_num]
-                    print(f"从_pending_ocr_data获取到OCR结果: {ocr_result}")
-                else:
-                    print("_pending_ocr_data中没有该页面的OCR数据，尝试从父窗口获取")
-                    # 尝试从父窗口的PDF处理器获取OCR结果
-                    parent = self.parent()
-                    print(f"父窗口: {parent}")
-                    while parent and not hasattr(parent, 'pdf_processor'):
-                        parent = parent.parent()
-                        print(f"向上查找父窗口: {parent}")
-                    
-                    if parent and hasattr(parent, 'pdf_processor'):
-                        pdf_processor = parent.pdf_processor
-                        print(f"找到PDF处理器: {pdf_processor}")
-                        if hasattr(pdf_processor, 'ocr_results') and page_num in pdf_processor.ocr_results:
-                            ocr_result = pdf_processor.ocr_results[page_num]
-                            print(f"从PDF处理器获取到OCR结果: {ocr_result}")
-                    else:
-                        print("未找到PDF处理器")
-            else:
-                print(f"提供了OCR结果: {ocr_result}")
-            
-            # 如果有OCR结果，设置到页面标签
-            if ocr_result and hasattr(ocr_result, 'data'):
-                print(f"设置OCR数据到页面标签，数据长度: {len(ocr_result.data) if ocr_result.data else 0}")
-                # 传递页面缩放比例给OCR页面标签
-                page_label.set_ocr_data(ocr_result.data, page_scale=page_label.page_scale)
-                logger.debug(f"已为第{page_num + 1}页设置OCR文本层，共{len(ocr_result.data)}个文本元素")
-            else:
-                print("没有有效的OCR数据")
-                logger.debug(f"第{page_num + 1}页没有OCR数据")
-                
-        except Exception as e:
-            logger.error(f"设置第{page_num + 1}页OCR文本层失败: {e}")
-            import traceback
-            traceback.print_exc()
+
     
     def get_current_page(self):
         """获取当前页面（基于滚动位置）"""

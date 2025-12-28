@@ -41,6 +41,18 @@ class MenuManager(QObject):
         open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self.parent.open_file)
         file_menu.addAction(open_action)
+        
+        # 打开多张图片
+        open_multiple_images_action = QAction("🖼️ 打开多张图片", self.parent)
+        open_multiple_images_action.setShortcut("Ctrl+Shift+O")
+        open_multiple_images_action.triggered.connect(self.parent.open_multiple_images)
+        file_menu.addAction(open_multiple_images_action)
+        
+        # 打开图片目录
+        open_image_dir_action = QAction("📁 打开图片目录", self.parent)
+        open_image_dir_action.setShortcut("Ctrl+D")
+        open_image_dir_action.triggered.connect(self.parent.open_image_directory)
+        file_menu.addAction(open_image_dir_action)
 
         # 保存
         save_action = QAction("💾 保存", self.parent)

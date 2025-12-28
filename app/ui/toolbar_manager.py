@@ -138,9 +138,16 @@ class ToolbarManager(QObject):
         self.parent.page_spinbox.editingFinished.connect(self.parent.go_to_page)
         toolbar.addWidget(self.parent.page_spinbox)
         
-        # 总页数标签
-        self.parent.total_pages_label = QLabel()
-        toolbar.addWidget(self.parent.total_pages_label)
+        # 总页数标签 - 格式为 "/总页码"
+        self.parent.toolbar_total_pages_label = QLabel("/ 0")
+        self.parent.toolbar_total_pages_label.setStyleSheet("""
+            QLabel {
+                color: #666;
+                font-size: 12px;
+                padding: 0px 2px;
+            }
+        """)
+        toolbar.addWidget(self.parent.toolbar_total_pages_label)
     
     def _add_mode_actions(self, toolbar):
         """添加模式切换按钮"""

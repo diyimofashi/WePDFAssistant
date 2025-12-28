@@ -79,6 +79,11 @@ class PDFProcessor(QObject):
         self.operation_history = OperationHistory(max_history_size=100)
         # 连接操作历史记录变化信号
         self.operation_history.history_changed.connect(self.operation_history_changed.emit)
+        
+        # 多图片文档相关属性
+        self.multi_image_paths = []  # 存储多图片文档的原始路径
+        self.multi_image_source_dir = None  # 存储源目录路径
+        self.is_new_document = False  # 标记是否为新建文档
 
     def __del__(self):
         """析构函数，确保资源被释放 - 防止Graftmaps错误"""
@@ -326,6 +331,290 @@ class PDFProcessor(QObject):
             # 发送加载失败信号
             self.loading_finished.emit(False, message)
     
+    def open_multiple_images(self, image_paths, async_mode=True, source_directory=None):
+        """打开多张图片文件，按顺序依次显示"""
+        try:
+            logger.info(f"开始加载{len(image_paths)}张图片...")
+            
+            if not image_paths:
+                return False, "没有提供图片文件路径"
+            
+            if len(image_paths) == 1:
+                # 单张图片使用现有方法
+                return self.open_pdf(image_paths[0], async_mode)
+            
+            # 多张图片需要特殊处理
+            if async_mode:
+                return self.open_multiple_images_async(image_paths, source_directory)
+            else:
+                return self.open_multiple_images_sync(image_paths, source_directory)
+                
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"打开多张图片时出错: {error_msg}")
+            return False, f"打开多张图片失败: {error_msg}"
+    
+    def open_multiple_images_async(self, image_paths, source_directory=None):
+        """异步打开多张图片"""
+        try:
+            # 验证所有图片文件
+            valid_paths = []
+            for path in image_paths:
+                if os.path.exists(path) and os.access(path, os.R_OK):
+                    valid_paths.append(path)
+                else:
+                    logger.warning(f"跳过无效图片文件: {path}")
+            
+            if not valid_paths:
+                return False, "没有有效的图片文件"
+            
+            # 取消之前的加载任务
+            if self.async_loader and self.async_loader.isRunning():
+                self.async_loader.cancel()
+                self.async_loader.wait()
+            
+            # 创建多图片异步加载器
+            from PyQt5.QtCore import QThread
+            
+            class AsyncMultipleImagesLoader(QThread):
+                def __init__(self, parent, image_paths, source_directory=None):
+                    super().__init__()
+                    self.parent = parent
+                    self.image_paths = image_paths
+                    self.source_directory = source_directory
+                    self.result = None
+                    self.error = None
+                    self.load_start_time = time.time()
+                    self.is_cancelled = False
+                    
+                def cancel(self):
+                    """取消加载操作"""
+                    self.is_cancelled = True
+                    
+                def run(self):
+                    try:
+                        # 检查是否被取消
+                        if self.is_cancelled:
+                            return
+                        
+                        # 验证所有图片文件是否可以被PyMuPDF打开
+                        import fitz
+                        valid_images = []
+                        
+                        for i, path in enumerate(self.image_paths):
+                            if self.is_cancelled:
+                                return
+                            
+                            try:
+                                # 尝试打开图片
+                                doc = fitz.open(path)
+                                pages = len(doc)
+                                doc.close()
+                                
+                                if pages > 0:
+                                    valid_images.append({
+                                        'filepath': path,
+                                        'pages': pages,
+                                        'index': i
+                                    })
+                                else:
+                                    logger.warning(f"图片文件没有页面: {path}")
+                                    
+                            except Exception as e:
+                                logger.warning(f"无法打开图片文件 {path}: {e}")
+                                continue
+                        
+                        # 检查是否被取消
+                        if self.is_cancelled:
+                            return
+                        
+                        if not valid_images:
+                            self.error = "没有有效的图片文件"
+                            return
+                        
+                        # 按原始顺序排序
+                        valid_images.sort(key=lambda x: x['index'])
+                        
+                        # 准备结果
+                        result = {
+                            'image_paths': [img['filepath'] for img in valid_images],
+                            'total_pages': sum(img['pages'] for img in valid_images),
+                            'image_count': len(valid_images),
+                            'source_directory': self.source_directory,
+                            'file_sizes': [os.path.getsize(img['filepath']) for img in valid_images]
+                        }
+                        
+                        self.result = result
+                        
+                    except Exception as e:
+                        self.error = str(e)
+            
+            # 创建加载器
+            loader = AsyncMultipleImagesLoader(self, valid_paths, source_directory)
+            self.async_loader = loader
+            
+            def on_multiple_images_load_complete():
+                if loader.error:
+                    self.loading_finished.emit(False, f"无法加载多张图片: {loader.error}")
+                else:
+                    self._on_multiple_images_loaded(True, f"成功加载{loader.result['image_count']}张图片，共{loader.result['total_pages']}页", loader.result)
+            
+            loader.finished.connect(on_multiple_images_load_complete)
+            loader.start()
+            
+            return True, f"开始异步加载{len(valid_paths)}张图片..."
+            
+        except Exception as e:
+            return False, f"启动多图片异步加载失败: {str(e)}"
+    
+    def open_multiple_images_sync(self, image_paths, source_directory=None):
+        """同步打开多张图片"""
+        try:
+            # 强制关闭旧文档
+            if self.fitz_document:
+                try:
+                    self.fitz_document.close()
+                except:
+                    pass
+                self.fitz_document = None
+            
+            # 验证所有图片文件
+            valid_paths = []
+            for path in image_paths:
+                if os.path.exists(path) and os.access(path, os.R_OK):
+                    valid_paths.append(path)
+                else:
+                    logger.warning(f"跳过无效图片文件: {path}")
+            
+            if not valid_paths:
+                return False, "没有有效的图片文件"
+            
+            # 创建新的PyMuPDF文档，将多张图片合并到一个文档中
+            self.fitz_document = fitz.open()  # 创建空文档
+            
+            # 添加每张图片作为新页面
+            for path in valid_paths:
+                try:
+                    # 直接在当前文档中创建新页面并插入图片
+                    img = fitz.open(path)  # 打开图片
+                    img_page = img[0]  # 获取图片页面
+                    
+                    # 获取图片尺寸
+                    img_rect = img_page.rect
+                    new_page = self.fitz_document.new_page(width=img_rect.width, height=img_rect.height)
+                    
+                    # 将图片插入到新页面
+                    new_page.insert_image(new_page.rect, filename=path)
+                    
+                    img.close()
+                except Exception as e:
+                    logger.error(f"处理图片 {path} 时出错: {e}")
+                    continue
+            
+            # 更新处理器状态
+            self.current_file = f"多图片文档 - {len(valid_paths)}张图片" if not source_directory else f"目录: {os.path.basename(source_directory)}"
+            self.total_pages = len(self.fitz_document)
+            self.current_page = 0
+            self.zoom_factor = self.base_zoom
+            self.last_error = ""
+            # 标记这是新建的多图片文档，需要另存为
+            self.is_new_document = True
+            # 设置多图片路径属性，用于状态栏显示
+            self.multi_image_paths = valid_paths.copy()
+            self.multi_image_source_dir = source_directory
+            
+            # 存储原始图片路径信息，供导航使用
+            self.multi_image_paths = valid_paths
+            self.multi_image_source_dir = source_directory
+            
+            # 清除缓存
+            self.clear_render_cache()
+            
+            # 计算文件总大小
+            total_size = sum(os.path.getsize(path) for path in valid_paths if os.path.exists(path))
+            
+            return True, f"成功加载{len(valid_paths)}张图片，共{self.total_pages}页"
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"同步加载多张图片时出错: {error_msg}")
+            return False, f"加载多张图片失败: {error_msg}"
+    
+    def _on_multiple_images_loaded(self, success, message, result):
+        """多张图片异步加载完成回调"""
+        if success:
+            try:
+                # 强制关闭旧的fitz文档
+                if self.fitz_document:
+                    try:
+                        self.fitz_document.close()
+                    except:
+                        pass
+                    self.fitz_document = None
+                
+                # 创建新的PyMuPDF文档
+                import fitz
+                self.fitz_document = fitz.open()  # 创建空文档
+                
+                # 添加每张图片作为新页面
+                for path in result['image_paths']:
+                    try:
+                        # 直接在当前文档中创建新页面并插入图片
+                        img = fitz.open(path)  # 打开图片
+                        img_page = img[0]  # 获取图片页面
+                        
+                        # 获取图片尺寸
+                        img_rect = img_page.rect
+                        new_page = self.fitz_document.new_page(width=img_rect.width, height=img_rect.height)
+                        
+                        # 将图片插入到新页面
+                        new_page.insert_image(new_page.rect, filename=path)
+                        
+                        img.close()
+                    except Exception as e:
+                        logger.error(f"处理图片 {path} 时出错: {e}")
+                        continue
+                
+                # 更新处理器状态
+                if result['source_directory']:
+                    self.current_file = f"目录: {os.path.basename(result['source_directory'])}"
+                else:
+                    self.current_file = f"多图片文档 - {len(result['image_paths'])}张图片"
+                
+                self.total_pages = len(self.fitz_document)
+                self.current_page = 0
+                self.zoom_factor = self.base_zoom
+                self.last_error = ""
+                # 标记这是新建的多图片文档，需要另存为
+                self.is_new_document = True
+                # 设置多图片路径属性，用于状态栏显示
+                self.multi_image_paths = result['image_paths'].copy()
+                self.multi_image_source_dir = result['source_directory']
+                
+                # 存储原始图片路径信息
+                self.multi_image_paths = result['image_paths']
+                self.multi_image_source_dir = result['source_directory']
+                
+                # 清除缓存
+                self.clear_render_cache()
+                
+                # 计算加载时间
+                if hasattr(self, 'async_loader') and self.async_loader:
+                    self.load_time = time.time() - self.async_loader.load_start_time
+                else:
+                    self.load_time = 0.0
+                
+                # 发送加载完成信号
+                self.loading_finished.emit(True, message)
+                
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"初始化多图片文档时出错: {error_msg}")
+                self.loading_finished.emit(False, f"初始化多图片文档失败: {error_msg}")
+        else:
+            # 发送加载失败信号
+            self.loading_finished.emit(False, message)
+    
     def open_images_from_directory(self, directory_path, async_mode=True):
         """从目录打开所有图片并合并为PDF"""
         try:
@@ -348,11 +637,16 @@ class PDFProcessor(QObject):
             new_doc = fitz.open()  # 创建空的PDF文档
             
             for image_path in image_files:
-                # 打开图片
-                img_doc = fitz.open(image_path)
-                # 将图片插入到PDF中
-                new_doc.insert_pdf(img_doc)
-                img_doc.close()
+                # 打开图片并获取尺寸
+                img = fitz.open(image_path)
+                img_page = img[0]
+                img_rect = img_page.rect
+                
+                # 创建新页面并插入图片
+                new_page = new_doc.new_page(width=img_rect.width, height=img_rect.height)
+                new_page.insert_image(new_page.rect, filename=image_path)
+                
+                img.close()
             
             # 关闭旧文档并设置新文档
             if self.fitz_document:
@@ -369,6 +663,11 @@ class PDFProcessor(QObject):
             self.current_page = 0
             self.zoom_factor = self.base_zoom  # 重置为基准缩放
             self.last_error = ""
+            # 标记这是新建的目录文档，需要另存为
+            self.is_new_document = True
+            # 设置多图片路径属性，用于状态栏显示
+            self.multi_image_paths = image_files.copy()
+            self.multi_image_source_dir = directory_path
             
             # 清除缓存
             self.clear_render_cache()

@@ -28,34 +28,24 @@ class OCRPageLabel(QLabel):
             page_scale: 页面缩放比例
             page_offset: 页面偏移量
         """
-        print(f"set_ocr_data 调用，输入数据: {ocr_data}")
         self.ocr_data = ocr_data if ocr_data else []
-        print(f"存储的OCR数据: {self.ocr_data}")
         self.page_scale = page_scale
         self.page_offset = page_offset
-        print("触发重绘")
         self.update()  # 触发重绘
         
     def paintEvent(self, event):
         """重写绘制事件，绘制页面和OCR文本层"""
-        print(f"OCRPageLabel.paintEvent 调用，OCR数据长度: {len(self.ocr_data)}")
         # 先绘制父类的内容（PDF页面图像）
         super().paintEvent(event)
         
         # 如果有OCR数据，则绘制文本层
         if self.ocr_data:
-            print("开始绘制OCR文本层")
             self._draw_ocr_text_layer(event)
-            print("OCR文本层绘制完成")
-        else:
-            print("没有OCR数据，跳过绘制")
     
     def _draw_ocr_text_layer(self, event):
         """绘制OCR文本层"""
         try:
-            print(f"开始绘制OCR文本层，OCR数据: {self.ocr_data}")
             if not self.ocr_data:
-                print("没有OCR数据，跳过绘制")
                 return
                 
             painter = QPainter(self)
@@ -68,7 +58,6 @@ class OCRPageLabel(QLabel):
             
             # 绘制每个OCR识别的文本框
             for i, item in enumerate(self.ocr_data):
-                print(f"处理第{i}个OCR项: {item}")
                 if not isinstance(item, dict):
                     continue
                     
@@ -76,11 +65,7 @@ class OCRPageLabel(QLabel):
                 bbox = item.get("bbox", [])
                 
                 # 检查边界框数据是否有效
-                if not text:
-                    print(f"第{i}个OCR项没有文本")
-                    continue
-                if not bbox:
-                    print(f"第{i}个OCR项没有边界框")
+                if not text or not bbox:
                     continue
                 
                 # 处理不同格式的边界框
@@ -91,13 +76,9 @@ class OCRPageLabel(QLabel):
                         if isinstance(point, list) and len(point) == 2:
                             flattened_bbox.extend(point)
                     bbox = flattened_bbox
-                    print(f"转换边界框格式: {bbox}")
                 
                 if len(bbox) != 8:
-                    print(f"第{i}个OCR项边界框长度不正确: {len(bbox)}")
                     continue
-                
-                print(f"第{i}个OCR项有效: 文本='{text}', 边界框={bbox}")
                 
                 # 转换边界框坐标（考虑缩放和偏移）
                 scaled_bbox = self._scale_bbox(bbox)

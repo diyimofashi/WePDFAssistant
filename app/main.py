@@ -278,9 +278,25 @@ class AuroraPDF(QMainWindow):
     def update_page_label(self):
         """更新页码显示"""
         if hasattr(self, 'page_label') and hasattr(self, 'pdf_processor'):
-            if self.pdf_processor.current_page >= 0 and self.pdf_processor.total_pages > 0:
-                self.page_label.setText(f"第 {self.pdf_processor.current_page + 1} / {self.pdf_processor.total_pages} 页")
-            else:
+            try:
+                # 获取当前页面和总页数
+                current_page = getattr(self.pdf_processor, 'current_page', 0)
+                total_pages = self.pdf_processor.get_total_pages() if hasattr(self.pdf_processor, 'get_total_pages') else getattr(self.pdf_processor, 'total_pages', 0)
+                
+                if current_page >= 0 and total_pages > 0:
+                    # 检查是否为多图片文档
+                    if hasattr(self.pdf_processor, 'multi_image_paths') and self.pdf_processor.multi_image_paths:
+                        image_count = len(self.pdf_processor.multi_image_paths)
+                        if image_count > 1:
+                            self.page_label.setText(f"第 {current_page + 1} / {total_pages} 页 | {image_count} 张图片")
+                        else:
+                            self.page_label.setText(f"第 {current_page + 1} / {total_pages} 页")
+                    else:
+                        self.page_label.setText(f"第 {current_page + 1} / {total_pages} 页")
+                else:
+                    self.page_label.setText("")
+            except Exception as e:
+                logger.error(f"更新页码显示失败: {e}")
                 self.page_label.setText("")
     
     def update_zoom_label(self):
@@ -293,6 +309,23 @@ class AuroraPDF(QMainWindow):
         """页面变化时的处理"""
         self.update_page_label()
         self.update_save_actions_state()
+        # 也更新总页数显示
+        if hasattr(self, 'total_pages_label') and self.pdf_processor:
+            try:
+                total_pages = self.pdf_processor.get_total_pages()
+                self.total_pages_label.setText(f"/ {total_pages}")
+            except Exception as e:
+                logger.error(f"页面变化时更新总页数显示失败: {e}")
+                self.total_pages_label.setText("/ 0")
+        
+        # 更新工具栏的总页码标签
+        if hasattr(self, 'toolbar_total_pages_label') and self.pdf_processor:
+            try:
+                total_pages = self.pdf_processor.get_total_pages()
+                self.toolbar_total_pages_label.setText(f"/ {total_pages}")
+            except Exception as e:
+                logger.error(f"页面变化时更新工具栏总页数显示失败: {e}")
+                self.toolbar_total_pages_label.setText("/ 0")
     
     def _on_zoom_changed(self):
         """缩放变化时的处理"""
@@ -829,8 +862,12 @@ class AuroraPDF(QMainWindow):
             self.update_zoom_label()
             
             if hasattr(self, 'total_pages_label') and self.pdf_processor:
-                total_pages = self.pdf_processor.get_total_pages()
-                self.total_pages_label.setText(f"/ {total_pages}")
+                try:
+                    total_pages = self.pdf_processor.get_total_pages()
+                    self.total_pages_label.setText(f"/ {total_pages}")
+                except Exception as e:
+                    logger.error(f"更新总页数显示失败: {e}")
+                    self.total_pages_label.setText("/ 0")
             
             # 更新虚拟滚动区域内容
             if hasattr(self, 'virtual_scroll') and self.pdf_processor.fitz_document:
@@ -877,10 +914,16 @@ class AuroraPDF(QMainWindow):
                 file_name = os.path.basename(current_file) if current_file else "未知文件"
                 total_pages = self.pdf_processor.get_total_pages()
                 
+                # 检查是否为多图片文档
+                if hasattr(self.pdf_processor, 'multi_image_paths') and self.pdf_processor.multi_image_paths:
+                    image_count = len(self.pdf_processor.multi_image_paths)
+                    source_info = ""
+                    if self.pdf_processor.multi_image_source_dir:
+                        source_info = f" | 来源: {os.path.basename(self.pdf_processor.multi_image_source_dir)}"
+                    self.show_message(f"🖼️ 成功加载{image_count}张图片: {file_name} | 共 {total_pages} 页{source_info}")
+                    logger.debug(f"多图片文档加载完成: {image_count}张图片，共{total_pages}页")
                 # 检查是否为图片文件
-                is_image = current_file and any(current_file.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'])
-                
-                if is_image:
+                elif current_file and any(current_file.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico']):
                     self.show_message(f"🖼️ 成功加载图片: {file_name} | 共 {total_pages} 页")
                     logger.debug(f"图片加载完成: {file_name}")
                 else:
@@ -1089,6 +1132,12 @@ class AuroraPDF(QMainWindow):
             total_pages = self.pdf_processor.get_total_pages()
             self.page_spinbox.setMaximum(total_pages)
             self.total_pages_label.setText(f"/ {total_pages}")
+            # 更新工具栏的总页码标签
+            if hasattr(self, 'toolbar_total_pages_label'):
+                self.toolbar_total_pages_label.setText(f"/ {total_pages}")
+            # 更新工具栏的总页码标签
+            if hasattr(self, 'toolbar_total_pages_label'):
+                self.toolbar_total_pages_label.setText(f"/ {total_pages}")
             
             if self.show_thumbnails:
                 self.view_controller.load_thumbnails()
@@ -1312,6 +1361,14 @@ class AuroraPDF(QMainWindow):
     # 代理方法 - 将调用转发给相应的管理器
     def open_file(self):
         return self.file_manager.open_file()
+    
+    def open_multiple_images(self):
+        """打开多张图片"""
+        return self.file_manager.open_multiple_images()
+    
+    def open_image_directory(self):
+        """打开图片目录"""
+        return self.file_manager.open_image_directory()
 
     def save_file(self):
         return self.file_manager.save_file()

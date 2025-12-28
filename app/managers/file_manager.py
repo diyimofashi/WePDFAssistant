@@ -20,82 +20,189 @@ class FileManager:
         logger.info("开始打开文件...")
         last_dir = AppSettings.get_last_open_dir()
 
-        # 添加图片文件格式支持
-        file_path, _ = QFileDialog.getOpenFileName(
+        # 添加图片文件格式支持，支持多选
+        file_paths, _ = QFileDialog.getOpenFileNames(
             self.parent, "选择文件", last_dir, 
             "所有支持的文件 (*.pdf *.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;PDF文件 (*.pdf);;图片文件 (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;所有文件 (*.*)")
 
-        if file_path:
-            logger.info(f"选择了文件: {file_path}")
+        if file_paths:
+            logger.info(f"选择了{len(file_paths)}个文件: {file_paths}")
             
-            # 检查是否为图片文件
+            # 如果选择了多个文件，优先处理图片
             image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
-            file_ext = os.path.splitext(file_path)[1].lower()
+            image_files = []
+            pdf_files = []
             
-            if file_ext in image_extensions:
-                # 直接打开图片文件
-                self.parent.show_progress_dialog("正在加载图片文件...")
-                success, message = self.parent.pdf_processor.open_pdf(file_path, async_mode=True)
-                
-                if success:
-                    logger.info("异步加载启动成功")
-                    AppSettings.set_last_open_dir(file_path)
+            for file_path in file_paths:
+                file_ext = os.path.splitext(file_path)[1].lower()
+                if file_ext in image_extensions:
+                    image_files.append(file_path)
                 else:
-                    logger.error(f"异步加载启动失败: {message}")
-                    self.parent.hide_progress_dialog()
-                    QMessageBox.critical(self.parent, "错误", message)
-                return
+                    pdf_files.append(file_path)
+            
+            # 如果有图片文件，优先加载图片
+            if image_files:
+                self._load_multiple_images(image_files)
+            # 如果没有图片但有PDF文件，加载第一个PDF
+            elif pdf_files:
+                self._open_pdf_file(pdf_files[0])
+            
+            AppSettings.set_last_open_dir(os.path.dirname(file_paths[0]))
+        else:
+            logger.info("未选择文件")
+    
+    def open_multiple_images(self):
+        """打开多张图片文件"""
+        logger.info("开始打开多张图片...")
+        last_dir = AppSettings.get_last_open_dir()
 
-            # 对于PDF文件，检查是否加密
-            import PyPDF2
-            is_encrypted = False
-            try:
-                reader = PyPDF2.PdfReader(file_path)
-                is_encrypted = reader.is_encrypted
-            except Exception as e:
-                logger.warning(f"检查加密状态时出错: {e}")
+        # 支持多选图片文件
+        image_paths, _ = QFileDialog.getOpenFileNames(
+            self.parent, "选择多张图片文件", last_dir, 
+            "图片文件 (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;JPEG图片 (*.jpg *.jpeg);;PNG图片 (*.png);;BMP图片 (*.bmp);;所有文件 (*.*)")
 
-            password = None
-            if is_encrypted:
-                # 弹出密码输入框，支持5次尝试
-                from app.ui.password_dialog import PasswordDialog
-
-                for attempt in range(5):
-                    password = PasswordDialog.get_user_password(self.parent, "请输入密码")
-                    if password is None:
-                        logger.info("用户取消了密码输入")
-                        return
-
-                    # 验证密码是否正确
-                    try:
-                        test_reader = PyPDF2.PdfReader(file_path)
-                        result = test_reader.decrypt(password)
-                        if result > 0:
-                            logger.info("密码验证成功")
-                            break
-                        else:
-                            logger.warning(f"密码错误，第{attempt + 1}次尝试失败")
-                            QMessageBox.warning(self.parent, "密码错误", f"密码错误，请重新输入（剩余{4 - attempt}次机会）")
-                    except Exception as e:
-                        logger.error(f"密码验证时出错: {e}")
-                        QMessageBox.warning(self.parent, "密码错误", f"密码验证失败（剩余{4 - attempt}次机会）")
-                else:
-                    logger.error("密码尝试次数已达5次")
-                    QMessageBox.critical(self.parent, "错误", "密码错误次数过多，无法打开文件")
-                    return
-
-            self.parent.show_progress_dialog("正在加载PDF文件...")
-            success, message = self.parent.pdf_processor.open_pdf(file_path, async_mode=True, password=password)
-
+        if image_paths:
+            logger.info(f"选择了{len(image_paths)}张图片文件")
+            
+            # 按文件名排序，确保按选择顺序显示
+            self.parent.show_progress_dialog(f"正在加载{len(image_paths)}张图片...")
+            success, message = self.parent.pdf_processor.open_multiple_images(image_paths, async_mode=True)
+            
+            if success:
+                logger.info("多图片异步加载启动成功")
+                AppSettings.set_last_open_dir(os.path.dirname(image_paths[0]))
+            else:
+                logger.error(f"多图片异步加载启动失败: {message}")
+                self.parent.hide_progress_dialog()
+                QMessageBox.critical(self.parent, "错误", message)
+        else:
+            logger.info("未选择图片文件")
+    
+    def _load_multiple_images(self, image_paths):
+        """加载指定的多张图片文件"""
+        logger.info(f"开始加载{len(image_paths)}张图片...")
+        
+        if len(image_paths) == 1:
+            # 单张图片直接加载
+            self.parent.show_progress_dialog("正在加载图片文件...")
+            success, message = self.parent.pdf_processor.open_pdf(image_paths[0], async_mode=True)
+            
             if success:
                 logger.info("异步加载启动成功")
-                AppSettings.set_last_open_dir(file_path)
             else:
                 logger.error(f"异步加载启动失败: {message}")
                 self.parent.hide_progress_dialog()
                 QMessageBox.critical(self.parent, "错误", message)
         else:
-            logger.info("未选择文件")
+            # 多张图片加载为多页文档
+            self.parent.show_progress_dialog(f"正在加载{len(image_paths)}张图片...")
+            success, message = self.parent.pdf_processor.open_multiple_images(image_paths, async_mode=True)
+            
+            if success:
+                logger.info("多图片异步加载启动成功")
+            else:
+                logger.error(f"多图片异步加载启动失败: {message}")
+                self.parent.hide_progress_dialog()
+                QMessageBox.critical(self.parent, "错误", message)
+    
+    def open_image_directory(self):
+        """打开目录，加载该目录下的所有图片"""
+        logger.info("开始从目录打开图片...")
+        last_dir = AppSettings.get_last_open_dir()
+        
+        directory_path = QFileDialog.getExistingDirectory(
+            self.parent, "选择包含图片的目录", last_dir)
+        
+        if directory_path:
+            logger.info(f"选择了目录: {directory_path}")
+            
+            # 获取目录下所有图片文件
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+            image_files = []
+            
+            try:
+                # 遍历目录获取所有图片文件
+                for filename in os.listdir(directory_path):
+                    file_path = os.path.join(directory_path, filename)
+                    if os.path.isfile(file_path):
+                        file_ext = os.path.splitext(filename)[1].lower()
+                        if file_ext in image_extensions:
+                            image_files.append(file_path)
+                
+                # 按文件名排序
+                image_files.sort()
+                
+                if not image_files:
+                    QMessageBox.information(self.parent, "提示", "所选目录中没有找到图片文件")
+                    return
+                
+                # 加载所有图片
+                self.parent.show_progress_dialog(f"正在加载目录中的{len(image_files)}张图片...")
+                success, message = self.parent.pdf_processor.open_multiple_images(image_files, async_mode=True, source_directory=directory_path)
+                
+                if success:
+                    logger.info(f"目录图片异步加载启动成功，共{len(image_files)}张图片")
+                    AppSettings.set_last_open_dir(directory_path)
+                else:
+                    logger.error(f"目录图片异步加载启动失败: {message}")
+                    self.parent.hide_progress_dialog()
+                    QMessageBox.critical(self.parent, "错误", message)
+                    
+            except Exception as e:
+                logger.error(f"读取目录时发生错误: {e}")
+                QMessageBox.critical(self.parent, "错误", f"读取目录时发生错误: {str(e)}")
+        else:
+            logger.info("未选择目录")
+    
+    def _open_pdf_file(self, file_path):
+        """打开单个PDF文件"""
+        # 检查是否加密
+        import PyPDF2
+        is_encrypted = False
+        try:
+            reader = PyPDF2.PdfReader(file_path)
+            is_encrypted = reader.is_encrypted
+        except Exception as e:
+            logger.warning(f"检查加密状态时出错: {e}")
+
+        password = None
+        if is_encrypted:
+            # 弹出密码输入框，支持5次尝试
+            from app.ui.password_dialog import PasswordDialog
+
+            for attempt in range(5):
+                password = PasswordDialog.get_user_password(self.parent, "请输入密码")
+                if password is None:
+                    logger.info("用户取消了密码输入")
+                    return
+
+                # 验证密码是否正确
+                try:
+                    test_reader = PyPDF2.PdfReader(file_path)
+                    result = test_reader.decrypt(password)
+                    if result > 0:
+                        logger.info("密码验证成功")
+                        break
+                    else:
+                        logger.warning(f"密码错误，第{attempt + 1}次尝试失败")
+                        QMessageBox.warning(self.parent, "密码错误", f"密码错误，请重新输入（剩余{4 - attempt}次机会）")
+                except Exception as e:
+                    logger.error(f"密码验证时出错: {e}")
+                    QMessageBox.warning(self.parent, "密码错误", f"密码验证失败（剩余{4 - attempt}次机会）")
+            else:
+                logger.error("密码尝试次数已达5次")
+                QMessageBox.critical(self.parent, "错误", "密码错误次数过多，无法打开文件")
+                return
+
+        self.parent.show_progress_dialog("正在加载PDF文件...")
+        success, message = self.parent.pdf_processor.open_pdf(file_path, async_mode=True, password=password)
+
+        if success:
+            logger.info("异步加载启动成功")
+        else:
+            logger.error(f"异步加载启动失败: {message}")
+            self.parent.hide_progress_dialog()
+            QMessageBox.critical(self.parent, "错误", message)
     
     def open_images_from_directory(self):
         """从目录打开所有图片并合并为PDF"""
@@ -125,6 +232,15 @@ class FileManager:
         """保存PDF文件"""
         if not self.parent.pdf_processor.current_file:
             QMessageBox.information(self.parent, "提示", "📝 请先打开PDF文件")
+            return
+
+        # 检查是否为新建文档（如多图片文档）
+        is_new_document = (hasattr(self.parent.pdf_processor, 'is_new_document') and 
+                          self.parent.pdf_processor.is_new_document)
+        
+        # 如果是新建文档，直接调用另存为
+        if is_new_document:
+            self.save_as_without_encryption()
             return
 
         # 检查是否有未保存的更改
@@ -207,24 +323,53 @@ class FileManager:
         if not self.parent.pdf_processor.current_file:
             return
 
+        # 检查是否为新建文档
+        is_new_document = (hasattr(self.parent.pdf_processor, 'is_new_document') and 
+                          self.parent.pdf_processor.is_new_document)
+        
         # 获取当前文件的目录和文件名
         if self.parent.pdf_processor.current_file:
-            current_dir = os.path.dirname(self.parent.pdf_processor.current_file)
-            current_filename = os.path.basename(self.parent.pdf_processor.current_file)
-            default_path = os.path.join(current_dir, current_filename)
+            # 对于新建文档，生成更合适的默认文件名
+            if is_new_document:
+                current_dir = AppSettings.get_last_save_dir()
+                if "多图片文档" in self.parent.pdf_processor.current_file:
+                    # 从描述中提取图片数量
+                    import re
+                    match = re.search(r'(\d+)张图片', self.parent.pdf_processor.current_file)
+                    if match:
+                        current_filename = f"merged_images_{match.group(1)}pages.pdf"
+                    else:
+                        current_filename = "merged_images.pdf"
+                elif "目录:" in self.parent.pdf_processor.current_file:
+                    # 从目录名生成文件名
+                    dir_name = self.parent.pdf_processor.current_file.replace("目录: ", "")
+                    current_filename = f"directory_{dir_name}.pdf"
+                else:
+                    current_filename = "new_document.pdf"
+            else:
+                # 已有文件，使用原文件信息
+                current_dir = os.path.dirname(self.parent.pdf_processor.current_file)
+                current_filename = os.path.basename(self.parent.pdf_processor.current_file)
         else:
             current_dir = AppSettings.get_last_save_dir()
             current_filename = "document.pdf"
-            default_path = os.path.join(current_dir, current_filename)
+
+        default_path = os.path.join(current_dir, current_filename)
 
         file_path, _ = QFileDialog.getSaveFileName(
-            self.parent, "另存为PDF文件", default_path, "PDF文件 (*.pdf)")
+            self.parent, "保存PDF文件", default_path, "PDF文件 (*.pdf)")
 
         if file_path:
             success, message = self.parent.pdf_processor.save_pdf(file_path)
             if success:
+                # 保存成功后，更新current_file并清除新建标记
+                self.parent.pdf_processor.current_file = file_path
+                if hasattr(self.parent.pdf_processor, 'is_new_document'):
+                    self.parent.pdf_processor.is_new_document = False
+                
                 AppSettings.set_last_save_dir(file_path)
-                QMessageBox.information(self.parent, "保存成功", message)
+                self.parent.show_message("✅ 文档保存成功")
+                self.parent.update_save_actions_state()
             else:
                 QMessageBox.critical(self.parent, "保存失败", message)
 
