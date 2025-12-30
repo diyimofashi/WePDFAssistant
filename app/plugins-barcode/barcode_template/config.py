@@ -86,7 +86,7 @@ PLUGIN_CONFIG_DEFINITIONS = [
         key="duplicate_handling",
         title="重复条码处理",
         type_=ConfigItemType.ENUM,
-        default="merge",
+        default="separate",
         options_list=["merge", "separate"],
         description="重复条码的处理方式：merge(合并为同一文件)或separate(创建单独文件)"
     ),

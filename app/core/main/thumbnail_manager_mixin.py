@@ -19,7 +19,7 @@ class ThumbnailManagerMixin:
     def show_barcode_settings(self):
         """显示条码设置对话框"""
         try:
-            from app.ui.barcode_settings_dialog import BarcodeSettingsDialog
+            from app.ui.barcode_plugin_settings_dialog import BarcodeSettingsDialog
             dialog = BarcodeSettingsDialog(self)
             dialog.exec_()
         except Exception as e:
