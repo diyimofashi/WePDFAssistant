@@ -641,7 +641,7 @@ class BarcodePluginTemplate(BarcodePluginInterface):
 
             # 检测文档中的所有条码
             if progress_callback:
-                if not progress_callback(10, 100, "正在检测条码..."):
+                if not progress_callback(0, 100, "开始拆分..."):
                     return {
                         "success": False,
                         "message": "用户取消了操作",
@@ -657,12 +657,12 @@ class BarcodePluginTemplate(BarcodePluginInterface):
             total_pages = len(doc)
 
             # 检测条码 - 使用多种方法提高识别率
-            all_barcodes = self._detect_barcodes_in_document_enhanced(doc, config)
+            all_barcodes = self._detect_barcodes_in_document_enhanced(doc, config, progress_callback)
 
             total_barcodes = len(all_barcodes)
 
             if progress_callback:
-                if not progress_callback(30, 100, f"检测到 {total_barcodes} 个条码，正在过滤..."):
+                if not progress_callback(40, 100, f"检测到 {total_barcodes} 个条码，正在过滤..."):
                     return {
                         "success": False,
                         "message": "用户取消了操作",
@@ -684,7 +684,7 @@ class BarcodePluginTemplate(BarcodePluginInterface):
                 }
 
             if progress_callback:
-                if not progress_callback(40, f"过滤后剩余 {len(filtered_barcodes)} 个条码，正在分组..."):
+                if not progress_callback(50, 100, f"过滤后剩余 {len(filtered_barcodes)} 个条码，开始拆分..."):
                     return {
                         "success": False,
                         "message": "用户取消了操作",
@@ -699,16 +699,6 @@ class BarcodePluginTemplate(BarcodePluginInterface):
 
             files_created = []
 
-            if progress_callback:
-                if not progress_callback(50, f"准备拆分为 {len(filtered_barcodes)} 个组..."):
-                    return {
-                        "success": False,
-                        "message": "用户取消了操作",
-                        "files_created": [],
-                        "barcodes_found": total_barcodes,
-                        "pages_processed": total_pages
-                    }
-
             # 根据处理模式拆分
             if duplicate_handling == "merge":
                 # 合并模式：使用Combine模式
@@ -718,14 +708,7 @@ class BarcodePluginTemplate(BarcodePluginInterface):
                 files_created = self._split_by_filename_mode(doc, filtered_barcodes, config, output_dir, progress_callback)
 
             if progress_callback:
-                if not progress_callback(100, 100, "拆分完成"):
-                    return {
-                        "success": False,
-                        "message": "用户取消了操作",
-                        "files_created": files_created,
-                        "barcodes_found": total_barcodes,
-                        "pages_processed": total_pages
-                    }
+                progress_callback(100, 100, "拆分完成")
 
             return {
                 "success": True,
@@ -744,28 +727,34 @@ class BarcodePluginTemplate(BarcodePluginInterface):
                 "pages_processed": 0
             }
 
-    def _detect_barcodes_in_document_enhanced(self, doc: fitz.Document, config: Dict[str, Any]) -> List[Any]:
+    def _detect_barcodes_in_document_enhanced(self, doc: fitz.Document, config: Dict[str, Any], progress_callback=None) -> List[Any]:
         """
         使用增强方法检测文档中的所有条码
-        
+
         Args:
             doc: PyMuPDF文档对象
             config: 配置参数
-            
+            progress_callback: 进度回调函数
+
         Returns:
             条码信息列表
         """
         try:
             all_barcodes = []
             total_pages = len(doc)
-            
+
             # 使用多个DPI值以提高识别率
             dpi_values = [300, 200, 150]
-            
+
             for page_num in range(total_pages):
                 page = doc[page_num]
                 page_barcodes = set()  # 使用集合避免重复
-                
+
+                # 更新进度
+                if progress_callback:
+                    progress = int((page_num / total_pages) * 40)  # 检测阶段占总进度的0-40%
+                    progress_callback(progress, 100, f"正在检测条码: {page_num + 1}/{total_pages} 页")
+
                 # 方法1: 检测嵌入图片中的条码
                 embedded_barcodes = self._detect_barcodes_in_embedded_images(doc, page, page_num)
                 for barcode in embedded_barcodes:
@@ -773,25 +762,25 @@ class BarcodePluginTemplate(BarcodePluginInterface):
                     if key not in page_barcodes:
                         page_barcodes.add(key)
                         all_barcodes.append(barcode)
-                
+
                 # 方法2: 渲染页面检测
                 for dpi in dpi_values:
                     mat = fitz.Matrix(dpi / 72, dpi / 72)
                     pix = page.get_pixmap(matrix=mat)
                     img_data = pix.tobytes("ppm")
                     img = Image.open(BytesIO(img_data))
-                    
+
                     # 确保是RGB模式
                     if img.mode != 'RGB':
                         img = img.convert('RGB')
-                    
+
                     # 使用pyzbar检测条码
                     codes = pyzbar.decode(img)
-                    
+
                     for code in codes:
                         try:
                             barcode_data_str = code.data.decode('utf-8', errors='replace')
-                            
+
                             # 检查是否已经检测到过
                             key = (barcode_data_str, page_num)
                             if key not in page_barcodes:
@@ -802,7 +791,7 @@ class BarcodePluginTemplate(BarcodePluginInterface):
                                         self.type = type
                                         self.rect = rect
                                         self.page_num = page_num
-                                
+
                                 barcode = BarcodeInfo(
                                     data=barcode_data_str,
                                     type=code.type,
@@ -813,12 +802,12 @@ class BarcodePluginTemplate(BarcodePluginInterface):
                                 all_barcodes.append(barcode)
                         except Exception:
                             pass
-                
+
                 # 限制每页的条码数量
                 max_barcodes_per_page = config.get('max_barcode_count', 100)
                 if len([b for b in all_barcodes if b.page_num == page_num]) >= max_barcodes_per_page:
                     break
-            
+
             return all_barcodes
         except Exception:
             return []

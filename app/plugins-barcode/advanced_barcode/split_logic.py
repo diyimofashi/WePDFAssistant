@@ -22,7 +22,7 @@ class BarcodeInfo:
         self.page_num = page_num
 
 
-def detect_barcodes_enhanced(doc: fitz.Document, config: Dict[str, Any]) -> List[BarcodeInfo]:
+def detect_barcodes_enhanced(doc: fitz.Document, config: Dict[str, Any], progress_callback=None) -> List[BarcodeInfo]:
     """使用增强方法检测文档中的所有条码"""
     try:
         all_barcodes = []
@@ -37,6 +37,11 @@ def detect_barcodes_enhanced(doc: fitz.Document, config: Dict[str, Any]) -> List
         for page_num in range(total_pages):
             page = doc[page_num]
             page_barcodes = set()
+
+            # 更新进度
+            if progress_callback:
+                progress = int((page_num / total_pages) * 40)  # 检测阶段占总进度的0-40%
+                progress_callback(progress, 100, f"正在检测条码: {page_num + 1}/{total_pages} 页")
 
             # 检测嵌入图片
             image_list = page.get_images()

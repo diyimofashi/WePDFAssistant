@@ -257,21 +257,24 @@ class BarcodeSettingsDialog(QDialog):
                 return
 
             logger.info(f"插件 {plugin_name} 初始化成功")
-            
+
             # 选择要拆分的PDF文件
             file_path, _ = QFileDialog.getOpenFileName(
                 self, "选择PDF文件", "", "PDF文件 (*.pdf)"
             )
-            
+
             if not file_path:
                 return  # 用户取消了选择
-            
-            # 如果没有配置输出目录，则使用PDF文件所在目录
+
+            # 如果没有配置输出目录，则使用PDF文件所在目录+文件名同名目录
+            import os
             output_dir = config.get('output_dir', '')
             if not output_dir:
-                import os
-                output_dir = os.path.dirname(file_path)  # 使用PDF文件所在目录
+                file_dir = os.path.dirname(file_path)  # PDF文件所在目录
+                file_basename = os.path.splitext(os.path.basename(file_path))[0]  # PDF文件名（不含扩展名）
+                output_dir = os.path.join(file_dir, file_basename)  # 输出目录：目录/文件名/
                 config['output_dir'] = output_dir
+
             
             # 调用插件的拆分功能
             doc = fitz.open(file_path)

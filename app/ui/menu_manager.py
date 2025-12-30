@@ -270,8 +270,8 @@ class MenuManager(QObject):
         tools_menu.addSeparator()
         barcode_menu = tools_menu.addMenu("📟 条码工具")
         
-        # 条码设置
-        barcode_settings_action = QAction("⚙️ 条码设置", self.parent)
+        # 条码插件设置
+        barcode_settings_action = QAction("⚙️ 条码插件设置", self.parent)
         barcode_settings_action.triggered.connect(self.parent.show_barcode_settings)
         barcode_menu.addAction(barcode_settings_action)
         

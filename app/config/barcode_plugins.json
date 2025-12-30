@@ -22,7 +22,7 @@
       ]
     },
     "advanced_barcode": {
-      "split_position_rule": "separator_page",
+      "split_position_rule": null,
       "remove_barcode_pages": true,
       "merge_same_barcode": false,
       "barcode_type_checkboxes": null,
@@ -36,7 +36,10 @@
       "filter_region": [],
       "use_barcode_filename": true,
       "filename_template": "{barcode}_{index}",
-      "max_barcode_count": 100
+      "max_barcode_count": 100,
+      "enabled_types": [
+        "ALL_TYPES"
+      ]
     }
   }
 }

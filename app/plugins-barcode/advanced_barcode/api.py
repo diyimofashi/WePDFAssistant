@@ -182,12 +182,12 @@ class AdvancedBarcodePlugin(BarcodePluginInterface):
             total_pages = len(doc)
 
             if progress_callback:
-                if not progress_callback(10, 100, "正在检测条码..."):
+                if not progress_callback(0, 100, "开始拆分..."):
                     logger.info("用户取消了操作")
                     return {"success": False, "message": "用户取消了操作", "files_created": [], "barcodes_found": 0, "pages_processed": 0}
 
             logger.info("开始检测条码...")
-            all_barcodes = detect_barcodes_enhanced(doc, config)
+            all_barcodes = detect_barcodes_enhanced(doc, config, progress_callback)
             filtered_barcodes = filter_barcodes(all_barcodes, config)
             logger.info(f"条码检测完成: all_barcodes={len(all_barcodes)}, filtered_barcodes={len(filtered_barcodes)}")
 
@@ -196,17 +196,12 @@ class AdvancedBarcodePlugin(BarcodePluginInterface):
                 return {"success": False, "message": "没有找到符合条件的条码", "files_created": [], "barcodes_found": len(all_barcodes), "pages_processed": total_pages}
 
             if progress_callback:
-                if not progress_callback(40, 100, f"检测到 {len(filtered_barcodes)} 个条码，正在分组..."):
+                if not progress_callback(50, 100, f"检测到 {len(filtered_barcodes)} 个条码，开始拆分..."):
                     logger.info("用户取消了操作")
                     return {"success": False, "message": "用户取消了操作", "files_created": [], "barcodes_found": len(all_barcodes), "pages_processed": total_pages}
 
             split_position_rule = config.get('split_position_rule', 'first_page')
             logger.info(f"拆分规则: {split_position_rule}")
-
-            if progress_callback:
-                if not progress_callback(50, 100, f"使用 {split_position_rule} 规则拆分..."):
-                    logger.info("用户取消了操作")
-                    return {"success": False, "message": "用户取消了操作", "files_created": [], "barcodes_found": len(all_barcodes), "pages_processed": total_pages}
 
             logger.info(f"开始执行拆分逻辑: {split_position_rule}")
             if split_position_rule == "first_page":
