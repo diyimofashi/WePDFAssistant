@@ -1,0 +1,662 @@
+"""
+高级条码拆分 - 拆分逻辑实现
+支持首页规则、尾页规则、分隔页规则
+"""
+
+import os
+import fitz
+from io import BytesIO
+from PIL import Image
+import pyzbar.pyzbar as pyzbar
+from typing import Dict, List, Any
+
+
+class BarcodeInfo:
+    def __init__(self, data, type, rect, page_num):
+        self.data = data
+        self.type = type
+        self.rect = rect
+        self.page_num = page_num
+
+
+def detect_barcodes_enhanced(doc: fitz.Document, config: Dict[str, Any]) -> List[BarcodeInfo]:
+    """使用增强方法检测文档中的所有条码"""
+    try:
+        all_barcodes = []
+        total_pages = len(doc)
+
+        dpi_values = [300, 200, 150]
+        horizontal_only = config.get('horizontal_only', False)
+        filter_region = config.get('filter_region', None)
+        max_barcode_count = config.get('max_barcode_count', 100)
+
+        for page_num in range(total_pages):
+            page = doc[page_num]
+            page_barcodes = set()
+
+            # 检测嵌入图片
+            image_list = page.get_images()
+            for img_index, img in enumerate(image_list):
+                try:
+                    xref = img[0]
+                    base_image = doc.extract_image(xref)
+                    image_bytes = base_image["image"]
+                    img_obj = Image.open(BytesIO(image_bytes))
+                    if img_obj.mode != 'RGB':
+                        img_obj = img_obj.convert('RGB')
+
+                    codes = pyzbar.decode(img_obj)
+                    for code in codes:
+                        if _passes_filters(code, horizontal_only, filter_region):
+                            try:
+                                barcode_data_str = code.data.decode('utf-8', errors='replace')
+                                key = (barcode_data_str, page_num)
+                                if key not in page_barcodes:
+                                    barcode = BarcodeInfo(barcode_data_str, code.type, code.rect, page_num)
+                                    page_barcodes.add(key)
+                                    all_barcodes.append(barcode)
+                            except Exception:
+                                pass
+                except Exception:
+                    continue
+
+            # 渲染页面检测
+            for dpi in dpi_values:
+                mat = fitz.Matrix(dpi / 72, dpi / 72)
+                pix = page.get_pixmap(matrix=mat)
+                img_data = pix.tobytes("ppm")
+                img = Image.open(BytesIO(img_data))
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+
+                codes = pyzbar.decode(img)
+                for code in codes:
+                    if _passes_filters(code, horizontal_only, filter_region):
+                        try:
+                            barcode_data_str = code.data.decode('utf-8', errors='replace')
+                            key = (barcode_data_str, page_num)
+                            if key not in page_barcodes:
+                                barcode = BarcodeInfo(barcode_data_str, code.type, code.rect, page_num)
+                                page_barcodes.add(key)
+                                all_barcodes.append(barcode)
+                        except Exception:
+                            pass
+
+                if len([b for b in all_barcodes if b.page_num == page_num]) >= max_barcode_count:
+                    break
+
+        return all_barcodes
+    except Exception:
+        return []
+
+
+def _passes_filters(code, horizontal_only: bool, filter_region) -> bool:
+    """检查条码是否通过方向和区域过滤"""
+    if horizontal_only:
+        width = code.rect.width
+        height = code.rect.height
+        if width < height:
+            return False
+
+    if filter_region:
+        x1, y1, x2, y2 = filter_region
+        if (code.rect.left < x1 or code.rect.top < y1 or
+            code.rect.right > x2 or code.rect.bottom > y2):
+            return False
+
+    return True
+
+
+def filter_barcodes(barcodes: List[BarcodeInfo], config: Dict[str, Any]) -> List[BarcodeInfo]:
+    """根据配置过滤条码"""
+    try:
+        min_length = int(config.get('min_length', 1))
+        max_length = int(config.get('max_length', 1000))
+        include_keywords = config.get('include_keywords', [])
+        exclude_keywords = config.get('exclude_keywords', [])
+        include_regex = config.get('include_regex', '')
+        exclude_regex = config.get('exclude_regex', '')
+        separator_barcodes = config.get('separator_barcodes', [])
+        split_position_rule = config.get('split_position_rule', 'first_page')
+
+        filtered_barcodes = []
+        for barcode in barcodes:
+            barcode_data_str = barcode.data
+
+            if not isinstance(barcode_data_str, str):
+                try:
+                    barcode_data_str = str(barcode_data_str)
+                except Exception:
+                    continue
+
+            barcode_len = len(barcode_data_str)
+            if barcode_len < min_length or barcode_len > max_length:
+                continue
+
+            if include_keywords:
+                if not any(k.lower() in barcode_data_str.lower() for k in include_keywords):
+                    continue
+
+            if exclude_keywords:
+                if any(k.lower() in barcode_data_str.lower() for k in exclude_keywords):
+                    continue
+
+            if include_regex:
+                import re
+                try:
+                    if not re.search(include_regex, barcode_data_str):
+                        continue
+                except re.error:
+                    pass
+
+            if exclude_regex:
+                import re
+                try:
+                    if re.search(exclude_regex, barcode_data_str):
+                        continue
+                except re.error:
+                    pass
+
+            # 分隔页规则：只保留匹配分隔条码的条码
+            if separator_barcodes and split_position_rule == 'separator_page':
+                if not any(sb.lower() in barcode_data_str.lower() for sb in separator_barcodes):
+                    continue
+
+            filtered_barcodes.append(barcode)
+
+        return filtered_barcodes
+    except Exception:
+        return []
+
+
+def split_by_first_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo],
+                              config: Dict[str, Any], output_dir: str,
+                              progress_callback=None, clean_filename_func=None) -> List[str]:
+    """
+    首页规则：只要读到条码就把该页作为新文档的第1页，后续无条码页依次归入，直到再遇到下一个条码为止。
+    """
+    try:
+        files_created = []
+        total_pages = len(doc)
+
+        page_barcode_map = {}
+        for barcode in barcodes:
+            if barcode.page_num not in page_barcode_map:
+                page_barcode_map[barcode.page_num] = []
+            page_barcode_map[barcode.page_num].append(barcode)
+
+        groups = []
+        current_group = []
+        current_barcode = None
+
+        for page_num in range(total_pages):
+            if page_num in page_barcode_map and page_barcode_map[page_num]:
+                if current_group:
+                    groups.append({
+                        'pages': current_group.copy(),
+                        'barcode': current_barcode
+                    })
+                    current_group = []
+
+                barcode_list = page_barcode_map[page_num]
+                for barcode in barcode_list:
+                    groups.append({
+                        'pages': [page_num],
+                        'barcode': barcode.data
+                    })
+                    current_barcode = barcode.data
+            else:
+                if current_barcode is not None:
+                    current_group.append(page_num)
+
+        # 处理开头未分组的有条码页面
+        assigned_pages = set()
+        for group in groups:
+            assigned_pages.update(group['pages'])
+
+        unassigned_pages = [p for p in range(total_pages) if p not in assigned_pages]
+        if unassigned_pages:
+            groups.append({
+                'pages': unassigned_pages,
+                'barcode': None
+            })
+
+        # 为每个组创建文件
+        merge_same = config.get('merge_same_barcode', False)
+        barcode_file_counts = {}
+        file_index = 0
+
+        for group in groups:
+            pages = group['pages']
+            if not pages:
+                continue
+
+            new_doc = fitz.open()
+            for page_num in pages:
+                new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
+
+            barcode_value = group['barcode']
+            clean_barcode = clean_filename_func(barcode_value) if barcode_value and clean_filename_func else barcode_value
+
+            if barcode_value:
+                if merge_same:
+                    if barcode_value not in barcode_file_counts:
+                        barcode_file_counts[barcode_value] = 0
+                    barcode_file_counts[barcode_value] += 1
+                    file_count = barcode_file_counts[barcode_value]
+                    filename = f"{clean_barcode}_{file_count:03d}.pdf"
+                else:
+                    formatted_index = f"{file_index + 1:03d}"
+                    filename = f"{clean_barcode}_{formatted_index}.pdf"
+            else:
+                formatted_index = f"{file_index + 1:03d}"
+                filename = f"无条码_{formatted_index}.pdf"
+
+            file_path = os.path.join(output_dir, filename)
+            counter = 1
+            while os.path.exists(file_path):
+                name, ext = os.path.splitext(filename)
+                file_path = os.path.join(output_dir, f"{name}_{counter}{ext}")
+                counter += 1
+
+            new_doc.save(file_path)
+            new_doc.close()
+            files_created.append(file_path)
+            file_index += 1
+
+            if progress_callback:
+                progress = 50 + int((file_index / max(1, len(groups))) * 50)
+                progress_callback(progress, 100, f"已创建 {file_index}/{len(groups)} 个文件")
+
+        return files_created
+    except Exception:
+        return []
+
+
+def split_by_last_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo],
+                             config: Dict[str, Any], output_dir: str,
+                             progress_callback=None, clean_filename_func=None) -> List[str]:
+    """
+    尾页规则：把读到条码的页当成上一文档的结尾，该页及之后的内容归入下一个文档。
+    """
+    try:
+        files_created = []
+        total_pages = len(doc)
+
+        page_barcode_map = {}
+        for barcode in barcodes:
+            if barcode.page_num not in page_barcode_map:
+                page_barcode_map[barcode.page_num] = []
+            page_barcode_map[barcode.page_num].append(barcode)
+
+        groups = []
+        current_group = []
+        current_barcode = None
+
+        for page_num in range(total_pages):
+            current_group.append(page_num)
+
+            if page_num in page_barcode_map and page_barcode_map[page_num]:
+                groups.append({
+                    'pages': current_group.copy(),
+                    'barcode': current_barcode
+                })
+                current_group = []
+                current_barcode = page_barcode_map[page_num][0].data
+
+        # 添加最后一组
+        if current_group:
+            groups.append({
+                'pages': current_group.copy(),
+                'barcode': current_barcode
+            })
+
+        # 为每个组创建文件
+        merge_same = config.get('merge_same_barcode', False)
+        barcode_file_counts = {}
+        file_index = 0
+
+        for group in groups:
+            pages = group['pages']
+            if not pages:
+                continue
+
+            new_doc = fitz.open()
+            for page_num in pages:
+                new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
+
+            barcode_value = group['barcode']
+            clean_barcode = clean_filename_func(barcode_value) if barcode_value and clean_filename_func else barcode_value
+
+            if barcode_value:
+                if merge_same:
+                    if barcode_value not in barcode_file_counts:
+                        barcode_file_counts[barcode_value] = 0
+                    barcode_file_counts[barcode_value] += 1
+                    file_count = barcode_file_counts[barcode_value]
+                    filename = f"{clean_barcode}_{file_count:03d}.pdf"
+                else:
+                    formatted_index = f"{file_index + 1:03d}"
+                    filename = f"{clean_barcode}_{formatted_index}.pdf"
+            else:
+                formatted_index = f"{file_index + 1:03d}"
+                filename = f"无条码_{formatted_index}.pdf"
+
+            file_path = os.path.join(output_dir, filename)
+            counter = 1
+            while os.path.exists(file_path):
+                name, ext = os.path.splitext(filename)
+                file_path = os.path.join(output_dir, f"{name}_{counter}{ext}")
+                counter += 1
+
+            new_doc.save(file_path)
+            new_doc.close()
+            files_created.append(file_path)
+            file_index += 1
+
+            if progress_callback:
+                progress = 50 + int((file_index / max(1, len(groups))) * 50)
+                progress_callback(progress, 100, f"已创建 {file_index}/{len(groups)} 个文件")
+
+        return files_created
+    except Exception:
+        return []
+
+
+def split_by_separator_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo],
+                                config: Dict[str, Any], output_dir: str,
+                                progress_callback=None, clean_filename_func=None) -> List[str]:
+    """
+    分隔页规则：把含特定条码的整页当成纯粹的"分隔页"，可以选择保留或从结果中删除。
+    """
+    try:
+        files_created = []
+        total_pages = len(doc)
+
+        page_barcode_map = {}
+        for barcode in barcodes:
+            if barcode.page_num not in page_barcode_map:
+                page_barcode_map[barcode.page_num] = []
+            page_barcode_map[barcode.page_num].append(barcode)
+
+        separator_barcodes = config.get('separator_barcodes', [])
+        keep_separator = config.get('keep_separator_page', False)
+
+        separator_pages = set()
+        for page_num, barcode_list in page_barcode_map.items():
+            for barcode in barcode_list:
+                if any(sb.lower() in barcode.data.lower() for sb in separator_barcodes):
+                    separator_pages.add(page_num)
+                    break
+
+        groups = []
+        current_group = []
+
+        for page_num in range(total_pages):
+            if page_num in separator_pages:
+                if keep_separator:
+                    current_group.append(page_num)
+                if current_group:
+                    groups.append(current_group.copy())
+                    current_group = []
+            else:
+                current_group.append(page_num)
+
+        if current_group:
+            groups.append(current_group.copy())
+
+        file_index = 0
+
+        for group_pages in groups:
+            if not group_pages:
+                continue
+
+            new_doc = fitz.open()
+            for page_num in group_pages:
+                new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
+
+            barcode_value = None
+            for page_num in group_pages:
+                if page_num in page_barcode_map and page_barcode_map[page_num]:
+                    for barcode in page_barcode_map[page_num]:
+                        if not any(sb.lower() in barcode.data.lower() for sb in separator_barcodes):
+                            barcode_value = barcode.data
+                            break
+                    if barcode_value:
+                        break
+
+            clean_barcode = clean_filename_func(barcode_value) if barcode_value and clean_filename_func else barcode_value
+
+            if barcode_value:
+                formatted_index = f"{file_index + 1:03d}"
+                filename = f"{clean_barcode}_{formatted_index}.pdf"
+            else:
+                formatted_index = f"{file_index + 1:03d}"
+                filename = f"无条码_{formatted_index}.pdf"
+
+            file_path = os.path.join(output_dir, filename)
+            counter = 1
+            while os.path.exists(file_path):
+                name, ext = os.path.splitext(filename)
+                file_path = os.path.join(output_dir, f"{name}_{counter}{ext}")
+                counter += 1
+
+            new_doc.save(file_path)
+            new_doc.close()
+            files_created.append(file_path)
+            file_index += 1
+
+            if progress_callback:
+                progress = 50 + int((file_index / max(1, len(groups))) * 50)
+                progress_callback(progress, 100, f"已创建 {file_index}/{len(groups)} 个文件")
+
+        return files_created
+    except Exception:
+        return []
+
+
+def preview_first_page_rule(total_pages: int, barcodes: List[BarcodeInfo],
+                          config: Dict[str, Any], clean_filename_func=None) -> List[Dict[str, Any]]:
+    """预览首页规则拆分结果"""
+    try:
+        page_barcode_map = {}
+        for barcode in barcodes:
+            if barcode.page_num not in page_barcode_map:
+                page_barcode_map[barcode.page_num] = []
+            page_barcode_map[barcode.page_num].append(barcode)
+
+        groups = []
+        current_group = []
+        current_barcode = None
+
+        for page_num in range(total_pages):
+            if page_num in page_barcode_map and page_barcode_map[page_num]:
+                if current_group:
+                    groups.append({
+                        'pages': current_group.copy(),
+                        'barcode': current_barcode
+                    })
+                    current_group = []
+
+                barcode_list = page_barcode_map[page_num]
+                for barcode in barcode_list:
+                    groups.append({
+                        'pages': [page_num],
+                        'barcode': barcode.data
+                    })
+                    current_barcode = barcode.data
+            else:
+                if current_barcode is not None:
+                    current_group.append(page_num)
+
+        assigned_pages = set()
+        for group in groups:
+            assigned_pages.update(group['pages'])
+
+        unassigned_pages = [p for p in range(total_pages) if p not in assigned_pages]
+        if unassigned_pages:
+            groups.append({
+                'pages': unassigned_pages,
+                'barcode': None
+            })
+
+        preview_groups = []
+        file_index = 0
+
+        for group in groups:
+            pages = group['pages']
+            barcode_value = group['barcode']
+            clean_barcode = clean_filename_func(barcode_value) if barcode_value and clean_filename_func else barcode_value
+
+            if barcode_value:
+                formatted_index = f"{file_index + 1:03d}"
+                filename = f"{clean_barcode}_{formatted_index}.pdf"
+            else:
+                formatted_index = f"{file_index + 1:03d}"
+                filename = f"无条码_{formatted_index}.pdf"
+
+            preview_groups.append({
+                "barcode": barcode_value or "",
+                "filename": filename,
+                "pages": [p + 1 for p in pages],
+                "page_count": len(pages)
+            })
+
+            file_index += 1
+
+        return preview_groups
+    except Exception:
+        return []
+
+
+def preview_last_page_rule(total_pages: int, barcodes: List[BarcodeInfo],
+                           config: Dict[str, Any], clean_filename_func=None) -> List[Dict[str, Any]]:
+    """预览尾页规则拆分结果"""
+    try:
+        page_barcode_map = {}
+        for barcode in barcodes:
+            if barcode.page_num not in page_barcode_map:
+                page_barcode_map[barcode.page_num] = []
+            page_barcode_map[barcode.page_num].append(barcode)
+
+        groups = []
+        current_group = []
+        current_barcode = None
+
+        for page_num in range(total_pages):
+            current_group.append(page_num)
+
+            if page_num in page_barcode_map and page_barcode_map[page_num]:
+                groups.append({
+                    'pages': current_group.copy(),
+                    'barcode': current_barcode
+                })
+                current_group = []
+                current_barcode = page_barcode_map[page_num][0].data
+
+        if current_group:
+            groups.append({
+                'pages': current_group.copy(),
+                'barcode': current_barcode
+            })
+
+        preview_groups = []
+        file_index = 0
+
+        for group in groups:
+            pages = group['pages']
+            barcode_value = group['barcode']
+            clean_barcode = clean_filename_func(barcode_value) if barcode_value and clean_filename_func else barcode_value
+
+            if barcode_value:
+                formatted_index = f"{file_index + 1:03d}"
+                filename = f"{clean_barcode}_{formatted_index}.pdf"
+            else:
+                formatted_index = f"{file_index + 1:03d}"
+                filename = f"无条码_{formatted_index}.pdf"
+
+            preview_groups.append({
+                "barcode": barcode_value or "",
+                "filename": filename,
+                "pages": [p + 1 for p in pages],
+                "page_count": len(pages)
+            })
+
+            file_index += 1
+
+        return preview_groups
+    except Exception:
+        return []
+
+
+def preview_separator_page_rule(total_pages: int, barcodes: List[BarcodeInfo],
+                              config: Dict[str, Any], clean_filename_func=None) -> List[Dict[str, Any]]:
+    """预览分隔页规则拆分结果"""
+    try:
+        page_barcode_map = {}
+        for barcode in barcodes:
+            if barcode.page_num not in page_barcode_map:
+                page_barcode_map[barcode.page_num] = []
+            page_barcode_map[barcode.page_num].append(barcode)
+
+        separator_barcodes = config.get('separator_barcodes', [])
+
+        separator_pages = set()
+        for page_num, barcode_list in page_barcode_map.items():
+            for barcode in barcode_list:
+                if any(sb.lower() in barcode.data.lower() for sb in separator_barcodes):
+                    separator_pages.add(page_num)
+                    break
+
+        groups = []
+        current_group = []
+
+        for page_num in range(total_pages):
+            if page_num in separator_pages:
+                if current_group:
+                    groups.append(current_group.copy())
+                    current_group = []
+            else:
+                current_group.append(page_num)
+
+        if current_group:
+            groups.append(current_group.copy())
+
+        preview_groups = []
+        file_index = 0
+
+        for group_pages in groups:
+            if not group_pages:
+                continue
+
+            barcode_value = None
+            for page_num in group_pages:
+                if page_num in page_barcode_map and page_barcode_map[page_num]:
+                    for barcode in page_barcode_map[page_num]:
+                        if not any(sb.lower() in barcode.data.lower() for sb in separator_barcodes):
+                            barcode_value = barcode.data
+                            break
+                    if barcode_value:
+                        break
+
+            clean_barcode = clean_filename_func(barcode_value) if barcode_value and clean_filename_func else barcode_value
+
+            if barcode_value:
+                formatted_index = f"{file_index + 1:03d}"
+                filename = f"{clean_barcode}_{formatted_index}.pdf"
+            else:
+                formatted_index = f"{file_index + 1:03d}"
+                filename = f"无条码_{formatted_index}.pdf"
+
+            preview_groups.append({
+                "barcode": barcode_value or "",
+                "filename": filename,
+                "pages": [p + 1 for p in group_pages],
+                "page_count": len(group_pages)
+            })
+
+            file_index += 1
+
+        return preview_groups
+    except Exception:
+        return []

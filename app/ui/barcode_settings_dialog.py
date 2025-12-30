@@ -56,8 +56,21 @@ class BarcodeSettingsDialog(QDialog):
         self.tab_widget = QTabWidget()
         # 设置标签页位置为北（顶部），并设置标签对齐方式为左对齐
         self.tab_widget.setTabPosition(QTabWidget.North)
-        # 设置标签页的样式，使其左对齐
-        self.tab_widget.setStyleSheet("QTabWidget::tab-bar { alignment: left; } QTabBar::tab { min-width: 80px; } ")
+        # 设置标签页的样式，使其左对齐，去掉选中背景色
+        self.tab_widget.setStyleSheet("""
+            QTabWidget::tab-bar { alignment: left; }
+            QTabBar::tab {
+                min-width: 80px;
+                padding: 8px 12px;
+                background: transparent;
+                border: none;
+            }
+            QTabBar::tab:selected {
+                background: transparent;
+                color: #0078d4;
+                font-weight: bold;
+            }
+        """)
         
         # 添加插件设置标签页
         layout.addWidget(self.tab_widget)
