@@ -117,16 +117,15 @@ class BarcodePluginConfigManager:
     def __init__(self, config_file: str = None):
         """
         初始化配置管理器
-        
+
         Args:
             config_file: 配置文件路径，默认为应用配置目录下的barcode_plugins.json
         """
         if config_file is None:
             # 获取应用配置目录
-            app_config_dir = os.path.join(os.path.expanduser("~"), ".aurora_pdf")
-            os.makedirs(app_config_dir, exist_ok=True)
-            config_file = os.path.join(app_config_dir, "barcode_plugins.json")
-        
+            app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            config_file = os.path.join(app_dir, 'config', 'barcode_plugins.json')
+
         self.config_file = config_file
         self.global_config: Dict[str, Any] = {}
         self.plugin_configs: Dict[str, Dict[str, Any]] = {}
@@ -213,21 +212,23 @@ class BarcodePluginConfigManager:
     def set_plugin_config(self, plugin_name: str, config: Dict[str, Any]) -> Dict[str, str]:
         """
         设置插件配置
-        
+
         Args:
             plugin_name: 插件名称
             config: 插件配置参数字典
-            
+
         Returns:
             Dict[str, str]: 验证错误信息，空字典表示验证通过
         """
         with self.lock:
+            logger.info(f"set_plugin_config: plugin_name={plugin_name}, config={config}")
             # 验证配置
             errors = self.validate_config(plugin_name, config)
             if errors:
                 logger.warning(f"插件配置验证失败: {plugin_name}, 错误: {errors}")
                 return errors
-            
+            logger.info(f"插件配置验证通过: {plugin_name}")
+
             # 更新配置
             if plugin_name not in self.plugin_configs:
                 self.plugin_configs[plugin_name] = {}

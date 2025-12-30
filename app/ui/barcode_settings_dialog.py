@@ -349,11 +349,16 @@ class BarcodeSettingsDialog(QDialog):
                     ]
                 config[key] = enabled_types
             else:
-                value = self.get_widget_value(widget)
-                config[key] = value
-                # 添加日志记录配置值
                 from app.utils.logger import get_logger
                 logger = get_logger('barcode_settings_dialog')
+                logger.debug(f"获取配置项 {key}, widget类型={type(widget).__name__}")
+                value = self.get_widget_value(widget)
+                # 特殊处理：split_position_rule为None时使用默认值
+                if key == 'split_position_rule' and value is None:
+                    logger.warning(f"split_position_rule值为None，使用默认值separator_page")
+                    value = 'separator_page'
+                config[key] = value
+                # 添加日志记录配置值
                 logger.debug(f"配置项 {key}: {value} (类型: {type(value).__name__})")
 
         from app.utils.logger import get_logger
@@ -1120,40 +1125,72 @@ class BarcodeSettingsDialog(QDialog):
     def load_settings(self):
         """加载设置"""
         try:
+            from app.utils.logger import get_logger
+            logger = get_logger('barcode_settings_dialog')
+            logger.info("开始加载设置")
+
             # 为每个插件加载配置
             for plugin_name in self.plugin_manager.list_plugins():
+                logger.info(f"加载插件 {plugin_name} 的配置")
                 config = self.config_manager.get_plugin_config(plugin_name)
+                logger.info(f"插件 {plugin_name} 的配置: {config}")
                 if not config:
                     config = {}
-                
+
                 # 为每个配置项设置值
                 if plugin_name in self.plugin_widgets:
+                    logger.info(f"插件 {plugin_name} 在 plugin_widgets 中，包含 {len(self.plugin_widgets[plugin_name])} 个配置项")
                     for key, widget in self.plugin_widgets[plugin_name].items():
                         value = config.get(key)
+                        logger.debug(f"插件 {plugin_name} 配置项 {key}: {value} (widget类型: {type(widget).__name__})")
                         if value is not None:
                             self.set_widget_value(widget, value)
+                else:
+                    logger.warning(f"插件 {plugin_name} 未在 plugin_widgets 中")
         except Exception as e:
-            print(f"加载设置时出错: {e}")
+            logger.error(f"加载设置时出错: {e}", exc_info=True)
     
     def set_widget_value(self, widget, value):
         """设置控件的值"""
         try:
+            from app.utils.logger import get_logger
+            logger = get_logger('barcode_settings_dialog')
+            logger.debug(f"set_widget_value: widget类型={type(widget).__name__}, value={value}, widget类={widget.__class__.__name__}")
+
             if isinstance(widget, QSpinBox):
                 widget.setValue(int(value))
             elif isinstance(widget, QDoubleSpinBox):
                 widget.setValue(float(value))
             elif isinstance(widget, QLineEdit):
                 if isinstance(value, list):
-                    widget.setText(','.join(map(str, value)))
+                    # 检查是否是filter_region字段
+                    for plugin_widgets in self.plugin_widgets.values():
+                        for key, w in plugin_widgets.items():
+                            if w is widget and key == 'filter_region':
+                                # filter_region用JSON格式显示
+                                import json
+                                widget.setText(json.dumps(value))
+                                break
+                        else:
+                            continue
+                        break
+                    else:
+                        # 其他列表用逗号分隔
+                        widget.setText(','.join(map(str, value)))
                 else:
                     widget.setText(str(value))
             elif isinstance(widget, QCheckBox):
-                # 检查widget是否是包装在QWidget中的
-                if hasattr(widget.parent(), 'layout') and widget.parent().layout().itemAt(0).widget():
-                    actual_widget = widget.parent().layout().itemAt(0).widget()
-                    actual_widget.setChecked(bool(value))
-                else:
-                    widget.setChecked(bool(value))
+                widget.setChecked(bool(value))
+            elif isinstance(widget, QWidget):
+                # 检查是否是包装QCheckBox的QWidget
+                layout = widget.layout()
+                if layout:
+                    item = layout.itemAt(0)
+                    if item:
+                        actual_widget = item.widget()
+                        if isinstance(actual_widget, QCheckBox):
+                            logger.debug(f"设置包装的QCheckBox: {value}")
+                            actual_widget.setChecked(bool(value))
             elif isinstance(widget, QComboBox):
                 # 检查是否存在选项映射
                 if hasattr(self, 'current_plugin_name') and self.current_plugin_name:
@@ -1196,84 +1233,160 @@ class BarcodeSettingsDialog(QDialog):
     def save_settings(self):
         """保存设置"""
         try:
+            from app.utils.logger import get_logger
+            logger = get_logger('barcode_settings_dialog')
+            logger.info("开始保存设置")
             success = True
             error_messages = []
-            
+
             # 为每个插件保存配置
             for plugin_name in self.plugin_manager.list_plugins():
+                logger.info(f"保存插件 {plugin_name} 的配置")
                 if plugin_name in self.plugin_widgets:
                     config = {}
                     for key, widget in self.plugin_widgets[plugin_name].items():
-                        config[key] = self.get_widget_value(widget)
-                    
+                        value = self.get_widget_value(widget)
+                        config[key] = value
+                        logger.debug(f"插件 {plugin_name} 配置项 {key}: {value}")
+
                     try:
                         self.config_manager.set_plugin_config(plugin_name, config)
+                        logger.info(f"插件 {plugin_name} 配置已设置到管理器")
                     except Exception as e:
                         success = False
                         error_messages.append(f"{plugin_name}: {str(e)}")
-            
+                        logger.error(f"保存插件 {plugin_name} 配置失败: {e}", exc_info=True)
+                else:
+                    logger.warning(f"插件 {plugin_name} 未在 plugin_widgets 中")
+
+            # 保存到文件
+            save_result = self.config_manager.save_config()
+            logger.info(f"配置保存到文件结果: {save_result}")
+
             if success:
                 QMessageBox.information(self, "成功", "所有设置已保存")
             else:
                 QMessageBox.warning(self, "部分保存失败", f"以下插件保存失败:\n" + "\n".join(error_messages))
-                
+
         except Exception as e:
+            logger.error(f"保存设置时出错: {e}", exc_info=True)
             QMessageBox.critical(self, "错误", f"保存设置时出错: {str(e)}")
     
     def get_widget_value(self, widget):
         """获取控件的值"""
         try:
+            from app.utils.logger import get_logger
+            logger = get_logger('barcode_settings_dialog')
+            logger.debug(f"get_widget_value: widget类型={type(widget).__name__}, widget类={widget.__class__.__name__}")
+
             if isinstance(widget, QSpinBox):
-                return widget.value()
+                value = widget.value()
+                logger.debug(f"get_widget_value: QSpinBox, value={value}")
+                return value
             elif isinstance(widget, QDoubleSpinBox):
-                return widget.value()
+                value = widget.value()
+                logger.debug(f"get_widget_value: QDoubleSpinBox, value={value}")
+                return value
             elif isinstance(widget, QLineEdit):
                 text = widget.text()
-                # 检查控件的键名以确定是否为关键词字段
+                logger.debug(f"get_widget_value: QLineEdit, text={text}")
+                # 检查控件的键名以确定是否为关键词字段或filter_region字段
                 # 遍历所有插件的控件映射，找到当前控件对应的键名
-                for plugin_widgets in self.plugin_widgets.values():
+                for plugin_name, plugin_widgets in self.plugin_widgets.items():
                     for key, w in plugin_widgets.items():
-                        if w is widget and ('keyword' in key.lower() or 'keywords' in key.lower()):
-                            # 如果是关键词字段，分割为列表
-                            return [kw.strip() for kw in text.split(',') if kw.strip()]
+                        if w is widget:
+                            logger.debug(f"找到控件对应的键名: {plugin_name}.{key}")
+                            # 关键词字段，分割为列表
+                            if 'keyword' in key.lower() or 'keywords' in key.lower():
+                                result = [kw.strip() for kw in text.split(',') if kw.strip()]
+                                logger.debug(f"关键词字段: {result}")
+                                return result
+                            # filter_region字段，分割为数字列表
+                            elif key == 'filter_region':
+                                if not text.strip():
+                                    logger.debug("filter_region字段为空，返回[]")
+                                    return []
+                                try:
+                                    import json
+                                    result = json.loads(text)
+                                    logger.debug(f"filter_region字段(JSON解析): {result}")
+                                    return result
+                                except json.JSONDecodeError:
+                                    # 尝试按逗号分割并转换为数字
+                                    parts = [p.strip() for p in text.split(',') if p.strip()]
+                                    result = [float(p) for p in parts]
+                                    logger.debug(f"filter_region字段(逗号分割): {result}")
+                                    return result
+                logger.debug(f"L QLineEdit没有找到对应的键名，直接返回文本: {text}")
                 return text
             elif isinstance(widget, QCheckBox):
-                # 检查widget是否是包装在QWidget中的
-                if hasattr(widget.parent(), 'layout') and widget.parent().layout().itemAt(0).widget():
-                    actual_widget = widget.parent().layout().itemAt(0).widget()
-                    return actual_widget.isChecked()
-                else:
-                    return widget.isChecked()
+                value = widget.isChecked()
+                logger.debug(f"get_widget_value: QCheckBox, value={value}")
+                return value
+            elif isinstance(widget, QWidget):
+                # 检查是否是包装QCheckBox的QWidget
+                layout = widget.layout()
+                if layout:
+                    item = layout.itemAt(0)
+                    if item:
+                        actual_widget = item.widget()
+                        if isinstance(actual_widget, QCheckBox):
+                            value = actual_widget.isChecked()
+                            logger.debug(f"get_widget_value: 包装的QCheckBox, value={value}")
+                            return value
             elif isinstance(widget, QComboBox):
-                # 检查是否存在选项映射
-                if hasattr(self, 'current_plugin_name') and self.current_plugin_name:
-                    # 尝试获取插件特定的选项映射
-                    plugin_widget_dict = self.plugin_widgets.get(self.current_plugin_name, {})
-                    if 'detection_mode_options' in plugin_widget_dict and widget == plugin_widget_dict['detection_mode']:
-                        # 这是检测模式下拉框
-                        options_map = plugin_widget_dict['detection_mode_options']
-                        selected_text = widget.currentText()
-                        # 将显示文本转换为实际值
-                        return options_map.get(selected_text, selected_text)
-                    elif 'duplicate_handling' in plugin_widget_dict and widget == plugin_widget_dict['duplicate_handling']:
-                        # 重复处理模式下拉框
-                        options_map = {"分离": "separate", "合并": "merge"}
-                        selected_text = widget.currentText()
-                        return options_map.get(selected_text, selected_text)
-                    elif 'multi_barcode_handling' in plugin_widget_dict and widget == plugin_widget_dict['multi_barcode_handling']:
-                        # 多条码处理模式下拉框
-                        options_map = {"首个": "first", "复制页面": "duplicate_page"}
-                        selected_text = widget.currentText()
-                        return options_map.get(selected_text, selected_text)
+                try:
+                    value = widget.currentText()
+                    logger.debug(f"get_widget_value: QComboBox, value={value}")
+                    # 检查值是否为空
+                    if not value or value.strip() == "":
+                        logger.warning(f"QComboBox值为空，返回None")
+                        return None
+                    # 检查是否存在选项映射
+                    if hasattr(self, 'current_plugin_name') and self.current_plugin_name:
+                        # 尝试获取插件特定的选项映射
+                        plugin_widget_dict = self.plugin_widgets.get(self.current_plugin_name, {})
+                        if 'detection_mode_options' in plugin_widget_dict and widget == plugin_widget_dict['detection_mode']:
+                            # 这是检测模式下拉框
+                            options_map = plugin_widget_dict['detection_mode_options']
+                            # 将显示文本转换为实际值
+                            mapped_value = options_map.get(value, value)
+                            logger.debug(f"QComboBox detection_mode: {value} -> {mapped_value}")
+                            return mapped_value
+                        elif 'duplicate_handling' in plugin_widget_dict and widget == plugin_widget_dict['duplicate_handling']:
+                            # 重复处理模式下拉框
+                            options_map = {"分离": "separate", "合并": "merge"}
+                            mapped_value = options_map.get(value, value)
+                            logger.debug(f"QComboBox duplicate_handling: {value} -> {mapped_value}")
+                            return mapped_value
+                        elif 'multi_barcode_handling' in plugin_widget_dict and widget == plugin_widget_dict['multi_barcode_handling']:
+                            # 多条码处理模式下拉框
+                            options_map = {"首个": "first", "复制页面": "duplicate_page"}
+                            mapped_value = options_map.get(value, value)
+                            logger.debug(f"QComboBox multi_barcode_handling: {value} -> {mapped_value}")
+                            return mapped_value
+                        else:
+                            # 没有特殊映射，返回当前文本
+                            logger.debug(f"QComboBox没有特殊映射，直接返回: {value}")
+                            return value
                     else:
-                        # 没有特殊映射，返回当前文本
-                        return widget.currentText()
-                else:
-                    return widget.currentText()
+                        logger.debug(f"QComboBox没有current_plugin_name或值为空，直接返回: {value}")
+                        return value
+                except Exception as e:
+                    logger.error(f"获取QComboBox值时出错: {e}", exc_info=True)
+                    # 尝试返回当前文本作为fallback
+                    try:
+                        value = widget.currentText()
+                        return value
+                    except:
+                        return None
             else:
+                logger.debug(f"get_widget_value: 未知控件类型 {type(widget).__name__}")
                 return None
         except Exception as e:
-            print(f"获取控件值时出错: {e}")
+            from app.utils.logger import get_logger
+            logger = get_logger('barcode_settings_dialog')
+            logger.error(f"获取控件值时出错: {e}", exc_info=True)
             return None
     
     def reset_settings(self):

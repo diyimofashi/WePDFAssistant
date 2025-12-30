@@ -32,8 +32,7 @@ class AdvancedBarcodePlugin(BarcodePluginInterface):
         self.max_barcode_count = self.config.get('max_barcode_count', 100)
 
         self.split_position_rule = self.config.get('split_position_rule', 'first_page')
-        self.separator_barcodes = self.config.get('separator_barcodes', [])
-        self.keep_separator_page = self.config.get('keep_separator_page', False)
+        self.remove_barcode_pages = self.config.get('remove_barcode_pages', False)
         self.horizontal_only = self.config.get('horizontal_only', False)
         self.filter_region = self.config.get('filter_region', None)
         self.merge_same_barcode = self.config.get('merge_same_barcode', False)
@@ -54,8 +53,7 @@ class AdvancedBarcodePlugin(BarcodePluginInterface):
             self.exclude_regex = self.config.get('exclude_regex', '')
             self.max_barcode_count = int(self.config.get('max_barcode_count', 100))
             self.split_position_rule = self.config.get('split_position_rule', 'first_page')
-            self.separator_barcodes = self.config.get('separator_barcodes', [])
-            self.keep_separator_page = self.config.get('keep_separator_page', False)
+            self.remove_barcode_pages = self.config.get('remove_barcode_pages', False)
             self.horizontal_only = self.config.get('horizontal_only', False)
             self.filter_region = self.config.get('filter_region', None)
             self.merge_same_barcode = self.config.get('merge_same_barcode', False)
@@ -165,37 +163,52 @@ class AdvancedBarcodePlugin(BarcodePluginInterface):
                             config: Optional[Dict[str, Any]] = None, progress_callback=None) -> Dict[str, Any]:
         from .split_logic import (detect_barcodes_enhanced, filter_barcodes,
                                     split_by_first_page_rule, split_by_last_page_rule, split_by_separator_page_rule)
+        from app.utils.logger import get_logger
+        import traceback
+
+        logger = get_logger(__name__)
 
         try:
             if not self.is_initialized:
+                logger.error("插件未初始化")
                 return {"success": False, "message": "插件未初始化", "files_created": [], "barcodes_found": 0, "pages_processed": 0}
 
             os.makedirs(output_dir, exist_ok=True)
             if config is None:
                 config = self.config.copy()
 
+            logger.info(f"开始拆分文档: output_dir={output_dir}, split_position_rule={config.get('split_position_rule')}")
+
             total_pages = len(doc)
 
             if progress_callback:
                 if not progress_callback(10, 100, "正在检测条码..."):
+                    logger.info("用户取消了操作")
                     return {"success": False, "message": "用户取消了操作", "files_created": [], "barcodes_found": 0, "pages_processed": 0}
 
+            logger.info("开始检测条码...")
             all_barcodes = detect_barcodes_enhanced(doc, config)
             filtered_barcodes = filter_barcodes(all_barcodes, config)
+            logger.info(f"条码检测完成: all_barcodes={len(all_barcodes)}, filtered_barcodes={len(filtered_barcodes)}")
 
             if not filtered_barcodes:
+                logger.warning("没有找到符合条件的条码")
                 return {"success": False, "message": "没有找到符合条件的条码", "files_created": [], "barcodes_found": len(all_barcodes), "pages_processed": total_pages}
 
             if progress_callback:
                 if not progress_callback(40, 100, f"检测到 {len(filtered_barcodes)} 个条码，正在分组..."):
+                    logger.info("用户取消了操作")
                     return {"success": False, "message": "用户取消了操作", "files_created": [], "barcodes_found": len(all_barcodes), "pages_processed": total_pages}
 
             split_position_rule = config.get('split_position_rule', 'first_page')
+            logger.info(f"拆分规则: {split_position_rule}")
 
             if progress_callback:
                 if not progress_callback(50, 100, f"使用 {split_position_rule} 规则拆分..."):
+                    logger.info("用户取消了操作")
                     return {"success": False, "message": "用户取消了操作", "files_created": [], "barcodes_found": len(all_barcodes), "pages_processed": total_pages}
 
+            logger.info(f"开始执行拆分逻辑: {split_position_rule}")
             if split_position_rule == "first_page":
                 files_created = split_by_first_page_rule(doc, filtered_barcodes, config, output_dir, progress_callback, self._clean_filename)
             elif split_position_rule == "last_page":
@@ -203,13 +216,18 @@ class AdvancedBarcodePlugin(BarcodePluginInterface):
             elif split_position_rule == "separator_page":
                 files_created = split_by_separator_page_rule(doc, filtered_barcodes, config, output_dir, progress_callback, self._clean_filename)
             else:
+                logger.error(f"未知的拆分规则: {split_position_rule}")
                 files_created = []
+
+            logger.info(f"拆分完成: files_created={len(files_created)}")
 
             if progress_callback:
                 progress_callback(100, 100, "拆分完成")
 
             return {"success": True, "message": f"成功拆分PDF，创建了 {len(files_created)} 个文件", "files_created": files_created, "barcodes_found": len(all_barcodes), "pages_processed": total_pages}
         except Exception as e:
+            logger.error(f"插件拆分逻辑出错: {str(e)}", exc_info=True)
+            logger.error(traceback.format_exc())
             return {"success": False, "message": f"插件拆分逻辑出错: {str(e)}", "files_created": [], "barcodes_found": 0, "pages_processed": 0}
 
     def preview_split_result(self, doc: fitz.Document, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

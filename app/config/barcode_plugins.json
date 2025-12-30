@@ -1,0 +1,42 @@
+{
+  "global": {},
+  "plugins": {
+    "barcode_template": {
+      "barcode_type_checkboxes": null,
+      "min_length": 8,
+      "max_length": 1000,
+      "include_keywords": [],
+      "exclude_keywords": [],
+      "include_regex": "",
+      "exclude_regex": "",
+      "output_dir": "",
+      "use_barcode_filename": true,
+      "filename_template": "{barcode}_{index}",
+      "duplicate_handling": null,
+      "multi_barcode_handling": null,
+      "enable_rotation": true,
+      "max_barcode_count": 100,
+      "min_confidence": 0.5,
+      "enabled_types": [
+        "ALL_TYPES"
+      ]
+    },
+    "advanced_barcode": {
+      "split_position_rule": "separator_page",
+      "remove_barcode_pages": true,
+      "merge_same_barcode": false,
+      "barcode_type_checkboxes": null,
+      "min_length": 1,
+      "max_length": 1000,
+      "include_keywords": [],
+      "exclude_keywords": [],
+      "include_regex": "",
+      "exclude_regex": "",
+      "horizontal_only": false,
+      "filter_region": [],
+      "use_barcode_filename": true,
+      "filename_template": "{barcode}_{index}",
+      "max_barcode_count": 100
+    }
+  }
+}

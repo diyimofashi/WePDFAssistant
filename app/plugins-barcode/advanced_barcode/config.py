@@ -18,18 +18,11 @@ PLUGIN_CONFIG_DEFINITIONS = [
         description="拆分位置规则：first_page(首页规则)、last_page(尾页规则)、separator_page(分隔页规则)"
     ),
     ConfigItem(
-        key="separator_barcodes",
-        title="分隔条码",
-        type_=ConfigItemType.LIST,
-        default=[],
-        description="分隔页规则使用的分隔条码列表（仅separator_page模式有效）"
-    ),
-    ConfigItem(
-        key="keep_separator_page",
-        title="保留分隔页",
+        key="remove_barcode_pages",
+        title="去除条码页",
         type_=ConfigItemType.BOOLEAN,
         default=False,
-        description="是否在结果中保留分隔页（仅separator_page模式有效）"
+        description="是否在结果中去除包含指定条码的页面（仅separator_page模式有效）"
     ),
     ConfigItem(
         key="merge_same_barcode",
