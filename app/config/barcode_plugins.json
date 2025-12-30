@@ -1,8 +1,27 @@
 {
   "global": {},
   "plugins": {
+    "advanced_barcode": {
+      "split_position_rule": "first_page",
+      "remove_barcode_pages": true,
+      "merge_same_barcode": true,
+      "min_length": 1,
+      "max_length": 1000,
+      "include_keywords": [],
+      "exclude_keywords": [],
+      "include_regex": "",
+      "exclude_regex": "",
+      "horizontal_only": false,
+      "filter_region": [],
+      "use_barcode_filename": true,
+      "filename_template": "{barcode}_{index}",
+      "max_barcode_count": 100,
+      "enabled_types": [
+        "ALL_TYPES"
+      ]
+    },
     "barcode_template": {
-      "min_length": 8,
+      "min_length": 1,
       "max_length": 1000,
       "include_keywords": [],
       "exclude_keywords": [],
@@ -16,25 +35,6 @@
       "enable_rotation": true,
       "max_barcode_count": 100,
       "min_confidence": 0.5,
-      "enabled_types": [
-        "ALL_TYPES"
-      ]
-    },
-    "advanced_barcode": {
-      "split_position_rule": "first_page",
-      "remove_barcode_pages": true,
-      "merge_same_barcode": false,
-      "min_length": 1,
-      "max_length": 1000,
-      "include_keywords": [],
-      "exclude_keywords": [],
-      "include_regex": "",
-      "exclude_regex": "",
-      "horizontal_only": false,
-      "filter_region": [],
-      "use_barcode_filename": true,
-      "filename_template": "{barcode}_{index}",
-      "max_barcode_count": 100,
       "enabled_types": [
         "ALL_TYPES"
       ]

@@ -372,43 +372,70 @@ class BarcodeSettingsDialog(QDialog):
     
     def _on_all_types_toggled(self, checked, barcode_type_checkboxes):
         """当"所有类型"复选框状态改变时"""
-        # 如果选中了"所有类型"，禁用其他复选框
+        # 阻止信号递归
+        sender = self.sender()
+        if sender:
+            sender.blockSignals(True)
+
         if checked:
+            # 选中"所有类型"时，选中所有具体类型
             for barcode_type, checkbox in barcode_type_checkboxes.items():
                 if barcode_type != "ALL_TYPES":
-                    checkbox.setEnabled(False)
-                    checkbox.setChecked(False)  # 取消选中其他类型
+                    checkbox.setChecked(True)
         else:
-            # 如果取消选中"所有类型"，启用其他复选框
+            # 取消选中"所有类型"时，取消所有具体类型的选中
             for barcode_type, checkbox in barcode_type_checkboxes.items():
                 if barcode_type != "ALL_TYPES":
-                    checkbox.setEnabled(True)
-    
+                    checkbox.setChecked(False)
+
+        # 恢复信号
+        if sender:
+            sender.blockSignals(False)
+
     def _on_specific_type_toggled(self):
         """当具体类型复选框状态改变时"""
-        # 检查是否没有任何类型被选中
-        # 这里需要获取当前插件的复选框
+        # 获取当前插件的复选框
         current_tab_index = self.tab_widget.currentIndex()
         if current_tab_index < 0:
             return
-        
+
         plugin_name = self.tab_widget.tabText(current_tab_index)
         if plugin_name in self.plugin_widgets:
             plugin_widgets = self.plugin_widgets[plugin_name]
             if 'barcode_type_checkboxes' in plugin_widgets:
                 barcode_type_checkboxes = plugin_widgets['barcode_type_checkboxes']
-                
-                # 检查是否有具体类型被选中
-                any_selected = any(
-                    checkbox.isChecked() 
+
+                # 检查所有具体类型是否都被选中
+                all_selected = all(
+                    checkbox.isChecked()
                     for barcode_type, checkbox in barcode_type_checkboxes.items()
                     if barcode_type != "ALL_TYPES"
                 )
-                
-                # 如果没有任何具体类型被选中，自动选中"所有类型"
+
+                # 检查是否没有任何具体类型被选中
+                none_selected = not any(
+                    checkbox.isChecked()
+                    for barcode_type, checkbox in barcode_type_checkboxes.items()
+                    if barcode_type != "ALL_TYPES"
+                )
+
                 all_types_checkbox = barcode_type_checkboxes.get("ALL_TYPES")
-                if all_types_checkbox and not any_selected and not all_types_checkbox.isChecked():
-                    all_types_checkbox.setChecked(True)
+                if all_types_checkbox:
+                    # 如果所有具体类型都被选中，则选中"所有类型"
+                    if all_selected:
+                        all_types_checkbox.blockSignals(True)
+                        all_types_checkbox.setChecked(True)
+                        all_types_checkbox.blockSignals(False)
+                    # 如果没有任何具体类型被选中，则取消选中"所有类型"
+                    elif none_selected:
+                        all_types_checkbox.blockSignals(True)
+                        all_types_checkbox.setChecked(False)
+                        all_types_checkbox.blockSignals(False)
+                    # 否则，部分选中，取消选中"所有类型"
+                    else:
+                        all_types_checkbox.blockSignals(True)
+                        all_types_checkbox.setChecked(False)
+                        all_types_checkbox.blockSignals(False)
     
     def _select_output_directory(self, line_edit):
         """选择输出目录"""
@@ -534,9 +561,12 @@ class BarcodeSettingsDialog(QDialog):
                 # 创建条码类型复选框
                 barcode_type_checkboxes = {}
 
+                # 检查默认值是否包含"ALL_TYPES"
+                is_all_types_default = "ALL_TYPES" in (config_item.default or [])
+
                 # 首先添加"所有类型"选项
                 all_types_checkbox = QCheckBox("🔍 所有类型")
-                all_types_checkbox.setChecked("ALL_TYPES" in (config_item.default or []))
+                all_types_checkbox.setChecked(is_all_types_default)
                 all_types_checkbox.toggled.connect(lambda checked, atc=all_types_checkbox: self._on_all_types_toggled(checked, barcode_type_checkboxes))
                 barcode_type_checkboxes["ALL_TYPES"] = all_types_checkbox
                 type_grid_layout.addWidget(all_types_checkbox, 0, 0, 1, 4)
@@ -549,7 +579,11 @@ class BarcodeSettingsDialog(QDialog):
                         continue
 
                     checkbox = QCheckBox(barcode_type.replace('_', ' '))
-                    checkbox.setChecked(barcode_type in (config_item.default or []))
+                    # 如果是"所有类型"模式，选中所有具体类型；否则根据默认值设置
+                    if is_all_types_default:
+                        checkbox.setChecked(True)
+                    else:
+                        checkbox.setChecked(barcode_type in (config_item.default or []))
                     checkbox.toggled.connect(lambda checked: self._on_specific_type_toggled())
                     barcode_type_checkboxes[barcode_type] = checkbox
 
@@ -1134,6 +1168,10 @@ class BarcodeSettingsDialog(QDialog):
                             display_text = "创建单独文件"
                         elif opt == "first":
                             display_text = "首个"
+                        elif opt == "first_page":
+                            display_text = "首页"
+                        elif opt == "last_page":
+                            display_text = "尾页"
                         elif opt == "duplicate_page":
                             display_text = "复制页面"
                         elif opt == "separator_page":
@@ -1188,7 +1226,15 @@ class BarcodeSettingsDialog(QDialog):
                 # 为每个配置项设置值
                 if plugin_name in self.plugin_widgets:
                     logger.info(f"插件 {plugin_name} 在 plugin_widgets 中，包含 {len(self.plugin_widgets[plugin_name])} 个配置项")
+
+                    # 特殊处理条码类型复选框
+                    if 'barcode_type_checkboxes' in self.plugin_widgets[plugin_name] and 'enabled_types' in config:
+                        self._load_barcode_type_checkboxes(plugin_name, config['enabled_types'])
+
+                    # 处理其他配置项
                     for key, widget in self.plugin_widgets[plugin_name].items():
+                        if key == 'barcode_type_checkboxes':
+                            continue  # 跳过已处理的条码类型复选框
                         value = config.get(key)
                         logger.debug(f"插件 {plugin_name} 配置项 {key}: {value} (widget类型: {type(widget).__name__})")
                         if value is not None:
@@ -1197,6 +1243,48 @@ class BarcodeSettingsDialog(QDialog):
                     logger.warning(f"插件 {plugin_name} 未在 plugin_widgets 中")
         except Exception as e:
             logger.error(f"加载设置时出错: {e}", exc_info=True)
+
+    def _load_barcode_type_checkboxes(self, plugin_name, enabled_types):
+        """加载条码类型复选框的状态"""
+        try:
+            from app.utils.logger import get_logger
+            logger = get_logger('barcode_settings_dialog')
+
+            if plugin_name not in self.plugin_widgets:
+                return
+
+            barcode_type_checkboxes = self.plugin_widgets[plugin_name].get('barcode_type_checkboxes')
+            if not barcode_type_checkboxes:
+                return
+
+            # 阻止所有信号
+            for checkbox in barcode_type_checkboxes.values():
+                checkbox.blockSignals(True)
+
+            all_types_checkbox = barcode_type_checkboxes.get("ALL_TYPES")
+            if all_types_checkbox:
+                # 检查是否是"所有类型"模式
+                is_all_types = "ALL_TYPES" in (enabled_types or [])
+                all_types_checkbox.setChecked(is_all_types)
+
+                # 设置具体类型复选框的状态
+                for barcode_type, checkbox in barcode_type_checkboxes.items():
+                    if barcode_type == "ALL_TYPES":
+                        continue
+                    if is_all_types:
+                        # "所有类型"模式，选中所有具体类型
+                        checkbox.setChecked(True)
+                    else:
+                        # 具体类型模式，根据配置设置
+                        checkbox.setChecked(barcode_type in (enabled_types or []))
+
+            # 恢复所有信号
+            for checkbox in barcode_type_checkboxes.values():
+                checkbox.blockSignals(False)
+
+            logger.debug(f"加载条码类型复选框状态: {enabled_types}")
+        except Exception as e:
+            logger.error(f"加载条码类型复选框时出错: {e}", exc_info=True)
     
     def set_widget_value(self, widget, value):
         """设置控件的值"""
