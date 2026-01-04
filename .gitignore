@@ -167,7 +167,19 @@ temp/
 temp_files/
 logs/
 error.log
-debug.log
+debug.log/
+
+# LLM plugin configs (contains API keys)
+app/config/llm_plugins_config.json
+
+# LLM tools configs
+app/config/llm_tools_config.json
+
+# LLM memory data
+data/llm_memory/
+
+# OCR plugin configs (contains API keys)
+app/config/ocr_plugins.json
 
 # PDF files (optional - uncomment if you don't want to track PDF files in repo)
 # *.pdf

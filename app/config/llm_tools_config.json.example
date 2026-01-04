@@ -1,0 +1,34 @@
+{
+  "tools": {
+    "open_pdf": {
+      "enabled": true,
+      "require_user_confirmation": true,
+      "auto_fill_params": {
+        "file_path": "last_used_path"
+      }
+    },
+    "split_pdf": {
+      "enabled": true,
+      "require_user_confirmation": true,
+      "default_split_mode": "pages"
+    },
+    "ocr_pdf": {
+      "enabled": true,
+      "require_user_confirmation": true,
+      "default_language": "chi_sim+eng"
+    },
+    "merge_pdf": {
+      "enabled": true,
+      "require_user_confirmation": true
+    },
+    "encrypt_pdf": {
+      "enabled": true,
+      "require_user_confirmation": true
+    }
+  },
+  "interaction": {
+    "auto_show_ui": true,
+    "remember_user_choices": true,
+    "max_interaction_attempts": 3
+  }
+}

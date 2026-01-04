@@ -16,11 +16,12 @@ from app.core.main.ocr_manager_mixin import OCRManagerMixin
 from app.core.main.upload_manager_mixin import UploadManagerMixin
 from app.core.main.download_manager_mixin import DownloadManagerMixin
 from app.core.main.operation_manager_mixin import OperationManagerMixin
+from app.core.main.llm_manager_mixin import LLMManagerMixin
 
 
-class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailManagerMixin, 
-                  SearchManagerMixin, OCRManagerMixin, UploadManagerMixin, 
-                  DownloadManagerMixin, OperationManagerMixin):
+class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailManagerMixin,
+                  SearchManagerMixin, OCRManagerMixin, UploadManagerMixin,
+                  DownloadManagerMixin, OperationManagerMixin, LLMManagerMixin):
     """极灵PDF主窗口 - 重构版本"""
     pass
 
