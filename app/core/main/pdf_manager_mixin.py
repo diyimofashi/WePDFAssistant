@@ -174,7 +174,7 @@ class PDFManagerMixin:
     def _force_reload_thumbnails(self):
         """强制重新加载缩略图"""
         if hasattr(self, 'thumbnail_list') and self.thumbnail_list:
-            self.thumbnail_list.clear_thumbnails()
+            self.thumbnail_list.clear()
         
         self.view_controller.load_thumbnails()
     

@@ -3,6 +3,8 @@
 import os
 import fitz  # PyMuPDF - 用于PDF页面渲染
 import sys
+from PIL import Image
+import io
 
 # 添加项目根目录到Python路径，解决模块导入问题
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -24,6 +26,31 @@ class PDFConversion:
         # 注意：信号需要在主QObject子类中定义
         self.fitz_document = None  # PyMuPDF文档对象
         self.current_page = 0  # 当前页码（从0开始）
+        self.current_doc_path = None  # 当前文档路径
+
+    def open_pdf(self, filepath: str) -> tuple[bool, str]:
+        """打开PDF文件"""
+        try:
+            if not os.path.exists(filepath):
+                return False, f"文件不存在: {filepath}"
+            
+            # 关闭当前文档（如果有）
+            if self.fitz_document:
+                self.fitz_document.close()
+            
+            # 打开新文档
+            self.fitz_document = fitz.open(filepath)
+            self.current_doc_path = filepath
+            self.current_page = 0
+            
+            return True, f"成功打开PDF: {filepath}"
+        except Exception as e:
+            logger.error(f"打开PDF失败: {e}")
+            return False, f"打开PDF失败: {str(e)}"
+
+    def _get_current_doc_path(self) -> str:
+        """获取当前文档的路径"""
+        return self.current_doc_path
 
     def convert_pdf_to_images(self, output_dir: str, dpi: int = 150, format: str = "JPEG", page_range: str = "all") -> tuple[bool, str]:
         """将PDF转换为图片
@@ -148,6 +175,7 @@ class PDFConversion:
     def get_recommended_dpi(self) -> dict[str, int]:
         """获取推荐的DPI设置"""
         return {
+            "默认": 72,
             "屏幕显示": 96,
             "普通打印": 150,
             "高质量打印": 300,
@@ -260,6 +288,45 @@ class PDFConversion:
             
             for image_path in image_paths:
                 try:
+                    # 检查当前文档是否是图片类型（无法直接添加新页面的文档）
+                    current_doc_is_image = False
+                    try:
+                        # 尝试在当前文档中创建一个新页面
+                        # 如果失败，说明当前文档是图片类型
+                        test_page_num = len(self.fitz_document)  # 在文档末尾尝试添加
+                        test_page = self.fitz_document.new_page(test_page_num)
+                        # 如果成功，删除测试页面
+                        self.fitz_document.delete_page(test_page_num)
+                    except:
+                        # 如果失败，说明当前文档是图片类型，无法添加新页面
+                        current_doc_is_image = True
+                        
+                    if current_doc_is_image:
+                        # 创建新PDF文档，将当前内容复制到新文档
+                        new_doc = fitz.open()
+                        
+                        # 复制当前文档的所有页面到新文档
+                        for page_num in range(len(self.fitz_document)):
+                            current_page = self.fitz_document[page_num]
+                            
+                            # 创建新页面
+                            new_page = new_doc.new_page()
+                            
+                            # 尝试获取当前页面内容并复制到新页面
+                            try:
+                                # 获取当前页面的图片数据
+                                pix = current_page.get_pixmap()
+                                new_page.insert_image(new_page.rect, pixmap=pix)
+                            except:
+                                # 如果获取Pixmap失败，尝试其他方式
+                                logger.warning("无法从当前页面获取Pixmap，尝试其他方法")
+                        
+                        # 关闭旧文档
+                        self.fitz_document.close()
+                        # 使用新文档
+                        self.fitz_document = new_doc
+                        insert_position = len(new_doc) - 1 + success_count + 1  # 调整插入位置
+    
                     # 在指定位置创建新页面
                     page = self.fitz_document.new_page(insert_position)
                     
@@ -293,21 +360,100 @@ class PDFConversion:
     def _insert_image_to_page(self, page, image_path: str) -> bool:
         """将图片插入到PDF页面"""
         try:
+            # 检查图片文件是否存在
+            if not os.path.exists(image_path):
+                logger.error(f"图片文件不存在: {image_path}")
+                return False
+            
+            # 使用PIL获取图片尺寸信息，避免PyMuPDF将图片误认为PDF
+            with Image.open(image_path) as img:
+                img_width, img_height = img.size
+            
             # 获取页面矩形区域
             page_rect = page.rect
             
-            # 计算图片在页面中的位置和尺寸
-            # 这里可以优化为保持宽高比，居中显示等
-            img_rect = fitz.Rect(50, 50, page_rect.width - 50, page_rect.height - 50)
+            # 计算缩放比例，确保图片适应页面，同时保留边距
+            margin = 50
+            available_width = page_rect.width - 2 * margin
+            available_height = page_rect.height - 2 * margin
             
-            # 插入图片到页面
-            page.insert_image(img_rect, filename=image_path)
+            scale_width = available_width / img_width
+            scale_height = available_height / img_height
+            scale = min(scale_width, scale_height)  # 保持宽高比
+            
+            # 计算缩放后的图片尺寸
+            scaled_width = img_width * scale
+            scaled_height = img_height * scale
+            
+            # 计算居中位置
+            x_center = (page_rect.width - scaled_width) / 2
+            y_center = (page_rect.height - scaled_height) / 2
+            
+            # 创建适合页面的矩形区域
+            fitz_rect = fitz.Rect(x_center, y_center, x_center + scaled_width, y_center + scaled_height)
+            
+            # 直接使用文件路径插入图片到页面
+            # 这样可以避免PyMuPDF将图片误认为PDF的问题
+            page.insert_image(fitz_rect, filename=image_path)
             
             return True
             
         except Exception as e:
             logger.error(f"插入图片到页面失败 {image_path}: {e}")
-            return False
+            
+            # 如果上面的方法失败，尝试使用PIL进行预处理并创建Pixmap
+            try:
+                import io
+                
+                # 使用PIL打开图片并获取其字节
+                with Image.open(image_path) as img:
+                    # 将图片转换为RGB模式（如果需要）
+                    if img.mode in ('RGBA', 'LA', 'P'):
+                        img = img.convert('RGB')
+                    
+                    # 将图片保存到内存中的字节流
+                    img_bytes_io = io.BytesIO()
+                    img.save(img_bytes_io, format='JPEG', quality=95)
+                    img_bytes = img_bytes_io.getvalue()
+                
+                # 重新计算尺寸（因为可能经过了转换）
+                img_width, img_height = img.size
+                page_rect = page.rect
+                
+                # 计算缩放比例，确保图片适应页面，同时保留边距
+                margin = 50
+                available_width = page_rect.width - 2 * margin
+                available_height = page_rect.height - 2 * margin
+                
+                scale_width = available_width / img_width
+                scale_height = available_height / img_height
+                scale = min(scale_width, scale_height)  # 保持宽高比
+                
+                # 计算缩放后的图片尺寸
+                scaled_width = img_width * scale
+                scaled_height = img_height * scale
+                
+                # 计算居中位置
+                x_center = (page_rect.width - scaled_width) / 2
+                y_center = (page_rect.height - scaled_height) / 2
+                
+                # 创建适合页面的矩形区域
+                fitz_rect = fitz.Rect(x_center, y_center, x_center + scaled_width, y_center + scaled_height)
+                
+                # 创建Pixmap并插入到页面
+                # 使用fitz.Pixmap从字节数据创建
+                pix = fitz.Pixmap(fitz.csRGB, img_bytes)
+                
+                # 插入到页面
+                page.insert_image(fitz_rect, pixmap=pix)
+                
+                # 释放Pixmap资源
+                pix = None
+                
+                return True
+            except Exception as secondary_e:
+                logger.error(f"使用备用方法插入图片到页面失败 {image_path}: {secondary_e}")
+                return False
     
     def get_supported_image_formats_for_import(self) -> list[str]:
         """获取支持导入的图片格式列表"""
