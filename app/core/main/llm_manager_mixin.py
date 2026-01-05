@@ -106,10 +106,16 @@ class LLMManagerMixin:
             if hasattr(self, 'llm_sidebar_dock'):
                 if self.llm_sidebar_dock.isVisible():
                     self.llm_sidebar_dock.hide()
+                    # 显示浮动按钮
+                    if hasattr(self, 'llm_floating_button'):
+                        self.llm_floating_button.show()
                     if hasattr(self, 'show_llm_sidebar'):
                         self.show_llm_sidebar = False
                 else:
                     self.llm_sidebar_dock.show()
+                    # 隐藏浮动按钮
+                    if hasattr(self, 'llm_floating_button'):
+                        self.llm_floating_button.hide()
                     if hasattr(self, 'show_llm_sidebar'):
                         self.show_llm_sidebar = True
             else:
