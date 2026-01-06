@@ -4,6 +4,7 @@ import os
 import PyPDF2
 import fitz  # PyMuPDF - 用于PDF页面渲染
 import sys
+import tempfile
 
 # 添加项目根目录到Python路径，解决模块导入问题
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -150,37 +151,53 @@ class PDFOperations:
             is_saving_to_original = (self.current_file and
                                     os.path.abspath(output_path) == os.path.abspath(self.current_file))
 
-            if is_saving_to_original:
-                # 保存到原文件：使用临时文件替换
-                import tempfile
-                import shutil
+            # 使用PyPDF2来处理加密
+            from PyPDF2 import PdfWriter, PdfReader
+            
+            # 先将PyMuPDF文档保存到临时文件
+            temp_fd, temp_path = tempfile.mkstemp(suffix='.pdf', prefix='pypdf_encrypted_')
+            os.close(temp_fd)
 
-                # 创建临时文件
-                temp_fd, temp_path = tempfile.mkstemp(suffix='.pdf', prefix='pypdf_encrypted_')
-                os.close(temp_fd)
+            try:
+                # 用PyMuPDF保存到临时文件
+                self.fitz_document.save(temp_path, incremental=False)
+                
+                # 使用PyPDF2读取临时文件并加密
+                with open(temp_path, 'rb') as temp_file:
+                    pdf_reader = PdfReader(temp_file)
+                    pdf_writer = PdfWriter()
+                    
+                    # 复制所有页面
+                    for page in pdf_reader.pages:
+                        pdf_writer.add_page(page)
+                    
+                    # 添加元数据（如果有的话）
+                    if pdf_reader.metadata:
+                        pdf_writer.add_metadata(pdf_reader.metadata)
+                    
+                    # 加密PDF
+                    pdf_writer.encrypt(password)
+                    
+                    # 保存到目标路径
+                    with open(output_path, 'wb') as output_file:
+                        pdf_writer.write(output_file)
+                
+                logger.debug(f"已加密保存到文件: {output_path}")
 
-                try:
-                    # 使用PyMuPDF保存并加密到临时文件
-                    self.fitz_document.save(temp_path, incremental=False, encrypt=password)
-                    logger.debug(f"已加密保存到临时文件: {temp_path}")
+                # 清理临时文件
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
 
-                    # 用临时文件替换原文件
-                    shutil.copy2(temp_path, output_path)
-                    logger.debug("加密文件已复制到原文件位置")
-
-                    return True, "PDF加密成功"
-                except Exception as e:
-                    # 清理临时文件
-                    if os.path.exists(temp_path):
-                        try:
-                            os.unlink(temp_path)
-                        except:
-                            pass
-                    raise e
-            else:
-                # 保存到新文件，直接加密保存
-                self.fitz_document.save(output_path, incremental=False, encrypt=password)
                 return True, "PDF加密成功"
+
+            except Exception as e:
+                # 清理临时文件
+                if os.path.exists(temp_path):
+                    try:
+                        os.unlink(temp_path)
+                    except:
+                        pass
+                raise e
 
         except Exception as e:
             logger.error(f"加密PDF文件失败: {str(e)}")
