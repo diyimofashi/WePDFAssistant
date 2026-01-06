@@ -481,72 +481,126 @@ class PageEditor(QObject):
     
     def delete_page(self, page_num):
         """删除指定页面"""
-        logger.debug(f"开始删除页面，页码: {page_num}")
+        logger.info(f"[PageEditor.delete_page] 开始删除页面，页码(1-based): {page_num}")
         # 如果还没有临时文件，自动创建一个
         if not self.temp_file:
-            logger.debug("没有临时文件，尝试创建")
+            logger.info("[PageEditor.delete_page] 没有临时文件，尝试创建")
             if not self.original_file:
                 # 检查是否有打开的PDF文件
                 if not self.pdf_processor or not self.pdf_processor.current_file:
-                    logger.debug("没有打开的PDF文件")
+                    logger.info("[PageEditor.delete_page] 没有打开的PDF文件")
                     return False, "没有打开的PDF文件"
-            
+
             # 创建临时文件
-            logger.debug("创建临时文件")
+            logger.info("[PageEditor.delete_page] 创建临时文件")
             success, message = self.create_temp_file()
             if not success:
-                logger.debug(f"创建临时文件失败: {message}")
+                logger.info(f"[PageEditor.delete_page] 创建临时文件失败: {message}")
                 return False, f"创建临时文件失败: {message}"
-        
+
         try:
-            logger.debug("开始执行删除操作")
+            logger.info("[PageEditor.delete_page] 开始执行删除操作")
             # 记录操作前的状态用于撤销
             reader = PdfReader(self.temp_file)
-            if page_num < 1 or page_num > len(reader.pages):
-                logger.debug(f"页码超出范围：{page_num}")
+            total_pages_before = len(reader.pages)
+            logger.info(f"[PageEditor.delete_page] 删除前总页数: {total_pages_before}, 要删除的页码(1-based): {page_num}")
+
+            if page_num < 1 or page_num > total_pages_before:
+                logger.error(f"[PageEditor.delete_page] 页码超出范围：{page_num}，总页数：{total_pages_before}")
                 return False, f"页码超出范围：{page_num}"
-            
+
+            # 计算要删除的页面索引（0-based）
+            page_index_to_delete = page_num - 1
+            logger.info(f"[PageEditor.delete_page] 要删除的页面索引(0-based): {page_index_to_delete}")
+
             # 保存被删除页面的数据用于撤销
             operation_data = {
                 'page_num': page_num,
-                'page_data': reader.pages[page_num - 1]  # 保存页面数据
+                'page_data': reader.pages[page_index_to_delete]  # 保存页面数据
             }
-            
+
             # 创建新的PDF，排除指定页面
             writer = PdfWriter()
+            pages_added = 0
             for i, page in enumerate(reader.pages):
-                if i != page_num - 1:  # 跳过要删除的页面
+                if i != page_index_to_delete:  # 跳过要删除的页面
                     writer.add_page(page)
-            
+                    pages_added += 1
+                else:
+                    logger.info(f"[PageEditor.delete_page] 跳过页面索引: {i} (用户页码: {i+1})")
+
+            logger.info(f"[PageEditor.delete_page] 写入了 {pages_added} 个页面到临时文件")
+
             # 写入临时文件
-            logger.debug("写入临时文件")
+            logger.info("[PageEditor.delete_page] 写入临时文件")
             with open(self.temp_file, 'wb') as output_file:
                 writer.write(output_file)
-            
+
             # 更新状态
             self.is_modified = True
-            
+
             # 记录操作
             self.record_operation('delete_page', operation_data)
-            
+
             # 通知PDF处理器加载临时文件以显示编辑效果，但保持原始文件引用
             if self.pdf_processor:
-                logger.debug("通知PDF处理器加载临时文件")
+                logger.info("[PageEditor.delete_page] 通知PDF处理器加载临时文件")
                 # 保存当前的原始文件引用
                 original_current_file = self.pdf_processor.current_file
-                # 加载临时文件
-                self.pdf_processor.load_pdf(self.temp_file)
+
+                # 获取删除后的总页数
+                total_pages_after_delete = total_pages_before - 1
+                logger.info(f"[PageEditor.delete_page] 删除后总页数: {total_pages_after_delete}")
+
+                # 确定删除页面后应该跳转到的页面
+                # 如果删除的页面是最后一页，则跳转到新的最后一页
+                # 如果删除的页面不是最后一页，则跳转到删除页面位置的下一页（删除后原下一页现在位置上移）
+                if page_num == total_pages_before:
+                    # 删除的是最后一页，跳转到新的最后一页
+                    target_page_index = total_pages_after_delete - 1
+                    logger.info(f"[PageEditor.delete_page] 删除最后一页，跳转到新的最后一页(0-based): {target_page_index}")
+                else:
+                    # 删除的不是最后一页，跳转到删除位置的下一页
+                    # 删除第N页后，原来的第N+1页变成新的第N页
+                    # 所以应该跳转到 page_num - 1 (0-based)
+                    target_page_index = page_num - 1
+                    logger.info(f"[PageEditor.delete_page] 删除第{page_num}页后，跳转到索引(0-based): {target_page_index}")
+
+                # 加载临时文件 - 使用open_pdf方法替换load_pdf
+                logger.info(f"[PageEditor.delete_page] 调用open_pdf加载临时文件: {self.temp_file}")
+                self.pdf_processor.open_pdf(self.temp_file, async_mode=False)
+
+                # 清除渲染缓存，避免显示旧的页面内容
+                if hasattr(self.pdf_processor, 'clear_render_cache'):
+                    logger.info("[PageEditor.delete_page] 清除渲染缓存")
+                    self.pdf_processor.clear_render_cache()
+
+                # 设置到正确的页面位置
+                logger.info(f"[PageEditor.delete_page] 设置current_page为: {target_page_index}，总页数: {total_pages_after_delete}")
+                if target_page_index >= 0 and target_page_index < total_pages_after_delete:
+                    self.pdf_processor.current_page = target_page_index
+                    logger.info(f"[PageEditor.delete_page] current_page已设置为(0-based): {target_page_index}")
+                elif total_pages_after_delete > 0:
+                    # 如果目标页面超出范围，设置为第一页
+                    self.pdf_processor.current_page = 0
+                    logger.info(f"[PageEditor.delete_page] current_page超出范围，设置为第一页: 0")
+                else:
+                    logger.warning(f"[PageEditor.delete_page] 删除后文档为空")
+
                 # 恢复原始文件引用，确保关闭时能正确检测到未保存的更改
                 if self.original_file:
                     self.pdf_processor.current_file = self.original_file
-            
+                    logger.info(f"[PageEditor.delete_page] 恢复原始文件引用: {self.original_file}")
+
             # 发出状态变化信号，通知界面更新按钮状态
             self._emit_state_changed()
-            
-            logger.debug(f"删除成功，页码: {page_num}")
+
+            logger.info(f"[PageEditor.delete_page] 删除成功，页码(1-based): {page_num}")
             return True, f"已删除第{page_num}页"
         except Exception as e:
-            logger.error(f"删除页面失败: {str(e)}")
+            logger.error(f"[PageEditor.delete_page] 删除页面失败: {str(e)}")
+            import traceback
+            logger.error(f"[PageEditor.delete_page] 删除页面失败，堆栈信息: {traceback.format_exc()}")
             return False, f"删除页面失败: {str(e)}"
     
     def rotate_page(self, page_num, rotation):

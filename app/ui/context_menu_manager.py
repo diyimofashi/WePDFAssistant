@@ -266,12 +266,14 @@ class ContextMenuManager:
             
             # 如果虚拟滚动区域有获取页码的方法
             if hasattr(virtual_scroll, 'get_page_at_position'):
-                return virtual_scroll.get_page_at_position(local_pos)
+                page_at_pos = virtual_scroll.get_page_at_position(local_pos)
+                if page_at_pos is not None:
+                    logger.debug(f"通过虚拟滚动区域获取到页面: {page_at_pos}")
+                    return page_at_pos
             
-            # 否则返回当前页面
-            if hasattr(self.main_window, 'pdf_processor'):
-                return self.main_window.pdf_processor.current_page
-            
+            # 不再返回pdf_processor.current_page，避免误删当前页
+            # 只有当能明确知道鼠标指向哪个页面时才返回页面号
+            logger.debug("无法确定鼠标指向的具体页面，返回None")
             return None
             
         except Exception as e:

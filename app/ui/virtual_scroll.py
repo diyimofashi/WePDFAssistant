@@ -335,29 +335,50 @@ class VirtualScrollArea(QScrollArea):
     
     def get_page_at_position(self, pos):
         """获取指定位置的页码
-        
+
         Args:
             pos: 相对于虚拟滚动区域的位置 (QPoint)
-            
+
         Returns:
             int: 页码，如果无法获取则返回None
         """
         try:
             # 获取滚动条的值
             scroll_value = self.verticalScrollBar().value()
-            
+
             # 计算实际Y坐标（包含滚动偏移）
             actual_y = pos.y() + scroll_value
-            
-            # 查找对应的页面
+
+            logger.info(f"[VirtualScroll.get_page_at_position] pos.y()={pos.y()}, scroll_value={scroll_value}, actual_y={actual_y}")
+            logger.info(f"[VirtualScroll.get_page_at_position] page_positions: {self.page_positions}")
+            logger.info(f"[VirtualScroll.get_page_at_position] page_heights: {self.page_heights}")
+            logger.info(f"[VirtualScroll.get_page_at_position] 总页数: {len(self.page_positions)}")
+
+            # 查找对应的页面（从前往后查找）
             for i, position in enumerate(self.page_positions):
                 if i < len(self.page_heights):
-                    if position <= actual_y < position + self.page_heights[i]:
+                    page_top = position
+                    page_bottom = position + self.page_heights[i]
+                    logger.debug(f"[VirtualScroll.get_page_at_position] 检查页面{i}(0-based): 顶部={page_top}, 底部={page_bottom}, actual_y={actual_y}, 在范围内={page_top <= actual_y < page_bottom}")
+                    if page_top <= actual_y < page_bottom:
+                        logger.info(f"[VirtualScroll.get_page_at_position] 找到匹配页面，返回索引(0-based): {i} (用户页码: {i+1})")
                         return i
-            
+
+            # 如果没有找到，检查是否在最后一页的范围内（考虑页面间距）
+            if self.page_positions:
+                last_page_idx = len(self.page_positions) - 1
+                last_page_top = self.page_positions[last_page_idx]
+                last_page_height = self.page_heights[last_page_idx] if last_page_idx < len(self.page_heights) else 1100
+                if last_page_top <= actual_y < last_page_top + last_page_height:
+                    logger.info(f"[VirtualScroll.get_page_at_position] 在最后一页范围内，返回最后一页索引(0-based): {last_page_idx} (用户页码: {last_page_idx+1})")
+                    return last_page_idx
+
+            logger.warning(f"[VirtualScroll.get_page_at_position] 未找到匹配的页面，actual_y={actual_y}")
             return None
         except Exception as e:
-            logger.error(f"获取页码失败: {e}")
+            logger.error(f"[VirtualScroll.get_page_at_position] 获取页码失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
 
             
@@ -367,33 +388,36 @@ class VirtualScrollArea(QScrollArea):
         
     def _render_page(self, page_num):
         """渲染单个页面"""
-        logger.debug(f"开始渲染第{page_num + 1}页...")
+        logger.info(f"[VirtualScroll._render_page] 开始渲染第{page_num + 1}页 (0-based索引: {page_num})...")
         if page_num < 0 or page_num >= len(self.pages_data):
-            logger.debug(f"页面号超出范围: {page_num}")
+            logger.warning(f"[VirtualScroll._render_page] 页面号超出范围: {page_num}, 总页数: {len(self.pages_data)}")
             return
-            
+
         # 查找有PDF处理器的父窗口
         parent = self.parent()
         while parent and not hasattr(parent, 'pdf_processor'):
             parent = parent.parent()
-            
+
         if parent and hasattr(parent, 'pdf_processor'):
             pdf_processor = parent.pdf_processor
             if pdf_processor:
-                logger.debug(f"调用PDF处理器渲染第{page_num + 1}页...")
+                logger.info(f"[VirtualScroll._render_page] 调用PDF处理器渲染第{page_num + 1}页 (0-based索引: {page_num})...")
                 # 使用实际的渲染尺寸
                 render_width = self.pages_data[page_num].get('width', 800)
                 render_height = self.pages_data[page_num].get('height', 1100)
+                logger.info(f"[VirtualScroll._render_page] 渲染尺寸: {render_width} x {render_height}")
+                logger.info(f"[VirtualScroll._render_page] PDF总页数: {pdf_processor.get_total_pages()}")
+                logger.info(f"[VirtualScroll._render_page] PDF当前页面: {pdf_processor.current_page}")
                 pixmap = pdf_processor.render_page_at(page_num, render_width, render_height)
                 if pixmap:
-                    logger.debug(f"第{page_num + 1}页渲染成功: {pixmap.width()} x {pixmap.height()}")
+                    logger.info(f"[VirtualScroll._render_page] 第{page_num + 1}页渲染成功: {pixmap.width()} x {pixmap.height()}")
                     self.on_page_rendered(page_num, pixmap)
                 else:
-                    logger.debug(f"第{page_num + 1}页渲染失败")
+                    logger.warning(f"[VirtualScroll._render_page] 第{page_num + 1}页渲染失败")
             else:
-                logger.debug("PDF处理器不可用")
+                logger.warning("[VirtualScroll._render_page] PDF处理器不可用")
         else:
-            logger.debug("父窗口没有PDF处理器")
+            logger.warning("[VirtualScroll._render_page] 父窗口没有PDF处理器")
             
     def _render_visible_pages(self):
         """渲染可见区域的页面"""

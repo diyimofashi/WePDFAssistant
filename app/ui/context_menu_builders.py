@@ -24,23 +24,41 @@ class ContextMenuBuilder:
     def _get_page_editor(self):
         """获取页面编辑器"""
         logger.debug("尝试获取page_editor")
-        # 尝试从thumbnail_manager获取page_editor
-        if hasattr(self.main_window, 'thumbnail_list') and self.main_window.thumbnail_list:
-            if hasattr(self.main_window.thumbnail_list, 'page_editor'):
-                logger.debug(f"从thumbnail_list获取到page_editor: {self.main_window.thumbnail_list.page_editor}")
-                return self.main_window.thumbnail_list.page_editor
-            else:
-                logger.debug("thumbnail_list没有page_editor属性")
+        
+        # 首先尝试从thumbnail_manager获取page_editor，这是最可靠的位置
+        if (hasattr(self.main_window, 'thumbnail_list') and 
+            self.main_window.thumbnail_list and 
+            hasattr(self.main_window.thumbnail_list, 'page_editor') and 
+            self.main_window.thumbnail_list.page_editor):
+            logger.debug(f"从thumbnail_list获取到page_editor: {self.main_window.thumbnail_list.page_editor}")
+            return self.main_window.thumbnail_list.page_editor
         else:
-            logger.debug("没有thumbnail_list或thumbnail_list为空")
-
+            logger.debug("thumbnail_list没有page_editor或其值为None")
+        
         # 尝试从pdf_processor获取page_editor
+        if (hasattr(self.main_window, 'pdf_processor') and 
+            hasattr(self.main_window.pdf_processor, 'page_editor') and 
+            self.main_window.pdf_processor.page_editor):
+            logger.debug(f"从pdf_processor获取到page_editor: {self.main_window.pdf_processor.page_editor}")
+            return self.main_window.pdf_processor.page_editor
+        else:
+            logger.debug("pdf_processor没有page_editor属性或其值为None")
+        
+        # 尝试从main_window直接获取page_editor（如果存在）
+        if hasattr(self.main_window, 'page_editor') and self.main_window.page_editor:
+            logger.debug(f"从main_window获取到page_editor: {self.main_window.page_editor}")
+            return self.main_window.page_editor
+
+        # 如果以上都没有找到page_editor，则创建一个新的实例
+        logger.debug("所有位置都没有找到page_editor，尝试创建新的PageEditor实例")
         if hasattr(self.main_window, 'pdf_processor'):
-            if hasattr(self.main_window.pdf_processor, 'page_editor'):
-                logger.debug(f"从pdf_processor获取到page_editor: {self.main_window.pdf_processor.page_editor}")
-                return self.main_window.pdf_processor.page_editor
-            else:
-                logger.debug("pdf_processor没有page_editor属性")
+            logger.debug("使用pdf_processor创建新的PageEditor实例")
+            from app.core.editing.page_editor import PageEditor
+            new_page_editor = PageEditor(self.main_window.pdf_processor)
+            # 同时设置到pdf_processor，以便后续使用
+            self.main_window.pdf_processor.page_editor = new_page_editor
+            logger.debug(f"创建新的PageEditor实例: {new_page_editor}")
+            return new_page_editor
 
         logger.warning("无法获取page_editor")
         return None
@@ -615,6 +633,17 @@ class ContextMenuBuilder:
             self.main_window.show_message("❌ 未打开PDF文档")
             return
 
+        logger.info(f"[删除页面] _delete_page收到的page_num(0-based): {page_num}")
+
+        # 验证页码是否有效
+        if hasattr(self.main_window, 'pdf_processor') and self.main_window.pdf_processor.fitz_document:
+            total_pages = self.main_window.pdf_processor.get_total_pages()
+            logger.info(f"[删除页面] 当前PDF总页数: {total_pages}")
+            if page_num < 0 or page_num >= total_pages:
+                logger.error(f"[删除页面] 页码无效: {page_num}, 总页数: {total_pages}")
+                self.main_window.show_message(f"❌ 页码无效: {page_num}")
+                return
+
         reply = QMessageBox.question(
             self.main_window,
             "确认删除",
@@ -625,12 +654,38 @@ class ContextMenuBuilder:
         if reply == QMessageBox.Yes:
             page_editor = self._get_page_editor()
             if page_editor:
-                success, message = page_editor.delete_page(page_num + 1)
+                page_num_1based = page_num + 1
+                logger.info(f"[删除页面] 调用page_editor.delete_page，传入页码(1-based): {page_num_1based}")
+                success, message = page_editor.delete_page(page_num_1based)
+                logger.info(f"[删除页面] 删除结果: success={success}, message={message}")
                 if success:
                     self.main_window.show_message(message)
+                    # 删除页面后需要清除虚拟滚动的缓存
+                    if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
+                        logger.info("[删除页面] 清除虚拟滚动缓存")
+                        self.main_window.virtual_scroll.clear_cache()
+                    # 更新预览和缩略图
                     self.main_window.update_preview()
+                    self.main_window.load_thumbnails()
+                    # 延迟一段时间，确保所有UI更新完成
+                    from PyQt5.QtCore import QTimer
+                    QTimer.singleShot(200, self._force_scroll_to_current_page)
                 else:
                     self.main_window.show_message(f"❌ {message}")
             else:
                 self.main_window.show_message("❌ 页面编辑器未初始化")
         logger.debug(f"删除页面 {page_num + 1}")
+
+    def _force_scroll_to_current_page(self):
+        """强制滚动到当前页面"""
+        if not hasattr(self.main_window, 'pdf_processor'):
+            return
+
+        current_page = self.main_window.pdf_processor.current_page
+        if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
+            virtual_scroll = self.main_window.virtual_scroll
+            # 根据页面索引计算滚动位置
+            if hasattr(virtual_scroll, 'page_positions') and len(virtual_scroll.page_positions) > current_page:
+                target_scroll_pos = virtual_scroll.page_positions[current_page]
+                logger.debug(f"强制滚动到页面 {current_page}，位置: {target_scroll_pos}")
+                virtual_scroll.verticalScrollBar().setValue(target_scroll_pos)
