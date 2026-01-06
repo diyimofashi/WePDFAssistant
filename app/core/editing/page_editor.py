@@ -200,10 +200,8 @@ class PageEditor(QObject):
             
             # 通知PDF处理器加载临时文件
             if self.pdf_processor:
-                original_current_file = self.pdf_processor.current_file
-                self.pdf_processor.load_pdf(self.temp_file)
-                if self.original_file:
-                    self.pdf_processor.current_file = self.original_file
+                # 使用open_pdf加载临时文件（不要改回original_file）
+                self.pdf_processor.open_pdf(self.temp_file, async_mode=False)
             
             logger.debug("撤销删除页面操作成功")
             return True, "已撤销删除页面操作"
@@ -463,13 +461,12 @@ class PageEditor(QObject):
             
             # 通知PDF处理器加载临时文件以显示编辑效果，但保持原始文件引用
             if self.pdf_processor:
-                # 保存当前的原始文件引用
-                original_current_file = self.pdf_processor.current_file
-                # 加载临时文件
-                self.pdf_processor.load_pdf(self.temp_file)
-                # 恢复原始文件引用，确保关闭时能正确检测到未保存的更改
-                if self.original_file:
-                    self.pdf_processor.current_file = self.original_file
+                # 清除渲染缓存
+                if hasattr(self.pdf_processor, 'clear_render_cache'):
+                    logger.info("[insert_pdf_page] 清除渲染缓存")
+                    self.pdf_processor.clear_render_cache()
+                # 加载临时文件（不要改回original_file）
+                self.pdf_processor.open_pdf(self.temp_file, async_mode=False)
             
             # 发出状态变化信号，通知界面更新按钮状态
             self._emit_state_changed()
@@ -587,10 +584,11 @@ class PageEditor(QObject):
                 else:
                     logger.warning(f"[PageEditor.delete_page] 删除后文档为空")
 
-                # 恢复原始文件引用，确保关闭时能正确检测到未保存的更改
+                # 注意：不要把current_file改回original_file
+                # open_pdf已经正确设置了current_file为临时文件
+                # 我们只需要保留original_file用于保存时使用
                 if self.original_file:
-                    self.pdf_processor.current_file = self.original_file
-                    logger.info(f"[PageEditor.delete_page] 恢复原始文件引用: {self.original_file}")
+                    logger.info(f"[PageEditor.delete_page] 保持临时文件加载状态: current_file={self.pdf_processor.current_file}, original_file={self.original_file}")
 
             # 发出状态变化信号，通知界面更新按钮状态
             self._emit_state_changed()
@@ -648,13 +646,12 @@ class PageEditor(QObject):
             
             # 通知PDF处理器加载临时文件以显示编辑效果，但保持原始文件引用
             if self.pdf_processor:
-                # 保存当前的原始文件引用
-                original_current_file = self.pdf_processor.current_file
-                # 加载临时文件
-                self.pdf_processor.load_pdf(self.temp_file)
-                # 恢复原始文件引用，确保关闭时能正确检测到未保存的更改
-                if self.original_file:
-                    self.pdf_processor.current_file = self.original_file
+                # 清除渲染缓存
+                if hasattr(self.pdf_processor, 'clear_render_cache'):
+                    logger.info("[insert_pdf_page] 清除渲染缓存")
+                    self.pdf_processor.clear_render_cache()
+                # 加载临时文件（不要改回original_file）
+                self.pdf_processor.open_pdf(self.temp_file, async_mode=False)
             
             # 发出状态变化信号，通知界面更新按钮状态
             self._emit_state_changed()
@@ -716,13 +713,12 @@ class PageEditor(QObject):
             
             # 通知PDF处理器加载临时文件以显示编辑效果，但保持原始文件引用
             if self.pdf_processor:
-                # 保存当前的原始文件引用
-                original_current_file = self.pdf_processor.current_file
-                # 加载临时文件
-                self.pdf_processor.load_pdf(self.temp_file)
-                # 恢复原始文件引用，确保关闭时能正确检测到未保存的更改
-                if self.original_file:
-                    self.pdf_processor.current_file = self.original_file
+                # 清除渲染缓存
+                if hasattr(self.pdf_processor, 'clear_render_cache'):
+                    logger.info("[insert_pdf_page] 清除渲染缓存")
+                    self.pdf_processor.clear_render_cache()
+                # 加载临时文件（不要改回original_file）
+                self.pdf_processor.open_pdf(self.temp_file, async_mode=False)
             
             # 发出状态变化信号，通知界面更新按钮状态
             self._emit_state_changed()
@@ -867,16 +863,15 @@ class PageEditor(QObject):
             # 记录操作
             self.record_operation('insert_image_page', operation_data)
 
-            # 通知PDF处理器加载临时文件以显示编辑效果，但保持原始文件引用
+            # 通知PDF处理器加载临时文件以显示编辑效果
             if self.pdf_processor:
                 logger.debug("通知PDF处理器加载临时文件")
-                # 保存当前的原始文件引用
-                original_current_file = self.pdf_processor.current_file
-                # 加载临时文件
-                self.pdf_processor.load_pdf(self.temp_file)
-                # 恢复原始文件引用，确保关闭时能正确检测到未保存的更改
-                if self.original_file:
-                    self.pdf_processor.current_file = self.original_file
+                # 清除渲染缓存
+                if hasattr(self.pdf_processor, 'clear_render_cache'):
+                    logger.info("[insert_image_page] 清除渲染缓存")
+                    self.pdf_processor.clear_render_cache()
+                # 加载临时文件（不要改回original_file）
+                self.pdf_processor.open_pdf(self.temp_file, async_mode=False)
                 logger.debug("PDF处理器已加载临时文件")
 
             # 发出状态变化信号，通知界面更新按钮状态
