@@ -32,12 +32,73 @@ class PDFOperations:
         try:
             if not self.fitz_document:
                 return False, "请先打开PDF文件"
-            
+
             # 使用PyMuPDF保存当前文档
-            self.fitz_document.save(file_path)
-            return True, f"PDF文件已保存到: {file_path}"
-            
+            logger.debug(f"开始保存PDF文件到: {file_path}")
+            logger.debug(f"当前fitz_document: {self.fitz_document}")
+            logger.debug(f"当前current_file: {self.current_file}")
+
+            # 判断是否保存到原始文件
+            is_saving_to_original = (self.current_file and
+                                    os.path.abspath(file_path) == os.path.abspath(self.current_file))
+
+            if is_saving_to_original:
+                # 保存到原文件：先保存到临时文件，然后替换原文件
+                # 这样可以避免增量保存的限制
+                logger.debug("保存到原文件，使用临时文件替换")
+                import tempfile
+                import shutil
+
+                # 创建临时文件
+                temp_fd, temp_path = tempfile.mkstemp(suffix='.pdf', prefix='pypdf_save_')
+                os.close(temp_fd)
+
+                try:
+                    # 保存到临时文件
+                    self.fitz_document.save(temp_path, incremental=False)
+                    logger.debug(f"已保存到临时文件: {temp_path}")
+
+                    # 检查文件是否被锁定
+                    def is_file_locked(filepath, timeout=2):
+                        import time
+                        start_time = time.time()
+                        while time.time() - start_time < timeout:
+                            try:
+                                with open(filepath, 'a'):
+                                    pass
+                                return False
+                            except IOError:
+                                time.sleep(0.1)
+                        return True
+
+                    if is_file_locked(file_path):
+                        logger.warning("原文件被锁定，无法保存")
+                        os.unlink(temp_path)
+                        return False, "文件正在被其他程序使用，请关闭后再试"
+
+                    # 用临时文件替换原文件
+                    shutil.copy2(temp_path, file_path)
+                    logger.debug("临时文件已复制到原文件位置")
+                    return True, f"PDF文件已保存到: {file_path}"
+
+                except Exception as e:
+                    # 清理临时文件
+                    if os.path.exists(temp_path):
+                        try:
+                            os.unlink(temp_path)
+                        except:
+                            pass
+                    raise e
+            else:
+                # 保存到新文件，直接保存
+                logger.debug("保存到新文件，使用普通保存")
+                self.fitz_document.save(file_path, incremental=False)
+                return True, f"PDF文件已保存到: {file_path}"
+
         except Exception as e:
+            logger.error(f"保存PDF文件失败: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False, f"保存失败: {str(e)}"
     
     def merge_pdfs(self, file_paths, output_path):
@@ -81,22 +142,48 @@ class PDFOperations:
     
     def encrypt_pdf(self, password, output_path):
         """加密PDF文件"""
-        if not self.pdf_document:
+        if not self.fitz_document:
             return False, "请先打开PDF文件"
-            
+
         try:
-            writer = PyPDF2.PdfWriter()
-            
-            # 复制所有页面
-            for page in self.pdf_document.pages:
-                writer.add_page(page)
-            
-            # 加密
-            writer.encrypt(password)
-            
-            with open(output_path, 'wb') as output_file:
-                writer.write(output_file)
-                
-            return True, "PDF加密成功"
+            # 判断是否保存到原始文件
+            is_saving_to_original = (self.current_file and
+                                    os.path.abspath(output_path) == os.path.abspath(self.current_file))
+
+            if is_saving_to_original:
+                # 保存到原文件：使用临时文件替换
+                import tempfile
+                import shutil
+
+                # 创建临时文件
+                temp_fd, temp_path = tempfile.mkstemp(suffix='.pdf', prefix='pypdf_encrypted_')
+                os.close(temp_fd)
+
+                try:
+                    # 使用PyMuPDF保存并加密到临时文件
+                    self.fitz_document.save(temp_path, incremental=False, encrypt=password)
+                    logger.debug(f"已加密保存到临时文件: {temp_path}")
+
+                    # 用临时文件替换原文件
+                    shutil.copy2(temp_path, output_path)
+                    logger.debug("加密文件已复制到原文件位置")
+
+                    return True, "PDF加密成功"
+                except Exception as e:
+                    # 清理临时文件
+                    if os.path.exists(temp_path):
+                        try:
+                            os.unlink(temp_path)
+                        except:
+                            pass
+                    raise e
+            else:
+                # 保存到新文件，直接加密保存
+                self.fitz_document.save(output_path, incremental=False, encrypt=password)
+                return True, "PDF加密成功"
+
         except Exception as e:
+            logger.error(f"加密PDF文件失败: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False, f"加密失败: {str(e)}"

@@ -325,7 +325,10 @@ class PDFConversion:
                         self.fitz_document.close()
                         # 使用新文档
                         self.fitz_document = new_doc
+                        # 标记这是新建文档，需要另存为
+                        self.is_new_document = True
                         insert_position = len(new_doc) - 1 + success_count + 1  # 调整插入位置
+                        logger.debug("从图片文档转换为PDF文档，标记为新建文档")
     
                     # 在指定位置创建新页面
                     page = self.fitz_document.new_page(insert_position)

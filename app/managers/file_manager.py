@@ -199,6 +199,8 @@ class FileManager:
 
         if success:
             logger.info("异步加载启动成功")
+            # 保存最近打开的目录
+            AppSettings.set_last_open_dir(file_path)
         else:
             logger.error(f"异步加载启动失败: {message}")
             self.parent.hide_progress_dialog()
@@ -234,12 +236,20 @@ class FileManager:
             QMessageBox.information(self.parent, "提示", "📝 请先打开PDF文件")
             return
 
+        # 检查当前文件是否不是PDF扩展名（如实际是PDF但后缀是.jpg）
+        is_non_pdf_extension = False
+        if self.parent.pdf_processor.current_file:
+            file_ext = os.path.splitext(self.parent.pdf_processor.current_file)[1].lower()
+            if file_ext and file_ext != '.pdf':
+                is_non_pdf_extension = True
+                logger.debug(f"检测到非PDF扩展名文件: {file_ext}")
+
         # 检查是否为新建文档（如多图片文档）
-        is_new_document = (hasattr(self.parent.pdf_processor, 'is_new_document') and 
+        is_new_document = (hasattr(self.parent.pdf_processor, 'is_new_document') and
                           self.parent.pdf_processor.is_new_document)
-        
-        # 如果是新建文档，直接调用另存为
-        if is_new_document:
+
+        # 如果是新建文档或非PDF扩展名文件，直接调用另存为
+        if is_new_document or is_non_pdf_extension:
             self.save_as_without_encryption()
             return
 

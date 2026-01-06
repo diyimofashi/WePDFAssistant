@@ -369,20 +369,27 @@ class PageEditor(QObject):
             return False, "原始文件正在被其他程序使用，请关闭其他程序后再试"
         
         try:
+            logger.debug(f"开始应用更改: temp_file={self.temp_file}, original_file={self.original_file}")
             # 将临时文件复制到原始文件位置
             shutil.copy2(self.temp_file, self.original_file)
-            
+            logger.debug(f"临时文件已复制到原始文件")
+
             # 重新加载PDF文档
             if self.pdf_processor:
+                logger.debug(f"重新加载PDF文档: {self.original_file}")
                 self.pdf_processor.load_pdf(self.original_file)
-            
+                logger.debug(f"PDF文档已重新加载")
+
             # 重置状态
             self.is_modified = False
             self.history.clear()
             self.redo_stack.clear()
-            
+
             return True, "更改已应用到原始文件"
         except Exception as e:
+            logger.error(f"应用更改失败: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False, f"应用更改失败: {str(e)}"
     
     def save_changes(self):
