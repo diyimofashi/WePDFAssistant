@@ -4,8 +4,8 @@
 """
 
 from PyQt5.QtWidgets import QListWidget, QListWidgetItem, QMenu, QAction, QFileDialog, QMessageBox
-from PyQt5.QtGui import QIcon, QPixmap
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QThread, QTimer
+from PyQt5.QtGui import QIcon, QPixmap, QContextMenuEvent
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QThread, QTimer, QPoint
 import os
 import logging
 
@@ -272,8 +272,40 @@ class ThumbnailManager(QListWidget):
                 # 发送右键点击信号
                 self.thumbnail_right_clicked.emit(page_num + 1)  # 发送页码信号（从1开始）
                 
-                # 创建右键菜单
-                self.create_context_menu(page_num + 1, self.mapToGlobal(position))
+                # 尝试使用主窗口的右键菜单系统
+                parent = self.parent()
+                while parent and not hasattr(parent, 'show_context_menu_at'):
+                    parent = parent.parent()
+                
+                if parent and hasattr(parent, 'show_context_menu_at'):
+                    # 使用主窗口的右键菜单系统
+                    global_pos = self.mapToGlobal(position)
+                    local_pos = parent.mapFromGlobal(global_pos)
+                    parent.show_context_menu_at(local_pos)
+                else:
+                    # 使用原有的右键菜单
+                    self.create_context_menu(page_num + 1, self.mapToGlobal(position))
+    
+    def get_page_at_position(self, pos):
+        """获取指定位置的缩略图页码
+        
+        Args:
+            pos: 相对于缩略图列表的位置 (QPoint)
+            
+        Returns:
+            int: 页码，如果无法获取则返回None
+        """
+        try:
+            item = self.itemAt(pos)
+            if item:
+                page_num = item.data(Qt.UserRole)
+                return page_num
+            return None
+        except Exception as e:
+            logger.error(f"获取缩略图页码失败: {e}")
+            return None
+
+
                 
     def create_context_menu(self, page_num, position):
         """创建右键菜单"""

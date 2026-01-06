@@ -77,6 +77,9 @@ PyPDF/
 │   │   ├── styles.py             # 界面样式定义
 │   │   ├── menu_manager.py       # 菜单管理器
 │   │   ├── toolbar_manager.py    # 工具栏管理器
+│   │   ├── context_menu_manager.py  # 右键菜单管理器
+│   │   ├── context_menu_styles.py   # 右键菜单样式
+│   │   ├── context_menu_builders.py # 右键菜单构建器
 │   │   ├── virtual_scroll.py     # 虚拟滚动组件
 │   │   ├── barcode_result_dialog.py # 条码结果对话框
 │   │   ├── barcode_split_dialog.py # 条码分割对话框

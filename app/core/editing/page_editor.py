@@ -672,74 +672,143 @@ class PageEditor(QObject):
     
     def insert_image_page(self, page_num, image_path):
         """在指定页码后插入图片页面"""
+        logger.info(f"开始插入图片，page_num={page_num}, image_path={image_path}")
+        logger.debug(f"temp_file={self.temp_file}, original_file={self.original_file}")
+
         # 如果还没有临时文件，自动创建一个
         if not self.temp_file:
             if not self.original_file:
                 # 检查是否有打开的PDF文件
                 if not self.pdf_processor or not self.pdf_processor.current_file:
+                    logger.error("没有打开的PDF文件")
                     return False, "没有打开的PDF文件"
-            
+
             # 创建临时文件
+            logger.info("创建临时文件")
             success, message = self.create_temp_file()
             if not success:
+                logger.error(f"创建临时文件失败: {message}")
                 return False, f"创建临时文件失败: {message}"
-        
+            logger.debug(f"临时文件创建成功: {self.temp_file}")
+
         try:
             # 调整页码：在指定页码后插入（用户界面页码从1开始）
             insert_position = page_num
-            
+            logger.debug(f"插入位置: {insert_position}")
+
             # 记录操作前的状态用于撤销
             operation_data = {
                 'page_num': insert_position,
                 'image_path': image_path
             }
-            
-            # 使用PyPDF2和PIL将图片转换为PDF页面
+
+            # 使用PyPDF2插入图片页面
+            logger.debug("读取临时文件")
             original_reader = PdfReader(self.temp_file)
             writer = PdfWriter()
-            
+
+            logger.debug(f"原始文件页数: {len(original_reader.pages)}")
+
             # 复制insert_position之前的页面
+            logger.debug(f"复制前{insert_position}页")
             for i in range(min(insert_position, len(original_reader.pages))):
                 writer.add_page(original_reader.pages[i])
-            
+
             # 将图片转换为PDF页面
             try:
+                logger.debug(f"打开图片文件: {image_path}")
                 image = Image.open(image_path)
+
+                # 获取图片尺寸（转换为点，72 DPI）
+                img_width, img_height = image.size
+                logger.debug(f"图片尺寸: {img_width}x{img_height}")
+
                 # 转换为RGB模式（如果需要）
                 if image.mode in ('RGBA', 'LA', 'P'):
+                    # 创建白色背景
+                    background = Image.new('RGB', (img_width, img_height), (255,255,255))
+                    if image.mode == 'P':
+                        image = image.convert('RGBA')
+                    background.paste(image, mask=image.split()[-1] if image.mode in ('RGBA', 'LA') else None)
+                    image = background
+                    logger.debug("图片已转换为RGB模式（带白色背景）")
+                elif image.mode != 'RGB':
                     image = image.convert('RGB')
-                
-                # 创建临时PDF文件来保存图片
+                    logger.debug("图片已转换为RGB模式")
+
+                # 计算合适的PDF页面尺寸（A4是595x842点）
+                # 如果图片太大，按比例缩放到A4尺寸内
+                a4_width, a4_height = 595, 842
+                scale = min(a4_width / img_width, a4_height / img_height)
+                if scale < 1:
+                    new_width = int(img_width * scale)
+                    new_height = int(img_height * scale)
+                    image = image.resize((new_width, new_height), Resampling.LANCZOS)
+                    img_width, img_height = new_width, new_height
+                    logger.debug(f"图片已缩放到: {img_width}x{img_height}")
+
+                # 将图片绘制到PDF页面上
+                # 使用fitz来创建包含图片的PDF页面
+                logger.debug("使用fitz创建图片PDF页面")
+                img_doc = fitz.open()
+                img_page = img_doc.new_page(width=img_width, height=img_height)
+                img_rect = fitz.Rect(0, 0, img_width, img_height)
+
+                # 将图片数据转换为字节
+                from io import BytesIO
+                img_bytes = BytesIO()
+                image.save(img_bytes, format='PNG')
+                img_bytes.seek(0)
+
+                # 插入图片到页面
+                img_page.insert_image(img_rect, stream=img_bytes.read())
+                logger.debug("图片已插入到fitz页面")
+
+                # 将fitz页面转换为PyPDF2页面
+                # 创建临时文件
+                logger.debug("创建临时PDF文件")
                 temp_pdf_fd, temp_pdf_path = tempfile.mkstemp(suffix='.pdf')
-                image.save(temp_pdf_path, "PDF", resolution=100.0)
                 os.close(temp_pdf_fd)
+
+                # 保存图片为PDF
+                img_doc.save(temp_pdf_path)
+                logger.debug(f"图片PDF已保存到: {temp_pdf_path}")
                 
-                # 读取临时PDF文件并添加页面
+                # 读取临时PDF并添加页面
                 image_reader = PdfReader(temp_pdf_path)
                 for image_page in image_reader.pages:
                     writer.add_page(image_page)
-                
+                logger.debug("图片页面已添加到writer")
+
                 # 删除临时PDF文件
                 os.unlink(temp_pdf_path)
+                logger.debug("临时PDF文件已删除")
+
             except Exception as e:
+                import traceback
+                logger.error(f"图片转换失败: {str(e)}\n{traceback.format_exc()}")
                 return False, f"图片转换失败: {str(e)}"
-            
+
             # 复制剩余页面
+            logger.debug(f"复制剩余页面，从{insert_position}开始")
             for i in range(insert_position, len(original_reader.pages)):
                 writer.add_page(original_reader.pages[i])
-            
+
             # 写入临时文件
+            logger.debug("写入临时文件")
             with open(self.temp_file, 'wb') as output_file:
                 writer.write(output_file)
-            
+            logger.debug("临时文件写入成功")
+
             # 更新状态
             self.is_modified = True
-            
+
             # 记录操作
             self.record_operation('insert_image_page', operation_data)
-            
+
             # 通知PDF处理器加载临时文件以显示编辑效果，但保持原始文件引用
             if self.pdf_processor:
+                logger.debug("通知PDF处理器加载临时文件")
                 # 保存当前的原始文件引用
                 original_current_file = self.pdf_processor.current_file
                 # 加载临时文件
@@ -747,12 +816,16 @@ class PageEditor(QObject):
                 # 恢复原始文件引用，确保关闭时能正确检测到未保存的更改
                 if self.original_file:
                     self.pdf_processor.current_file = self.original_file
-            
+                logger.debug("PDF处理器已加载临时文件")
+
             # 发出状态变化信号，通知界面更新按钮状态
             self._emit_state_changed()
-            
+
+            logger.info(f"图片插入成功: {os.path.basename(image_path)}")
             return True, f"已从{os.path.basename(image_path)}插入图片页面"
         except Exception as e:
+            import traceback
+            logger.error(f"插入图片页面失败: {str(e)}\n{traceback.format_exc()}")
             return False, f"插入图片页面失败: {str(e)}"
     
     def extract_pages(self, page_nums, output_path):

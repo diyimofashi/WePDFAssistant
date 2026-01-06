@@ -17,6 +17,7 @@ from app.utils.logger import get_logger
 
 from app.ui.menu_manager import MenuManager
 from app.ui.toolbar_manager import ToolbarManager
+from app.ui.context_menu_manager import ContextMenuManager
 from app.managers.file_manager import FileManager
 from app.managers.view_controller import ViewController
 from app.managers.search_manager import SearchManager
@@ -93,6 +94,7 @@ class MainWindowBase(QMainWindow):
         """初始化管理器"""
         self.menu_manager = MenuManager(self)
         self.toolbar_manager = ToolbarManager(self)
+        self.context_menu_manager = ContextMenuManager(self)
         self.file_manager = FileManager(self)
         self.view_controller = ViewController(self)
         self.search_manager = SearchManager(self)
@@ -535,6 +537,13 @@ class MainWindowBase(QMainWindow):
             (self.render_width != old_render_width or self.render_height != old_render_height)):
             self.pdf_processor.clear_render_cache()
             self.update_preview()
+    
+    def contextMenuEvent(self, event):
+        """处理右键菜单事件"""
+        if hasattr(self, 'context_menu_manager'):
+            self.context_menu_manager.show_context_menu(event)
+        else:
+            super().contextMenuEvent(event)
     
     def closeEvent(self, a0):
         """处理窗口关闭事件"""

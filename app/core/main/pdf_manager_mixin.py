@@ -3,6 +3,7 @@
 import os
 
 from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtCore import QPoint
 from app.utils.logger import get_logger
 
 logger = get_logger('main')
@@ -701,3 +702,21 @@ class PDFManagerMixin:
     def open_images_from_directory(self):
         """从目录打开图片文件"""
         return self.file_manager.open_images_from_directory()
+    
+    def show_context_menu_at(self, position):
+        """在指定位置显示右键菜单
+        
+        Args:
+            position: 鼠标位置 (QPoint)
+        """
+        if hasattr(self, 'context_menu_manager'):
+            # 创建一个模拟的鼠标事件
+            from PyQt5.QtGui import QContextMenuEvent
+            global_pos = self.mapToGlobal(position)
+            event = QContextMenuEvent(
+                QContextMenuEvent.Mouse,
+                position,
+                global_pos
+            )
+            self.context_menu_manager.show_context_menu(event)
+            logger.debug(f"在位置 {position} 显示右键菜单")

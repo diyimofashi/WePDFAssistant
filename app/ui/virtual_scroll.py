@@ -14,7 +14,8 @@ from app.utils.logger import get_logger
 logger = get_logger('virtual_scroll')
 
 from PyQt5.QtWidgets import QScrollArea, QWidget, QVBoxLayout, QLabel
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QPoint
+from PyQt5.QtGui import QContextMenuEvent
 from .ocr_page_label import OCRPageLabel
 
 
@@ -295,6 +296,70 @@ class VirtualScrollArea(QScrollArea):
         
         # 发出信号通知页面变更
         self.page_changed.emit(current_page)
+    
+    def contextMenuEvent(self, event):
+        """处理右键菜单事件"""
+        # 获取父窗口
+        parent = self.parent()
+        while parent and not hasattr(parent, 'show_context_menu_at'):
+            parent = parent.parent()
+        
+        if parent and hasattr(parent, 'show_context_menu_at'):
+            # 将事件位置转换为父窗口坐标系
+            global_pos = event.globalPos()
+            local_pos = parent.mapFromGlobal(global_pos)
+            parent.show_context_menu_at(local_pos)
+        else:
+            # 如果找不到有show_context_menu_at方法的父窗口，调用默认实现
+            super().contextMenuEvent(event)
+    
+    def get_selected_text(self):
+        """获取选中的文本
+        
+        Returns:
+            str: 选中的文本，如果没有选中则返回None
+        """
+        try:
+            # 遍历可见的页面标签
+            for page_num in self.visible_pages:
+                if page_num in self.rendered_pages:
+                    page_label = self.rendered_pages[page_num]
+                    if hasattr(page_label, 'get_selected_text'):
+                        text = page_label.get_selected_text()
+                        if text and text.strip():
+                            return text.strip()
+            return None
+        except Exception as e:
+            logger.error(f"获取选中文本失败: {e}")
+            return None
+    
+    def get_page_at_position(self, pos):
+        """获取指定位置的页码
+        
+        Args:
+            pos: 相对于虚拟滚动区域的位置 (QPoint)
+            
+        Returns:
+            int: 页码，如果无法获取则返回None
+        """
+        try:
+            # 获取滚动条的值
+            scroll_value = self.verticalScrollBar().value()
+            
+            # 计算实际Y坐标（包含滚动偏移）
+            actual_y = pos.y() + scroll_value
+            
+            # 查找对应的页面
+            for i, position in enumerate(self.page_positions):
+                if i < len(self.page_heights):
+                    if position <= actual_y < position + self.page_heights[i]:
+                        return i
+            
+            return None
+        except Exception as e:
+            logger.error(f"获取页码失败: {e}")
+            return None
+
             
     def _delayed_render(self):
         """延迟渲染可见页面"""
