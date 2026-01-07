@@ -606,19 +606,23 @@ class ThumbnailManager(QListWidget):
         self._update_thumbnail_async(page_num - 1)
             
     def update_specific_thumbnails_after_insert(self, insert_page_num):
-        """在插入页面后更新缩略图"""
+        """在插入页面后更新缩略图
+
+        Args:
+            insert_page_num: 插入位置（1-based，表示新页面插入到第insert_page_num页之后）
+        """
         if not self.pdf_processor or not self.pdf_processor.fitz_document:
             return
-            
+
         try:
             total_pages = self.pdf_processor.get_total_pages()
-            
+
             # 首先更新插入点之后的所有页面编号
             for i in range(insert_page_num, self.count()):
                 item = self.item(i)
                 if item:
                     item.setText(f"第 {i + 2} 页")  # 所有后续页面编号+1
-                    
+
             # 然后在插入点位置插入新的缩略图占位符
             if insert_page_num <= total_pages:
                 # 创建新的列表项
@@ -626,21 +630,22 @@ class ThumbnailManager(QListWidget):
                 # 使用占位符图标
                 placeholder_pixmap = self._create_placeholder()
                 item.setIcon(QIcon(placeholder_pixmap))
-                item.setText(f"第 {insert_page_num} 页")
-                item.setData(Qt.UserRole, insert_page_num - 1)
+                item.setText(f"第 {insert_page_num + 1} 页")  # 新页面是第insert_page_num+1页
+                item.setData(Qt.UserRole, insert_page_num)  # 新页面的0-based索引是insert_page_num
                 item.setTextAlignment(Qt.AlignCenter)
-                
-                # 插入到指定位置
-                self.insertItem(insert_page_num - 1, item)
-                
+
+                # 插入到指定位置（insert_page_num是1-based，转换为0-based的列表索引）
+                # 新页面插入到第insert_page_num页之后，所以插入到索引insert_page_num的位置
+                self.insertItem(insert_page_num, item)
+
                 # 如果是当前页面，设置为选中状态
                 current_page = self.pdf_processor.get_current_page()
                 if insert_page_num == current_page:
                     item.setSelected(True)
                     self.scrollToItem(item)
-                    
+
                 # 异步加载新插入的缩略图
-                self._update_thumbnail_async(insert_page_num - 1)
+                self._update_thumbnail_async(insert_page_num)
         except Exception as e:
             logger.error(f"插入后更新缩略图失败: {e}")
     

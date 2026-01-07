@@ -63,6 +63,10 @@ class PDFLoader:
     def close_document(self):
         """关闭当前文档，释放资源 - 幂等操作"""
         try:
+            # 清除渲染缓存
+            if hasattr(self, 'clear_render_cache'):
+                self.clear_render_cache()
+
             # 安全关闭fitz_document
             if hasattr(self, 'fitz_document') and self.fitz_document:
                 try:
@@ -70,13 +74,13 @@ class PDFLoader:
                 except:
                     pass
                 self.fitz_document = None
-            
+
             # 清理其他资源
             self.pdf_document = None
             self.current_file = None
             self.current_page = 0
             logger.debug("文档已关闭")
-            
+
             # 强制垃圾回收，避免解释器退出时fitz.Document.__del__报错
             gc.collect()
         except Exception as e:

@@ -187,7 +187,7 @@ class PDFConversion:
 
         Args:
             image_paths: 图片文件路径列表
-            insert_after_page: 插入位置（-1表示末尾，0表示第一页前，其他表示在指定页后）
+            insert_after_page: 插入位置（0-based，-1表示末尾，0表示第一页后，1表示第二页后，等等）
 
         Returns:
             (success, message) 元组

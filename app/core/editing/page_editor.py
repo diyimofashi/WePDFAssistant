@@ -680,7 +680,7 @@ class PageEditor(QObject):
             for insert_page in insert_reader.pages:
                 writer.add_page(insert_page)
 
-            # 复制剩余页面
+            # 复制剩余页面（从第insert_position页之后开始）
             for i in range(insert_position, len(original_reader.pages)):
                 writer.add_page(original_reader.pages[i])
 
@@ -751,7 +751,7 @@ class PageEditor(QObject):
             original_reader = PdfReader(self.temp_file)
             writer = PdfWriter()
 
-            # 复制insert_position之前的页面
+            # 复制insert_position之前的页面（包含第insert_position页本身）
             for i in range(min(insert_position, len(original_reader.pages))):
                 writer.add_page(original_reader.pages[i])
 
@@ -815,7 +815,7 @@ class PageEditor(QObject):
                 logger.error(f"图片转换失败: {str(e)}\n{traceback.format_exc()}")
                 return False, f"图片转换失败: {str(e)}"
 
-            # 复制剩余页面
+            # 复制剩余页面（从第insert_position页之后开始）
             for i in range(insert_position, len(original_reader.pages)):
                 writer.add_page(original_reader.pages[i])
 
