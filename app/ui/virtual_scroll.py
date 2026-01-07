@@ -73,18 +73,14 @@ class VirtualScrollArea(QScrollArea):
         
     def update_content(self):
         """更新内容显示"""
-        logger.debug("虚拟滚动区域开始更新内容...")
         if self.pages_data:
-            logger.debug(f"有页面数据，共{len(self.pages_data)}页")
             self._calculate_layout()
             self._update_virtual_widget()
             # 延迟渲染可见页面，确保布局完成，增加延迟时间确保图片加载完成
             QTimer.singleShot(100, self._render_visible_pages)
             # 额外延迟再次尝试渲染，确保图片显示
             QTimer.singleShot(300, self._render_visible_pages)
-            logger.debug("虚拟滚动区域内容更新完成")
         else:
-            logger.warning("没有页面数据，尝试从父窗口获取")
             # 如果没有页面数据，尝试从父窗口获取
             parent = self.parent()
             while parent and not hasattr(parent, 'pdf_processor'):
@@ -95,7 +91,6 @@ class VirtualScrollArea(QScrollArea):
                 if pdf_processor and pdf_processor.fitz_document:
                     # 构建页面数据
                     total_pages = pdf_processor.get_total_pages()
-                    logger.debug(f"从PDF处理器获取到{total_pages}页")
                     pages_data = []
                     for page_num in range(total_pages):
                         # 获取页面尺寸
@@ -115,7 +110,6 @@ class VirtualScrollArea(QScrollArea):
                         })
                     
                     self.set_pages_data(pages_data)
-                    logger.debug("页面数据设置完成")
                 else:
                     logger.warning("PDF处理器未准备好")
             else:
@@ -123,17 +117,14 @@ class VirtualScrollArea(QScrollArea):
                 
     def set_pages_data(self, pages_data):
         """设置页面数据"""
-        logger.debug(f"设置页面数据，共{len(pages_data)}页")
         self.pages_data = pages_data
         self._calculate_layout()
         self._update_virtual_widget()
         # 立即渲染可见页面，确保内容立即显示
         QTimer.singleShot(50, self._render_visible_pages)
-        logger.debug("页面数据设置完成")
         
     def _calculate_layout(self):
         """计算页面布局"""
-        logger.debug(f"开始计算布局，共{len(self.pages_data)}页...")
         self.page_heights = []
         self.page_positions = []
         self.total_height = 0
@@ -153,11 +144,9 @@ class VirtualScrollArea(QScrollArea):
             
         # 设置虚拟容器的高度，确保使用整数，并增加一些额外空间
         self.virtual_widget.setMinimumHeight(int(self.total_height + 60))  # 增加额外空间到60像素
-        logger.debug(f"布局计算完成，总高度: {self.total_height}")
         
     def _update_virtual_widget(self):
         """更新虚拟容器"""
-        logger.debug("开始更新虚拟容器...")
         # 清除现有子控件
         for i in reversed(range(self.virtual_widget_layout.count())):
             child = self.virtual_widget_layout.itemAt(i).widget()
@@ -205,11 +194,9 @@ class VirtualScrollArea(QScrollArea):
             
             self.placeholder_pages[i] = placeholder
             
-        logger.debug("虚拟容器更新完成")
         
     def update_page_ocr_layer(self, page_num, ocr_result):
         """更新指定页面的OCR文本层"""
-        logger.debug(f"更新第{page_num + 1}页的OCR文本层")
         
         # 如果页面已经渲染，直接更新其OCR文本层
         if page_num in self.rendered_pages:
@@ -221,7 +208,6 @@ class VirtualScrollArea(QScrollArea):
             if not hasattr(self, '_pending_ocr_data'):
                 self._pending_ocr_data = {}
             self._pending_ocr_data[page_num] = ocr_result
-            logger.debug(f"页面{page_num + 1}尚未渲染，存储OCR数据供后续使用")
     
     def _set_page_ocr_layer(self, page_num, page_label, ocr_result=None):
         """设置页面的OCR文本层"""
@@ -287,7 +273,6 @@ class VirtualScrollArea(QScrollArea):
         
     def _on_scroll_changed(self, value):
         """滚动事件处理"""
-        logger.debug(f"滚动条值变化: {value}")
         # 使用延迟渲染避免频繁更新
         self.render_timer.start(self.render_delay)
         
@@ -421,14 +406,12 @@ class VirtualScrollArea(QScrollArea):
             
     def _render_visible_pages(self):
         """渲染可见区域的页面"""
-        logger.debug("开始渲染可见页面...")
         if not self.pages_data:
             logger.debug("没有页面数据，无法渲染")
             return
             
         # 获取可见范围
         start_page, end_page = self.get_visible_range()
-        logger.debug(f"可见页面范围: {start_page} - {end_page}")
         
         # 找出需要新渲染的页面
         new_visible_pages = set(range(start_page, end_page + 1))
@@ -439,7 +422,6 @@ class VirtualScrollArea(QScrollArea):
                 self._render_page(page_num)
             # 额外检查：即使页面已在visible_pages中，也检查是否需要重新渲染
             elif page_num not in self.rendered_pages:
-                logger.debug(f"页面{page_num + 1}在visible_pages中但未渲染，尝试重新渲染")
                 self._render_page(page_num)
                 
         # 隐藏不再可见的页面
@@ -449,11 +431,9 @@ class VirtualScrollArea(QScrollArea):
                 
         # 更新可见页面集合
         self.visible_pages = new_visible_pages
-        logger.debug("可见页面渲染完成")
         
     def _hide_page(self, page_num):
         """隐藏指定页面"""
-        logger.debug(f"隐藏第{page_num + 1}页")
         # 显示占位符
         if page_num in self.placeholder_pages:
             self.placeholder_pages[page_num].show()
@@ -467,17 +447,13 @@ class VirtualScrollArea(QScrollArea):
                 
     def on_page_rendered(self, page_num, pixmap):
         """页面渲染完成回调"""
-        logger.debug(f"虚拟滚动接收到第{page_num + 1}页渲染完成通知")
         if page_num >= len(self.pages_data):
-            logger.debug(f"页面号超出范围: {page_num}")
             return
             
         if not pixmap:
-            logger.debug(f"接收到空的pixmap对象")
             return
             
         try:
-            logger.debug(f"开始显示第{page_num + 1}页: {pixmap.width()} x {pixmap.height()}")
             # 创建OCR页面标签
             page_label = OCRPageLabel()
             page_label.setPixmap(pixmap)
@@ -523,7 +499,6 @@ class VirtualScrollArea(QScrollArea):
                     # 隐藏占位符
                     if page_num in self.placeholder_pages:
                         self.placeholder_pages[page_num].hide()
-                        logger.debug(f"第{page_num + 1}页显示完成，占位符已隐藏")
                     else:
                         logger.debug(f"第{page_num + 1}页显示完成")
                 else:
@@ -581,7 +556,6 @@ class VirtualScrollArea(QScrollArea):
             
     def update_page_ocr_layer(self, page_num, ocr_result):
         """更新指定页面的OCR文本层"""
-        logger.debug(f"更新第{page_num + 1}页的OCR文本层")
         
         # 如果页面已经渲染，直接更新其OCR文本层
         if page_num in self.rendered_pages:
@@ -593,7 +567,6 @@ class VirtualScrollArea(QScrollArea):
             if not hasattr(self, '_pending_ocr_data'):
                 self._pending_ocr_data = {}
             self._pending_ocr_data[page_num] = ocr_result
-            logger.debug(f"页面{page_num + 1}尚未渲染，存储OCR数据供后续使用")
     
 
     
@@ -608,7 +581,6 @@ class VirtualScrollArea(QScrollArea):
             else:
                 break
                 
-        logger.debug(f"滚动位置: {scroll_pos}, 当前页面: {current_page}")
         return current_page
         
     def resizeEvent(self, event):

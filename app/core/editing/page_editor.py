@@ -312,31 +312,44 @@ class PageEditor(QObject):
         self.state_changed.emit()
     
     def create_temp_file(self, original_file=None):
-        """创建临时文件"""
+        """创建临时文件
+
+        注意：此方法仅在第一次编辑时调用，后续编辑应该继续在现有的 temp_file 上操作
+        """
+        logger.info(f"[create_temp_file] 开始创建临时文件，当前temp_file={self.temp_file}, original_file={self.original_file}, 参数original_file={original_file}")
+
+        # 如果已经有临时文件，不需要重新创建
         if self.temp_file and os.path.exists(self.temp_file):
-            self.cleanup_temp_file()
-        
+            logger.info(f"[create_temp_file] 临时文件已存在: {self.temp_file}，无需重新创建")
+            return True, "临时文件已存在"
+
         # 如果没有提供original_file，则从PDF处理器获取
         if original_file is None and self.pdf_processor:
             original_file = self.pdf_processor.current_file
-            
+            logger.info(f"[create_temp_file] 从pdf_processor获取current_file: {original_file}")
+
         # 检查是否有有效的原始文件
         if not original_file:
             return False, "没有打开的PDF文件"
-            
+
         self.original_file = original_file
-        
+        logger.info(f"[create_temp_file] 设置original_file为: {self.original_file}")
+
         try:
             # 创建临时文件
             temp_fd, self.temp_file = tempfile.mkstemp(suffix='.pdf')
             os.close(temp_fd)
-            
+
+            logger.info(f"[create_temp_file] 创建新临时文件: {self.temp_file}")
+
             # 复制原始文件到临时文件
             shutil.copy2(original_file, self.temp_file)
-            
+            logger.info(f"[create_temp_file] 已从{original_file}复制到临时文件")
+
             self.is_modified = False
             return True, "临时文件创建成功"
         except Exception as e:
+            logger.error(f"[create_temp_file] 创建临时文件失败: {str(e)}")
             self.temp_file = None
             self.original_file = None
             return False, f"创建临时文件失败: {str(e)}"
@@ -417,98 +430,93 @@ class PageEditor(QObject):
                 # 检查是否有打开的PDF文件
                 if not self.pdf_processor or not self.pdf_processor.current_file:
                     return False, "没有打开的PDF文件"
-            
+
             # 创建临时文件
             success, message = self.create_temp_file()
             if not success:
                 return False, f"创建临时文件失败: {message}"
-        
+
         try:
             # 调整页码：在指定页码后插入（用户界面页码从1开始）
             insert_position = page_num
-            
+
             # 记录操作前的状态用于撤销
             operation_data = {
                 'page_num': insert_position
             }
-            
+
             # 使用PyPDF2插入空白页
             reader = PdfReader(self.temp_file)
             writer = PdfWriter()
-            
+
             # 复制insert_position之前的页面
             for i in range(min(insert_position, len(reader.pages))):
                 writer.add_page(reader.pages[i])
-            
+
             # 添加空白页（A4大小）
             blank_page = PyPDF2.PageObject.create_blank_page(width=595, height=842)  # A4尺寸
             writer.add_page(blank_page)
-            
+
             # 复制剩余页面
             for i in range(insert_position, len(reader.pages)):
                 writer.add_page(reader.pages[i])
-            
+
             # 写入临时文件
             with open(self.temp_file, 'wb') as output_file:
                 writer.write(output_file)
-            
+                output_file.flush()  # 确保立即写入磁盘
+                os.fsync(output_file.fileno())  # 强制将缓冲区写入磁盘
+
             # 更新状态
             self.is_modified = True
-            
+
             # 记录操作
             self.record_operation('insert_page', operation_data)
-            logger.debug(f"记录操作完成，当前历史记录数量: {len(self.history)}")
-            
+
             # 通知PDF处理器加载临时文件以显示编辑效果，但保持原始文件引用
             if self.pdf_processor:
                 # 清除渲染缓存
                 if hasattr(self.pdf_processor, 'clear_render_cache'):
-                    logger.info("[insert_pdf_page] 清除渲染缓存")
                     self.pdf_processor.clear_render_cache()
                 # 加载临时文件（不要改回original_file）
                 self.pdf_processor.open_pdf(self.temp_file, async_mode=False)
-            
+
             # 发出状态变化信号，通知界面更新按钮状态
             self._emit_state_changed()
-            
-            logger.debug(f"插入空白页完成，can_undo结果: {self.can_undo()}")
+
             return True, f"已在第{page_num}页后插入空白页"
         except Exception as e:
             return False, f"插入空白页失败: {str(e)}"
     
     def delete_page(self, page_num):
         """删除指定页面"""
-        logger.info(f"[PageEditor.delete_page] 开始删除页面，页码(1-based): {page_num}")
         # 如果还没有临时文件，自动创建一个
         if not self.temp_file:
-            logger.info("[PageEditor.delete_page] 没有临时文件，尝试创建")
             if not self.original_file:
                 # 检查是否有打开的PDF文件
                 if not self.pdf_processor or not self.pdf_processor.current_file:
-                    logger.info("[PageEditor.delete_page] 没有打开的PDF文件")
                     return False, "没有打开的PDF文件"
 
             # 创建临时文件
-            logger.info("[PageEditor.delete_page] 创建临时文件")
             success, message = self.create_temp_file()
             if not success:
-                logger.info(f"[PageEditor.delete_page] 创建临时文件失败: {message}")
                 return False, f"创建临时文件失败: {message}"
 
         try:
-            logger.info("[PageEditor.delete_page] 开始执行删除操作")
+            # 确保使用正确的文件（始终使用temp_file）
+            file_to_delete = self.temp_file
+
             # 记录操作前的状态用于撤销
-            reader = PdfReader(self.temp_file)
+            reader = PdfReader(file_to_delete)
             total_pages_before = len(reader.pages)
-            logger.info(f"[PageEditor.delete_page] 删除前总页数: {total_pages_before}, 要删除的页码(1-based): {page_num}")
+
+            logger.info(f"[delete_page] 删除前 - 页码(1-based): {page_num}, 总页数: {total_pages_before}")
 
             if page_num < 1 or page_num > total_pages_before:
-                logger.error(f"[PageEditor.delete_page] 页码超出范围：{page_num}，总页数：{total_pages_before}")
                 return False, f"页码超出范围：{page_num}"
 
             # 计算要删除的页面索引（0-based）
             page_index_to_delete = page_num - 1
-            logger.info(f"[PageEditor.delete_page] 要删除的页面索引(0-based): {page_index_to_delete}")
 
             # 保存被删除页面的数据用于撤销
             operation_data = {
@@ -523,15 +531,12 @@ class PageEditor(QObject):
                 if i != page_index_to_delete:  # 跳过要删除的页面
                     writer.add_page(page)
                     pages_added += 1
-                else:
-                    logger.info(f"[PageEditor.delete_page] 跳过页面索引: {i} (用户页码: {i+1})")
-
-            logger.info(f"[PageEditor.delete_page] 写入了 {pages_added} 个页面到临时文件")
 
             # 写入临时文件
-            logger.info("[PageEditor.delete_page] 写入临时文件")
             with open(self.temp_file, 'wb') as output_file:
                 writer.write(output_file)
+                output_file.flush()  # 确保立即写入磁盘
+                os.fsync(output_file.fileno())  # 强制将缓冲区写入磁盘
 
             # 更新状态
             self.is_modified = True
@@ -541,64 +546,41 @@ class PageEditor(QObject):
 
             # 通知PDF处理器加载临时文件以显示编辑效果，但保持原始文件引用
             if self.pdf_processor:
-                logger.info("[PageEditor.delete_page] 通知PDF处理器加载临时文件")
-                # 保存当前的原始文件引用
-                original_current_file = self.pdf_processor.current_file
-
                 # 获取删除后的总页数
                 total_pages_after_delete = total_pages_before - 1
-                logger.info(f"[PageEditor.delete_page] 删除后总页数: {total_pages_after_delete}")
 
                 # 确定删除页面后应该跳转到的页面
-                # 如果删除的页面是最后一页，则跳转到新的最后一页
-                # 如果删除的页面不是最后一页，则跳转到删除页面位置的下一页（删除后原下一页现在位置上移）
                 if page_num == total_pages_before:
-                    # 删除的是最后一页，跳转到新的最后一页
                     target_page_index = total_pages_after_delete - 1
-                    logger.info(f"[PageEditor.delete_page] 删除最后一页，跳转到新的最后一页(0-based): {target_page_index}")
                 else:
-                    # 删除的不是最后一页，跳转到删除位置的下一页
-                    # 删除第N页后，原来的第N+1页变成新的第N页
-                    # 所以应该跳转到 page_num - 1 (0-based)
                     target_page_index = page_num - 1
-                    logger.info(f"[PageEditor.delete_page] 删除第{page_num}页后，跳转到索引(0-based): {target_page_index}")
 
-                # 加载临时文件 - 使用open_pdf方法替换load_pdf
-                logger.info(f"[PageEditor.delete_page] 调用open_pdf加载临时文件: {self.temp_file}")
+                logger.info(f"[delete_page] 删除后 - 目标页码(0-based): {target_page_index}, 总页数: {total_pages_after_delete}")
+
+                # 加载临时文件
                 self.pdf_processor.open_pdf(self.temp_file, async_mode=False)
 
                 # 清除渲染缓存，避免显示旧的页面内容
                 if hasattr(self.pdf_processor, 'clear_render_cache'):
-                    logger.info("[PageEditor.delete_page] 清除渲染缓存")
                     self.pdf_processor.clear_render_cache()
 
                 # 设置到正确的页面位置
-                logger.info(f"[PageEditor.delete_page] 设置current_page为: {target_page_index}，总页数: {total_pages_after_delete}")
                 if target_page_index >= 0 and target_page_index < total_pages_after_delete:
                     self.pdf_processor.current_page = target_page_index
-                    logger.info(f"[PageEditor.delete_page] current_page已设置为(0-based): {target_page_index}")
                 elif total_pages_after_delete > 0:
-                    # 如果目标页面超出范围，设置为第一页
                     self.pdf_processor.current_page = 0
-                    logger.info(f"[PageEditor.delete_page] current_page超出范围，设置为第一页: 0")
-                else:
-                    logger.warning(f"[PageEditor.delete_page] 删除后文档为空")
 
-                # 注意：不要把current_file改回original_file
-                # open_pdf已经正确设置了current_file为临时文件
-                # 我们只需要保留original_file用于保存时使用
-                if self.original_file:
-                    logger.info(f"[PageEditor.delete_page] 保持临时文件加载状态: current_file={self.pdf_processor.current_file}, original_file={self.original_file}")
+                logger.info(f"[delete_page] open_pdf后 - current_page: {self.pdf_processor.current_page}, fitz_document页数: {len(self.pdf_processor.fitz_document)}")
 
             # 发出状态变化信号，通知界面更新按钮状态
             self._emit_state_changed()
 
-            logger.info(f"[PageEditor.delete_page] 删除成功，页码(1-based): {page_num}")
+            logger.info(f"[delete_page] 删除成功 - 页码(1-based): {page_num}")
             return True, f"已删除第{page_num}页"
         except Exception as e:
-            logger.error(f"[PageEditor.delete_page] 删除页面失败: {str(e)}")
+            logger.error(f"删除页面失败: {str(e)}")
             import traceback
-            logger.error(f"[PageEditor.delete_page] 删除页面失败，堆栈信息: {traceback.format_exc()}")
+            logger.error(f"删除页面失败，堆栈信息: {traceback.format_exc()}")
             return False, f"删除页面失败: {str(e)}"
     
     def rotate_page(self, page_num, rotation):
@@ -609,53 +591,54 @@ class PageEditor(QObject):
                 # 检查是否有打开的PDF文件
                 if not self.pdf_processor or not self.pdf_processor.current_file:
                     return False, "没有打开的PDF文件"
-            
+
             # 创建临时文件
             success, message = self.create_temp_file()
             if not success:
                 return False, f"创建临时文件失败: {message}"
-        
+
         try:
             # 记录操作前的状态用于撤销
             reader = PdfReader(self.temp_file)
             if page_num < 1 or page_num > len(reader.pages):
                 return False, f"页码超出范围：{page_num}"
-            
+
             original_rotation = reader.pages[page_num - 1].get("/Rotate", 0)
             operation_data = {
                 'page_num': page_num,
                 'original_rotation': original_rotation,
                 'new_rotation': rotation
             }
-            
+
             # 旋转指定页面
             reader.pages[page_num - 1].rotate(rotation)
-            
+
             # 写入临时文件
             with open(self.temp_file, 'wb') as output_file:
                 writer = PdfWriter()
                 for page in reader.pages:
                     writer.add_page(page)
                 writer.write(output_file)
-            
+                output_file.flush()  # 确保立即写入磁盘
+                os.fsync(output_file.fileno())  # 强制将缓冲区写入磁盘
+
             # 更新状态
             self.is_modified = True
-            
+
             # 记录操作
             self.record_operation('rotate_page', operation_data)
-            
+
             # 通知PDF处理器加载临时文件以显示编辑效果，但保持原始文件引用
             if self.pdf_processor:
                 # 清除渲染缓存
                 if hasattr(self.pdf_processor, 'clear_render_cache'):
-                    logger.info("[insert_pdf_page] 清除渲染缓存")
                     self.pdf_processor.clear_render_cache()
                 # 加载临时文件（不要改回original_file）
                 self.pdf_processor.open_pdf(self.temp_file, async_mode=False)
-            
+
             # 发出状态变化信号，通知界面更新按钮状态
             self._emit_state_changed()
-            
+
             return True, f"已将第{page_num}页旋转{rotation}度"
         except Exception as e:
             return False, f"旋转页面失败: {str(e)}"
@@ -668,69 +651,70 @@ class PageEditor(QObject):
                 # 检查是否有打开的PDF文件
                 if not self.pdf_processor or not self.pdf_processor.current_file:
                     return False, "没有打开的PDF文件"
-            
+
             # 创建临时文件
             success, message = self.create_temp_file()
             if not success:
                 return False, f"创建临时文件失败: {message}"
-        
+
         try:
             # 调整页码：在指定页码后插入（用户界面页码从1开始）
             insert_position = page_num
-            
+
             # 记录操作前的状态用于撤销
             operation_data = {
                 'page_num': insert_position,
                 'pdf_path': pdf_path
             }
-            
+
             # 使用PyPDF2插入PDF页面
             original_reader = PdfReader(self.temp_file)
             insert_reader = PdfReader(pdf_path)
             writer = PdfWriter()
-            
+
             # 复制insert_position之前的页面
             for i in range(min(insert_position, len(original_reader.pages))):
                 writer.add_page(original_reader.pages[i])
-            
+
             # 添加要插入的PDF页面
             for insert_page in insert_reader.pages:
                 writer.add_page(insert_page)
-            
+
             # 复制剩余页面
             for i in range(insert_position, len(original_reader.pages)):
                 writer.add_page(original_reader.pages[i])
-            
+
             # 写入临时文件
             with open(self.temp_file, 'wb') as output_file:
                 writer.write(output_file)
-            
+                output_file.flush()  # 确保立即写入磁盘
+                os.fsync(output_file.fileno())  # 强制将缓冲区写入磁盘
+
             # 更新状态
             self.is_modified = True
-            
+
             # 记录操作
             self.record_operation('insert_pdf_page', operation_data)
-            
+
             # 通知PDF处理器加载临时文件以显示编辑效果，但保持原始文件引用
             if self.pdf_processor:
                 # 清除渲染缓存
                 if hasattr(self.pdf_processor, 'clear_render_cache'):
-                    logger.info("[insert_pdf_page] 清除渲染缓存")
                     self.pdf_processor.clear_render_cache()
                 # 加载临时文件（不要改回original_file）
                 self.pdf_processor.open_pdf(self.temp_file, async_mode=False)
-            
+
             # 发出状态变化信号，通知界面更新按钮状态
             self._emit_state_changed()
-            
+
             return True, f"已从{os.path.basename(pdf_path)}插入{len(insert_reader.pages)}页"
         except Exception as e:
             return False, f"插入PDF页面失败: {str(e)}"
     
     def insert_image_page(self, page_num, image_path):
         """在指定页码后插入图片页面"""
-        logger.info(f"开始插入图片，page_num={page_num}, image_path={image_path}")
-        logger.debug(f"temp_file={self.temp_file}, original_file={self.original_file}")
+        logger.info(f"[insert_image_page] 开始插入图片，page_num(1-based)={page_num}")
+        logger.info(f"[insert_image_page] temp_file={self.temp_file}, original_file={self.original_file}")
 
         # 如果还没有临时文件，自动创建一个
         if not self.temp_file:
@@ -746,12 +730,16 @@ class PageEditor(QObject):
             if not success:
                 logger.error(f"创建临时文件失败: {message}")
                 return False, f"创建临时文件失败: {message}"
-            logger.debug(f"临时文件创建成功: {self.temp_file}")
+            logger.info(f"临时文件创建成功: {self.temp_file}")
 
         try:
             # 调整页码：在指定页码后插入（用户界面页码从1开始）
             insert_position = page_num
-            logger.debug(f"插入位置: {insert_position}")
+            logger.info(f"插入位置(1-based): {insert_position}")
+
+            # 读取当前临时文件的页数
+            check_reader = PdfReader(self.temp_file)
+            logger.info(f"插入前temp_file页数: {len(check_reader.pages)}")
 
             # 记录操作前的状态用于撤销
             operation_data = {
@@ -760,41 +748,31 @@ class PageEditor(QObject):
             }
 
             # 使用PyPDF2插入图片页面
-            logger.debug("读取临时文件")
             original_reader = PdfReader(self.temp_file)
             writer = PdfWriter()
 
-            logger.debug(f"原始文件页数: {len(original_reader.pages)}")
-
             # 复制insert_position之前的页面
-            logger.debug(f"复制前{insert_position}页")
             for i in range(min(insert_position, len(original_reader.pages))):
                 writer.add_page(original_reader.pages[i])
 
             # 将图片转换为PDF页面
             try:
-                logger.debug(f"打开图片文件: {image_path}")
                 image = Image.open(image_path)
 
                 # 获取图片尺寸（转换为点，72 DPI）
                 img_width, img_height = image.size
-                logger.debug(f"图片尺寸: {img_width}x{img_height}")
 
                 # 转换为RGB模式（如果需要）
                 if image.mode in ('RGBA', 'LA', 'P'):
-                    # 创建白色背景
                     background = Image.new('RGB', (img_width, img_height), (255,255,255))
                     if image.mode == 'P':
                         image = image.convert('RGBA')
                     background.paste(image, mask=image.split()[-1] if image.mode in ('RGBA', 'LA') else None)
                     image = background
-                    logger.debug("图片已转换为RGB模式（带白色背景）")
                 elif image.mode != 'RGB':
                     image = image.convert('RGB')
-                    logger.debug("图片已转换为RGB模式")
 
                 # 计算合适的PDF页面尺寸（A4是595x842点）
-                # 如果图片太大，按比例缩放到A4尺寸内
                 a4_width, a4_height = 595, 842
                 scale = min(a4_width / img_width, a4_height / img_height)
                 if scale < 1:
@@ -802,11 +780,8 @@ class PageEditor(QObject):
                     new_height = int(img_height * scale)
                     image = image.resize((new_width, new_height), Resampling.LANCZOS)
                     img_width, img_height = new_width, new_height
-                    logger.debug(f"图片已缩放到: {img_width}x{img_height}")
 
                 # 将图片绘制到PDF页面上
-                # 使用fitz来创建包含图片的PDF页面
-                logger.debug("使用fitz创建图片PDF页面")
                 img_doc = fitz.open()
                 img_page = img_doc.new_page(width=img_width, height=img_height)
                 img_rect = fitz.Rect(0, 0, img_width, img_height)
@@ -819,27 +794,21 @@ class PageEditor(QObject):
 
                 # 插入图片到页面
                 img_page.insert_image(img_rect, stream=img_bytes.read())
-                logger.debug("图片已插入到fitz页面")
 
                 # 将fitz页面转换为PyPDF2页面
-                # 创建临时文件
-                logger.debug("创建临时PDF文件")
                 temp_pdf_fd, temp_pdf_path = tempfile.mkstemp(suffix='.pdf')
                 os.close(temp_pdf_fd)
 
                 # 保存图片为PDF
                 img_doc.save(temp_pdf_path)
-                logger.debug(f"图片PDF已保存到: {temp_pdf_path}")
-                
+
                 # 读取临时PDF并添加页面
                 image_reader = PdfReader(temp_pdf_path)
                 for image_page in image_reader.pages:
                     writer.add_page(image_page)
-                logger.debug("图片页面已添加到writer")
 
                 # 删除临时PDF文件
                 os.unlink(temp_pdf_path)
-                logger.debug("临时PDF文件已删除")
 
             except Exception as e:
                 import traceback
@@ -847,15 +816,20 @@ class PageEditor(QObject):
                 return False, f"图片转换失败: {str(e)}"
 
             # 复制剩余页面
-            logger.debug(f"复制剩余页面，从{insert_position}开始")
             for i in range(insert_position, len(original_reader.pages)):
                 writer.add_page(original_reader.pages[i])
 
             # 写入临时文件
-            logger.debug("写入临时文件")
+            logger.info(f"写入到临时文件: {self.temp_file}")
             with open(self.temp_file, 'wb') as output_file:
                 writer.write(output_file)
-            logger.debug("临时文件写入成功")
+                output_file.flush()  # 确保立即写入磁盘
+                os.fsync(output_file.fileno())  # 强制将缓冲区写入磁盘
+
+            # 验证写入后的页数
+            verify_reader = PdfReader(self.temp_file)
+            verify_total = len(verify_reader.pages)
+            logger.info(f"写入后temp_file页数: {verify_total}")
 
             # 更新状态
             self.is_modified = True
@@ -865,14 +839,13 @@ class PageEditor(QObject):
 
             # 通知PDF处理器加载临时文件以显示编辑效果
             if self.pdf_processor:
-                logger.debug("通知PDF处理器加载临时文件")
                 # 清除渲染缓存
                 if hasattr(self.pdf_processor, 'clear_render_cache'):
-                    logger.info("[insert_image_page] 清除渲染缓存")
                     self.pdf_processor.clear_render_cache()
                 # 加载临时文件（不要改回original_file）
+                logger.info(f"调用open_pdf加载临时文件: {self.temp_file}")
                 self.pdf_processor.open_pdf(self.temp_file, async_mode=False)
-                logger.debug("PDF处理器已加载临时文件")
+                logger.info(f"open_pdf完成，pdf_processor.current_file={self.pdf_processor.current_file}")
 
             # 发出状态变化信号，通知界面更新按钮状态
             self._emit_state_changed()

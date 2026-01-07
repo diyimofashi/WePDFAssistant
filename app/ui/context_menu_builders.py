@@ -31,6 +31,9 @@ class ContextMenuBuilder:
             hasattr(self.main_window.thumbnail_list, 'page_editor') and 
             self.main_window.thumbnail_list.page_editor):
             logger.debug(f"从thumbnail_list获取到page_editor: {self.main_window.thumbnail_list.page_editor}")
+            # 确保同步到pdf_processor
+            if hasattr(self.main_window, 'pdf_processor') and self.main_window.pdf_processor:
+                self.main_window.pdf_processor.page_editor = self.main_window.thumbnail_list.page_editor
             return self.main_window.thumbnail_list.page_editor
         else:
             logger.debug("thumbnail_list没有page_editor或其值为None")
@@ -40,6 +43,9 @@ class ContextMenuBuilder:
             hasattr(self.main_window.pdf_processor, 'page_editor') and 
             self.main_window.pdf_processor.page_editor):
             logger.debug(f"从pdf_processor获取到page_editor: {self.main_window.pdf_processor.page_editor}")
+            # 确保同步到thumbnail_list
+            if hasattr(self.main_window, 'thumbnail_list') and self.main_window.thumbnail_list:
+                self.main_window.thumbnail_list.page_editor = self.main_window.pdf_processor.page_editor
             return self.main_window.pdf_processor.page_editor
         else:
             logger.debug("pdf_processor没有page_editor属性或其值为None")
@@ -47,6 +53,11 @@ class ContextMenuBuilder:
         # 尝试从main_window直接获取page_editor（如果存在）
         if hasattr(self.main_window, 'page_editor') and self.main_window.page_editor:
             logger.debug(f"从main_window获取到page_editor: {self.main_window.page_editor}")
+            # 确保同步到pdf_processor和thumbnail_list
+            if hasattr(self.main_window, 'pdf_processor') and self.main_window.pdf_processor:
+                self.main_window.pdf_processor.page_editor = self.main_window.page_editor
+            if hasattr(self.main_window, 'thumbnail_list') and self.main_window.thumbnail_list:
+                self.main_window.thumbnail_list.page_editor = self.main_window.page_editor
             return self.main_window.page_editor
 
         # 如果以上都没有找到page_editor，则创建一个新的实例
@@ -55,8 +66,11 @@ class ContextMenuBuilder:
             logger.debug("使用pdf_processor创建新的PageEditor实例")
             from app.core.editing.page_editor import PageEditor
             new_page_editor = PageEditor(self.main_window.pdf_processor)
-            # 同时设置到pdf_processor，以便后续使用
+            # 同时设置到pdf_processor和thumbnail_list，以便后续使用
             self.main_window.pdf_processor.page_editor = new_page_editor
+            if hasattr(self.main_window, 'thumbnail_list') and self.main_window.thumbnail_list:
+                self.main_window.thumbnail_list.page_editor = new_page_editor
+                logger.debug(f"将page_editor也设置到thumbnail_list: {new_page_editor}")
             logger.debug(f"创建新的PageEditor实例: {new_page_editor}")
             return new_page_editor
 

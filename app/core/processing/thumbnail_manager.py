@@ -132,9 +132,16 @@ class ThumbnailManager(QListWidget):
         # 初始化页面编辑器
         if pdf_processor:
             logger.debug("初始化页面编辑器")
-            self.page_editor = PageEditor(pdf_processor)
+            # 如果pdf_processor已经有page_editor，则使用它；否则创建新的
+            if pdf_processor.page_editor:
+                logger.debug(f"使用pdf_processor已有的page_editor: {pdf_processor.page_editor}")
+                self.page_editor = pdf_processor.page_editor
+            else:
+                self.page_editor = PageEditor(pdf_processor)
+                pdf_processor.page_editor = self.page_editor
+                logger.debug(f"创建新的page_editor并设置到pdf_processor: {self.page_editor}")
             logger.debug(f"页面编辑器初始化完成: {self.page_editor}")
-            
+
             # 连接页面编辑器的状态变化信号到主窗口
             if hasattr(self, 'parent') and self.parent():
                 main_window = self.parent()

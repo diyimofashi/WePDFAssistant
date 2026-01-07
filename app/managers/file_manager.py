@@ -512,7 +512,9 @@ class FileManager:
             insert_after_page = -1
             if self.parent.pdf_processor.fitz_document:
                 insert_after_page = self.parent.pdf_processor.current_page
-            
+                total_pages = len(self.parent.pdf_processor.fitz_document)
+                logger.info(f"[file_manager.import_images] 当前页面(0-based): {insert_after_page}, 总页数: {total_pages}")
+
             success, message = self.parent.pdf_processor.import_images(image_paths, insert_after_page)
             
             progress_dialog.close()

@@ -490,21 +490,24 @@ class MainWindowBase(QMainWindow):
         """处理虚拟滚动页面变更事件"""
         from app.utils.logger import get_logger
         logger = get_logger('main')
-        
-        logger.debug(f"接收到虚拟滚动页面变更: {current_page}")
+
         if current_page != self.page_spinbox.value():
             logger.debug(f"页码变更: {self.page_spinbox.value()} -> {current_page}")
             self.page_spinbox.blockSignals(True)
             self.page_spinbox.setValue(current_page)
             self.page_spinbox.blockSignals(False)
-                            
+
             if self.pdf_processor:
+                # 更新 pdf_processor.current_page（转换为0-based索引）
+                self.pdf_processor.current_page = current_page - 1
+                logger.debug(f"已更新 pdf_processor.current_page 为: {self.pdf_processor.current_page}")
+
                 total_pages = self.pdf_processor.get_total_pages()
                 zoom_level = int(self.pdf_processor.get_zoom() * 100)
                 self.show_message(f"⚡ 虚拟滚动模式 | 第 {current_page} 页 / 共 {total_pages} 页 | 缩放: {zoom_level}%")
                 self.total_pages_label.setText(f"/ {total_pages}")
-                            
-                self.view_controller.update_thumbnail_selection(current_page)
+
+            self.view_controller.update_thumbnail_selection(current_page)
     
     def resizeEvent(self, a0):
         """窗口大小变化事件"""
