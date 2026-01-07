@@ -22,7 +22,8 @@ class PDFSearch:
     
     def __init__(self):
         # 注意：信号需要在主QObject子类中定义
-        self.fitz_document = None  # PyMuPDF文档对象
+        # fitz_document 由 PDFProcessor 统一管理，不在子模块中初始化
+        pass
         self.current_page = 0  # 当前页码（从0开始）
 
     def search_text(self, search_text, match_case=False, whole_word=False, 

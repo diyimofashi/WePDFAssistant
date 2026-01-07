@@ -37,16 +37,55 @@ from ..performance.cache_manager import RenderCache, DiskCache
 
 class PDFProcessor(QObject, PDFLoader, PDFRenderer, PDFNavigation, PDFSearch, PDFOperations, PDFConversion, PDFHistoryManager):
     """PDF处理器 - 提供稳定可靠的PDF文件处理和渲染功能 - 重构版"""
-    
+
     # 信号定义
     loading_progress = pyqtSignal(int, str)  # 加载进度
     loading_finished = pyqtSignal(bool, str)  # 加载完成
     thumbnail_ready = pyqtSignal(int, object)  # 缩略图就绪
     page_rendered = pyqtSignal(int, object)  # 页面渲染完成
     operation_history_changed = pyqtSignal()  # 操作历史记录发生变化
+
+    def __setattr__(self, name, value):
+        """拦截属性设置，确保 fitz_document 的变更同步到所有模块"""
+        if name == 'fitz_document':
+            logger.info(f"[__setattr__] 拦截到 fitz_document 的设置: {type(value) if value else None}, id: {id(value) if value else None}")
+            # 先设置属性
+            object.__setattr__(self, name, value)
+            # 同步到所有子模块
+            if hasattr(self, '_sync_document_references'):
+                logger.info("[__setattr__] 开始同步文档引用到所有模块...")
+                self._sync_document_references()
+                logger.info("[__setattr__] 文档引用同步完成")
+        else:
+            object.__setattr__(self, name, value)
     
     def __init__(self):
         super().__init__()
+
+        # 唯一的共享文档对象
+        self.fitz_document = None  # PyMuPDF文档对象
+        self.pdf_document = None  # PyPDF2文档对象
+        self.current_file = None
+        self.current_page = 0  # 当前页码（从0开始）
+        self.total_pages = 0  # 总页数
+        self.file_size = 0  # 文件大小（字节）
+        self.load_time = 0  # 加载时间（秒）
+        self.last_error = ""  # 最后错误信息
+
+        # 异步加载器
+        self.async_loader = None
+
+        # 页面编辑器
+        self.page_editor = None
+
+        # OCR结果存储
+        self.ocr_results = {}
+
+        # 多图片文档相关属性
+        self.multi_image_paths = []  # 存储多图片文档的原始路径
+        self.multi_image_source_dir = None  # 存储源目录路径
+        self.is_new_document = False  # 标记是否为新建文档
+
         # 初始化所有功能模块
         PDFLoader.__init__(self)
         PDFRenderer.__init__(self)
@@ -55,26 +94,43 @@ class PDFProcessor(QObject, PDFLoader, PDFRenderer, PDFNavigation, PDFSearch, PD
         PDFOperations.__init__(self)
         PDFConversion.__init__(self)
         PDFHistoryManager.__init__(self)
-        
-        self.current_file = None
-        self.total_pages = 0  # 总页数
-        self.file_size = 0  # 文件大小（字节）
-        self.load_time = 0  # 加载时间（秒）
-        self.last_error = ""  # 最后错误信息
-        
-        # 异步加载器
-        self.async_loader = None
-        
-        # 页面编辑器
-        self.page_editor = None
-        
-        # OCR结果存储
-        self.ocr_results = {}
-        
-        # 多图片文档相关属性
-        self.multi_image_paths = []  # 存储多图片文档的原始路径
-        self.multi_image_source_dir = None  # 存储源目录路径
-        self.is_new_document = False  # 标记是否为新建文档
+
+        # 关键：所有模块的 fitz_document 指向同一个对象
+        # 由于多重继承，每个模块初始化时会创建自己的 fitz_document
+        # 我们需要将它们全部替换为 PDFProcessor 的共享 fitz_document
+        self._sync_document_references()
+
+    def _sync_document_references(self):
+        """同步所有模块的文档引用到 PDFProcessor 的共享 fitz_document"""
+        # 由于 Python 的多重继承，每个模块都有独立的 fitz_document
+        # 我们通过 __dict__ 直接访问实例属性并替换它们
+        processor_doc = self.__dict__.get('fitz_document')
+        processor_pdf = self.__dict__.get('pdf_document')
+
+        logger.debug(f"[_sync_document_references] PDFProcessor.fitz_document id: {id(processor_doc) if processor_doc else None}")
+        logger.debug(f"[_sync_document_references] PDFProcessor.pdf_document id: {id(processor_pdf) if processor_pdf else None}")
+
+        # 查找所有子模块的文档引用并替换
+        # 子模块通过 Python 的名称改写规则存储私有属性
+        module_classes = [
+            PDFLoader, PDFRenderer, PDFNavigation,
+            PDFSearch, PDFOperations, PDFConversion
+        ]
+
+        for cls in module_classes:
+            # 查找名称改写后的属性名（_ClassName__fitz_document）
+            fitz_key = f'_{cls.__name__}__fitz_document'
+            pdf_key = f'_{cls.__name__}__pdf_document'
+
+            if fitz_key in self.__dict__:
+                old_doc = self.__dict__[fitz_key]
+                self.__dict__[fitz_key] = processor_doc
+                logger.debug(f"已同步 {cls.__name__}.fitz_document: {id(old_doc) if old_doc else None} -> {id(processor_doc) if processor_doc else None}")
+
+            if pdf_key in self.__dict__:
+                old_pdf = self.__dict__[pdf_key]
+                self.__dict__[pdf_key] = processor_pdf
+                logger.debug(f"已同步 {cls.__name__}.pdf_document: {id(old_pdf) if old_pdf else None} -> {id(processor_pdf) if processor_pdf else None}")
 
     def __del__(self):
         """析构函数，确保资源被释放 - 防止Graftmaps错误"""

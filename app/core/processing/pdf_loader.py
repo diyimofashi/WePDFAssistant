@@ -29,9 +29,8 @@ class PDFLoader:
     
     def __init__(self):
         # 注意：信号需要在主QObject子类中定义
+        # fitz_document 和 pdf_document 由 PDFProcessor 统一管理，不在子模块中初始化
         self.current_file = None
-        self.pdf_document = None
-        self.fitz_document = None  # PyMuPDF文档对象
         self.total_pages = 0  # 总页数
         self.current_page = 0  # 当前页码（从0开始）
         self.file_size = 0  # 文件大小（字节）

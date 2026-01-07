@@ -27,7 +27,7 @@ class PDFRenderer:
     
     def __init__(self):
         # 注意：信号需要在主QObject子类中定义
-        self.fitz_document = None  # PyMuPDF文档对象
+        # fitz_document 由 PDFProcessor 统一管理，不在子模块中初始化
         self.current_page = 0  # 当前页码（从0开始）
         self.zoom_factor = 2.0  # 缩放因子（设置为2.0，即200%作为新的100%基准）
         self.base_zoom = 2.0  # 基准缩放因子（用户看到的100%实际是200%基准）
@@ -333,6 +333,12 @@ class PDFRenderer:
     def render_page_at(self, page_num, width=800, height=1000):
         """渲染指定页面为高质量图像 - 优化显示效果和性能"""
         logger.debug(f"开始渲染第{page_num + 1}页 (width={width}, height={height})")
+
+        # 调试：检查 fitz_document 的来源
+        doc_id = id(self.fitz_document) if self.fitz_document else None
+        doc_len = len(self.fitz_document) if self.fitz_document else 0
+        logger.debug(f"[render_page_at] fitz_document id: {doc_id}, 长度: {doc_len}")
+
         if not self.fitz_document or page_num < 0 or page_num >= len(self.fitz_document):
             logger.warning("文档未加载或页码无效")
             return None

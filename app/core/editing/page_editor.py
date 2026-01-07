@@ -680,9 +680,15 @@ class PageEditor(QObject):
             for insert_page in insert_reader.pages:
                 writer.add_page(insert_page)
 
-            # 复制剩余页面（从第insert_position页之后开始）
+            # 复制剩余页面（从第insert_position页开始，即insert_position索引对应的页面）
+            # 第一个循环已经复制了索引0到insert_position-1的页面
+            # 所以第二个循环应该从insert_position开始复制
+            copied_count_2 = 0
             for i in range(insert_position, len(original_reader.pages)):
                 writer.add_page(original_reader.pages[i])
+                copied_count_2 += 1
+            logger.info(f"[insert_image_page] 第二个循环复制了{copied_count_2}页（索引{insert_position}到{insert_position+copied_count_2-1}）")
+            logger.info(f"[insert_image_page] writer总页数: {copied_count_1 + image_page_count + copied_count_2}")
 
             # 写入临时文件
             with open(self.temp_file, 'wb') as output_file:
@@ -751,9 +757,16 @@ class PageEditor(QObject):
             original_reader = PdfReader(self.temp_file)
             writer = PdfWriter()
 
-            # 复制insert_position之前的页面（包含第insert_position页本身）
+            original_total = len(original_reader.pages)
+            logger.info(f"[insert_image_page] 原始文档总页数: {original_total}, insert_position(1-based): {insert_position}")
+
+            # 复制insert_position之前的页面（不包含第insert_position页，因为是在其后面插入）
+            # 例如：insert_position=1表示在第1页后插入，所以只复制第1页（索引0）
+            copied_count_1 = 0
             for i in range(min(insert_position, len(original_reader.pages))):
                 writer.add_page(original_reader.pages[i])
+                copied_count_1 += 1
+            logger.info(f"[insert_image_page] 第一个循环复制了{copied_count_1}页（索引0到{copied_count_1-1}）")
 
             # 将图片转换为PDF页面
             try:
@@ -804,8 +817,11 @@ class PageEditor(QObject):
 
                 # 读取临时PDF并添加页面
                 image_reader = PdfReader(temp_pdf_path)
-                for image_page in image_reader.pages:
+                image_page_count = len(image_reader.pages)
+                logger.info(f"[insert_image_page] 图片PDF的页数: {image_page_count}")
+                for idx, image_page in enumerate(image_reader.pages):
                     writer.add_page(image_page)
+                logger.info(f"[insert_image_page] 已添加{image_page_count}个图片页面到writer")
 
                 # 删除临时PDF文件
                 os.unlink(temp_pdf_path)
@@ -815,9 +831,15 @@ class PageEditor(QObject):
                 logger.error(f"图片转换失败: {str(e)}\n{traceback.format_exc()}")
                 return False, f"图片转换失败: {str(e)}"
 
-            # 复制剩余页面（从第insert_position页之后开始）
+            # 复制剩余页面（从第insert_position页开始，即insert_position索引对应的页面）
+            # 第一个循环已经复制了索引0到insert_position-1的页面
+            # 所以第二个循环应该从insert_position开始复制
+            copied_count_2 = 0
             for i in range(insert_position, len(original_reader.pages)):
                 writer.add_page(original_reader.pages[i])
+                copied_count_2 += 1
+            logger.info(f"[insert_image_page] 第二个循环复制了{copied_count_2}页（索引{insert_position}到{insert_position+copied_count_2-1}）")
+            logger.info(f"[insert_image_page] writer总页数: {copied_count_1 + image_page_count + copied_count_2}")
 
             # 写入临时文件
             logger.info(f"写入到临时文件: {self.temp_file}")

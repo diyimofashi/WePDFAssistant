@@ -24,8 +24,7 @@ class PDFOperations:
     
     def __init__(self):
         # 注意：信号需要在主QObject子类中定义
-        self.fitz_document = None  # PyMuPDF文档对象
-        self.pdf_document = None   # PyPDF2文档对象
+        # fitz_document 和 pdf_document 由 PDFProcessor 统一管理，不在子模块中初始化
         self.current_file = None
 
     def save_pdf(self, file_path):

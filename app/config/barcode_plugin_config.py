@@ -134,8 +134,6 @@ class BarcodePluginConfigManager:
         
         # 加载现有配置
         self.load_config()
-        
-        logger.info(f"条码插件配置管理器初始化，配置文件: {config_file}")
     
     def register_config_definition(self, plugin_name: str, config_items: List[ConfigItem]) -> None:
         """

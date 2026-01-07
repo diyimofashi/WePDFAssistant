@@ -532,12 +532,22 @@ class FileManager:
     
     def _update_ui_after_import(self):
         """导入图片后更新界面状态"""
+        # 关键：清除渲染缓存，避免显示旧的缓存内容
+        if hasattr(self.parent.pdf_processor, 'clear_render_cache'):
+            logger.info("清除渲染缓存...")
+            self.parent.pdf_processor.clear_render_cache()
+
+        # 清除虚拟滚动区域的缓存
+        if hasattr(self.parent, 'virtual_scroll') and hasattr(self.parent.virtual_scroll, 'clear_cache'):
+            logger.info("清除虚拟滚动区域缓存...")
+            self.parent.virtual_scroll.clear_cache()
+
         total_pages = self.parent.pdf_processor.get_total_pages()
         self.parent.page_spinbox.setMaximum(total_pages)
         self.parent.total_pages_label.setText(f" / {total_pages}")
         self.parent._force_refresh_preview()
-        
+
         if self.parent.show_thumbnails:
             self.parent._force_reload_thumbnails()
-        
+
         logger.info("界面状态已更新")

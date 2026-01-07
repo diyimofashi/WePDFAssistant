@@ -24,7 +24,7 @@ class PDFConversion:
     
     def __init__(self):
         # 注意：信号需要在主QObject子类中定义
-        self.fitz_document = None  # PyMuPDF文档对象
+        # fitz_document 由 PDFProcessor 统一管理，不在子模块中初始化
         self.current_page = 0  # 当前页码（从0开始）
         self.current_doc_path = None  # 当前文档路径
 
@@ -316,78 +316,66 @@ class PDFConversion:
         """在指定页后插入图片"""
         try:
             success_count = 0
-            
+
+            total_pages_before = len(self.fitz_document)
+            logger.info(f"[_insert_images_after_page] 插入前总页数: {total_pages_before}, after_page(0-based): {after_page}")
+
             # 计算插入位置（从after_page+1开始）
             insert_position = after_page + 1
+            logger.info(f"[_insert_images_after_page] 初始insert_position: {insert_position} (将在第{after_page+1}页后插入)")
             
             for image_path in image_paths:
                 try:
-                    # 检查当前文档是否是图片类型（无法直接添加新页面的文档）
-                    current_doc_is_image = False
-                    try:
-                        # 尝试在当前文档中创建一个新页面
-                        # 如果失败，说明当前文档是图片类型
-                        test_page_num = len(self.fitz_document)  # 在文档末尾尝试添加
-                        test_page = self.fitz_document.new_page(test_page_num)
-                        # 如果成功，删除测试页面
-                        self.fitz_document.delete_page(test_page_num)
-                    except:
-                        # 如果失败，说明当前文档是图片类型，无法添加新页面
-                        current_doc_is_image = True
-                        
-                    if current_doc_is_image:
-                        # 创建新PDF文档，将当前内容复制到新文档
-                        new_doc = fitz.open()
-                        
-                        # 复制当前文档的所有页面到新文档
-                        for page_num in range(len(self.fitz_document)):
-                            current_page = self.fitz_document[page_num]
-                            
-                            # 创建新页面
-                            new_page = new_doc.new_page()
-                            
-                            # 尝试获取当前页面内容并复制到新页面
-                            try:
-                                # 获取当前页面的图片数据
-                                pix = current_page.get_pixmap()
-                                new_page.insert_image(new_page.rect, pixmap=pix)
-                            except:
-                                # 如果获取Pixmap失败，尝试其他方式
-                                logger.warning("无法从当前页面获取Pixmap，尝试其他方法")
-                        
-                        # 关闭旧文档
-                        self.fitz_document.close()
-                        # 使用新文档
-                        self.fitz_document = new_doc
-                        # 标记这是新建文档，需要另存为
-                        self.is_new_document = True
-                        insert_position = len(new_doc) - 1 + success_count + 1  # 调整插入位置
-                        logger.debug("从图片文档转换为PDF文档，标记为新建文档")
-    
                     # 在指定位置创建新页面
+                    logger.info(f"[_insert_images_after_page] 调用new_page({insert_position})创建新页面，当前文档页数: {len(self.fitz_document)}")
                     page = self.fitz_document.new_page(insert_position)
-                    
+                    logger.info(f"[_insert_images_after_page] new_page后文档页数: {len(self.fitz_document)}")
+                    logger.info(f"[_insert_images_after_page] 新创建的页面: {page}, 索引: {insert_position}")
+
                     # 插入图片到页面
                     success = self._insert_image_to_page(page, image_path)
                     if success:
                         success_count += 1
                         insert_position += 1  # 移动到下一个插入位置
-                        logger.info(f"成功插入图片: {image_path}")
+                        logger.info(f"[_insert_images_after_page] 成功插入图片: {image_path}, 下一个insert_position: {insert_position}")
+
+                        # 验证：检查新页面是否包含图片
+                        inserted_page = self.fitz_document[insert_position - 1]
+                        images_on_page = inserted_page.get_images()
+                        logger.info(f"[_insert_images_after_page] 插入页面的图片数量: {len(images_on_page)}")
                     else:
                         # 删除失败的页面
                         self.fitz_document.delete_page(insert_position)
                         logger.error(f"插入图片失败: {image_path}")
-                        
+
                 except Exception as e:
                     logger.error(f"处理图片失败 {image_path}: {e}")
-            
+
+            total_pages_after = len(self.fitz_document)
+            logger.info(f"[_insert_images_after_page] 插入后总页数: {total_pages_after}, 成功插入: {success_count}张")
+
             if success_count == 0:
                 return False, "所有图片都无法插入到PDF"
-            
+
             # 更新当前页码（如果需要）
             if self.current_page > after_page:
                 self.current_page += success_count
-            
+
+            # 保存修改后的文档到文件
+            # 使用 current_file 而不是 current_doc_path（current_file 是 PDFProcessor 的属性）
+            doc_path = getattr(self, 'current_file', None) or self.current_doc_path
+            if doc_path and os.path.exists(doc_path):
+                try:
+                    logger.info(f"[_insert_images_after_page] 保存文档到: {doc_path}")
+                    logger.info(f"[_insert_images_after_page] 保存前 fitz_document id: {id(self.fitz_document) if self.fitz_document else None}")
+                    self.fitz_document.save(doc_path)
+                    logger.info(f"[_insert_images_after_page] 保存后 fitz_document id: {id(self.fitz_document) if self.fitz_document else None}")
+                    logger.info(f"[_insert_images_after_page] 文档保存成功")
+                except Exception as save_error:
+                    logger.error(f"[_insert_images_after_page] 保存文档失败: {save_error}")
+            else:
+                logger.warning(f"[_insert_images_after_page] 无法保存文档：doc_path={doc_path}, current_file={getattr(self, 'current_file', None)}, current_doc_path={self.current_doc_path}")
+
             return True, f"成功插入{success_count}/{len(image_paths)}张图片到PDF"
             
         except Exception as e:
