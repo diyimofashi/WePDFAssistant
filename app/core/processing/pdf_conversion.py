@@ -195,61 +195,53 @@ class PDFConversion:
         if not image_paths:
             return False, "未选择图片文件"
 
-        # 优先使用 page_editor（如果有），保证操作一致性
-        if hasattr(self, 'page_editor') and self.page_editor and self.page_editor.temp_file:
-            # 验证 fitz_document 的页数
-            fitz_pages = len(self.fitz_document) if self.fitz_document else 0
-            logger.info(f"[import_images] fitz_document页数: {fitz_pages}, insert_after_page: {insert_after_page}")
+        # 验证图片文件
+        valid_image_paths = self._validate_image_files(image_paths)
+        if not valid_image_paths:
+            return False, "未找到有效的图片文件"
 
-            # 如果有临时文件，使用 page_editor 的方法导入
-            # insert_after_page 是 0-based，page_editor.insert_image_page 需要 1-based
-            # insert_after_page=-1 表示在最后一页后插入
-            if insert_after_page == -1:
-                # 在最后一页后插入
-                page_num_for_insert = fitz_pages
-            elif insert_after_page < -1:
-                # 无效值，设置为在最后一页后插入
-                page_num_for_insert = fitz_pages
+        # 场景1: 无打开PDF - 创建新PDF
+        if not self.fitz_document:
+            return self._create_pdf_from_images(valid_image_paths)
+
+        # 场景2: 有打开PDF - 使用 page_editor 插入
+        if not (hasattr(self, 'page_editor') and self.page_editor):
+            logger.warning("没有 page_editor，无法插入图片")
+            return False, "页面编辑器未初始化"
+
+        # 获取当前文档页数
+        fitz_pages = len(self.fitz_document)
+        logger.info(f"[import_images] 当前文档页数: {fitz_pages}, insert_after_page: {insert_after_page}")
+
+        # 转换插入位置
+        # insert_after_page 是 0-based，page_editor.insert_image_page 需要 1-based
+        if insert_after_page == -1 or insert_after_page >= fitz_pages:
+            # 在最后一页后插入
+            page_num_for_insert = fitz_pages
+        elif insert_after_page < 0:
+            # 无效值，设置为在第一页后插入
+            page_num_for_insert = 1
+        else:
+            # 在指定页后插入（insert_after_page 是 0-based，所以加 1 转换为 1-based）
+            page_num_for_insert = insert_after_page + 1
+
+        logger.info(f"[import_images] 转换后的page_num(1-based): {page_num_for_insert}")
+
+        # 逐张插入图片
+        success_count = 0
+        for image_path in valid_image_paths:
+            success, message = self.page_editor.insert_image_page(page_num_for_insert, image_path)
+            if success:
+                success_count += 1
+                page_num_for_insert += 1  # 下一张图片插入到新插入页的后面
+                logger.info(f"[import_images] 成功插入图片: {os.path.basename(image_path)}")
             else:
-                # 在指定页后插入
-                page_num_for_insert = insert_after_page + 1
+                logger.error(f"[import_images] 插入图片失败: {image_path}, 错误: {message}")
 
-            logger.info(f"[import_images] 转换后的page_num(1-based): {page_num_for_insert}")
+        if success_count == 0:
+            return False, "所有图片都无法插入到PDF"
 
-            success_count = 0
-            for image_path in image_paths:
-                success, message = self.page_editor.insert_image_page(page_num_for_insert, image_path)
-                if success:
-                    success_count += 1
-                    page_num_for_insert += 1  # 下一张图片插入到新插入页的后面
-
-            if success_count == 0:
-                return False, "所有图片都无法插入到PDF"
-
-            return True, f"成功导入{success_count}/{len(image_paths)}张图片到PDF"
-
-        # 原有逻辑：当没有 page_editor 时，直接操作 fitz_document
-        try:
-            # 验证图片文件
-            valid_image_paths = self._validate_image_files(image_paths)
-            if not valid_image_paths:
-                return False, "未找到有效的图片文件"
-
-            # 场景1: 无打开PDF - 创建新PDF
-            if not self.fitz_document:
-                return self._create_pdf_from_images(valid_image_paths)
-
-            # 场景2: 有打开PDF - 在当前页后插入
-            if insert_after_page == -1:
-                insert_after_page = len(self.fitz_document) - 1
-            elif insert_after_page < -1:
-                insert_after_page = -1
-
-            return self._insert_images_after_page(valid_image_paths, insert_after_page)
-
-        except Exception as e:
-            logger.error(f"导入图片失败: {e}")
-            return False, f"导入图片失败: {str(e)}"
+        return True, f"成功导入{success_count}/{len(valid_image_paths)}张图片到PDF"
     
     def _validate_image_files(self, image_paths: list) -> list:
         """验证图片文件有效性"""
