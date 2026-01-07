@@ -729,7 +729,7 @@ class PageEditor(QObject):
             try:
                 image = Image.open(image_path)
 
-                # 获取图片尺寸（转换为点，72 DPI）
+                # 获取图片尺寸
                 img_width, img_height = image.size
                 logger.info(f"[insert_image_page] 图片尺寸: {img_width}x{img_height}")
 
@@ -743,19 +743,43 @@ class PageEditor(QObject):
                 elif image.mode != 'RGB':
                     image = image.convert('RGB')
 
-                # 计算合适的PDF页面尺寸（A4是595x842点）
-                a4_width, a4_height = 595, 842
-                scale = min(a4_width / img_width, a4_height / img_height)
+                # 使用标准PDF页面尺寸（A4纸张，72 DPI单位的点）
+                page_width, page_height = 595, 842  # A4尺寸（点）
+                
+                # 设置页面边距（左右各50点，上下各50点）
+                margin_x = 50
+                margin_y = 50
+                available_width = page_width - 2 * margin_x
+                available_height = page_height - 2 * margin_y
+                
+                # 计算图片缩放比例，保持宽高比，确保图片在页面边距内
+                scale = min(available_width / img_width, available_height / img_height)
+                new_img_width = int(img_width * scale)
+                new_img_height = int(img_height * scale)
+                
+                # 如果图片比可用空间大，需要缩放；如果比可用空间小，保持原始尺寸（除非过小）
                 if scale < 1:
-                    new_width = int(img_width * scale)
-                    new_height = int(img_height * scale)
-                    image = image.resize((new_width, new_height), Resampling.LANCZOS)
-                    img_width, img_height = new_width, new_height
+                    # 图片比页面大，需要缩小
+                    image = image.resize((new_img_width, new_img_height), Resampling.LANCZOS)
+                    img_width, img_height = new_img_width, new_img_height
                     logger.info(f"[insert_image_page] 缩放后图片尺寸: {img_width}x{img_height}")
+                else:
+                    # 图片比可用空间小，保持原始尺寸，但不超过可用空间
+                    if img_width > available_width or img_height > available_height:
+                        # 仍然需要缩放到可用区域内
+                        image = image.resize((new_img_width, new_img_height), Resampling.LANCZOS)
+                        img_width, img_height = new_img_width, new_img_height
+                        logger.info(f"[insert_image_page] 调整到可用区域后图片尺寸: {img_width}x{img_height}")
 
-                # 使用fitz在指定位置创建新页面
-                new_page = self.pdf_processor.fitz_document.new_page(insert_position, width=img_width, height=img_height)
+                # 使用fitz在指定位置创建标准尺寸的新页面
+                new_page = self.pdf_processor.fitz_document.new_page(insert_position, width=page_width, height=page_height)
                 logger.info(f"[insert_image_page] 新建页面，文档总页数: {len(self.pdf_processor.fitz_document)}")
+
+                # 计算图片在页面中的居中位置，考虑边距
+                # 水平居中（在可用宽度内居中）
+                x_offset = margin_x + (available_width - img_width) / 2
+                # 垂直居中（在可用高度内居中）
+                y_offset = margin_y + (available_height - img_height) / 2
 
                 # 将图片数据转换为字节
                 from io import BytesIO
@@ -763,10 +787,10 @@ class PageEditor(QObject):
                 image.save(img_bytes, format='PNG')
                 img_bytes.seek(0)
 
-                # 插入图片到页面
-                img_rect = fitz.Rect(0, 0, img_width, img_height)
+                # 插入图片到页面的居中位置
+                img_rect = fitz.Rect(x_offset, y_offset, x_offset + img_width, y_offset + img_height)
                 new_page.insert_image(img_rect, stream=img_bytes.read())
-                logger.info(f"[insert_image_page] 图片插入成功")
+                logger.info(f"[insert_image_page] 图片插入成功，位置: ({x_offset}, {y_offset})")
 
             except Exception as e:
                 import traceback
