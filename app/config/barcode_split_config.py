@@ -154,7 +154,6 @@ class BarcodeSplitConfigManager:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(configs, f, ensure_ascii=False, indent=2)
             
-            logger.info(f"配置保存成功: {name} -> {self.config_file}")
             return True
             
         except Exception as e:
@@ -176,7 +175,6 @@ class BarcodeSplitConfigManager:
             
             if name in configs:
                 config = self._dict_to_config(configs[name])
-                logger.info(f"配置加载成功: {name}")
                 return config
             else:
                 logger.warning(f"配置不存在: {name}，使用默认配置")
@@ -200,17 +198,14 @@ class BarcodeSplitConfigManager:
             for name, config_dict in configs.items():
                 if config_dict.get('last_used', False):
                     config = self._dict_to_config(config_dict)
-                    logger.info(f"加载最后使用的配置: {name}")
                     return config
             
             # 如果没有找到，使用第一个配置
             if configs:
                 first_name = list(configs.keys())[0]
                 config = self._dict_to_config(configs[first_name])
-                logger.info(f"没有找到最后使用的配置，使用第一个配置: {first_name}")
                 return config
             
-            logger.info("没有找到任何配置，使用默认配置")
             return self.default_config
             
         except Exception as e:
@@ -260,7 +255,6 @@ class BarcodeSplitConfigManager:
                 with open(self.config_file, 'w', encoding='utf-8') as f:
                     json.dump(configs, f, ensure_ascii=False, indent=2)
                 
-                logger.info(f"配置删除成功: {name}")
                 return True
             else:
                 logger.warning(f"配置不存在: {name}")
@@ -287,7 +281,6 @@ class BarcodeSplitConfigManager:
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(config_dict, f, ensure_ascii=False, indent=2)
             
-            logger.info(f"配置导出成功: {file_path}")
             return True
             
         except Exception as e:
@@ -309,7 +302,6 @@ class BarcodeSplitConfigManager:
                 config_dict = json.load(f)
             
             config = self._dict_to_config(config_dict)
-            logger.info(f"配置导入成功: {file_path}")
             return config
             
         except Exception as e:
@@ -441,7 +433,6 @@ class BarcodeSplitConfigManager:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(configs, f, ensure_ascii=False, indent=2)
             
-            logger.info(f"配置保存成功: {name} -> {self.config_file}")
             return True
             
         except Exception as e:
@@ -463,7 +454,6 @@ class BarcodeSplitConfigManager:
             
             if name in configs:
                 config = self._dict_to_config(configs[name])
-                logger.info(f"配置加载成功: {name}")
                 return config
             else:
                 logger.warning(f"配置不存在: {name}，使用默认配置")
@@ -487,17 +477,14 @@ class BarcodeSplitConfigManager:
             for name, config_dict in configs.items():
                 if config_dict.get('last_used', False):
                     config = self._dict_to_config(config_dict)
-                    logger.info(f"加载最后使用的配置: {name}")
                     return config
             
             # 如果没有找到，使用第一个配置
             if configs:
                 first_name = list(configs.keys())[0]
                 config = self._dict_to_config(configs[first_name])
-                logger.info(f"没有找到最后使用的配置，使用第一个配置: {first_name}")
                 return config
             
-            logger.info("没有找到任何配置，使用默认配置")
             return self.default_config
             
         except Exception as e:
@@ -547,7 +534,6 @@ class BarcodeSplitConfigManager:
                 with open(self.config_file, 'w', encoding='utf-8') as f:
                     json.dump(configs, f, ensure_ascii=False, indent=2)
                 
-                logger.info(f"配置删除成功: {name}")
                 return True
             else:
                 logger.warning(f"配置不存在: {name}")
@@ -574,7 +560,6 @@ class BarcodeSplitConfigManager:
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(config_dict, f, ensure_ascii=False, indent=2)
             
-            logger.info(f"配置导出成功: {file_path}")
             return True
             
         except Exception as e:
@@ -596,7 +581,6 @@ class BarcodeSplitConfigManager:
                 config_dict = json.load(f)
             
             config = self._dict_to_config(config_dict)
-            logger.info(f"配置导入成功: {file_path}")
             return config
             
         except Exception as e:

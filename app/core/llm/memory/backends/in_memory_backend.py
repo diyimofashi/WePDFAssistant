@@ -21,7 +21,6 @@ class InMemoryBackend(MemoryInterface):
         """
         self._memories: Dict[str, Dict] = {}
         self._max_size = max_size
-        logger.info(f"InMemoryBackend initialized with max_size={max_size}")
 
     def add_memory(
         self,
@@ -169,7 +168,6 @@ class InMemoryBackend(MemoryInterface):
             是否清空成功
         """
         self._memories.clear()
-        logger.info("All memories cleared")
         return True
 
     def get_all_keys(self) -> List[str]:

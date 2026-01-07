@@ -27,8 +27,6 @@ class BarcodePluginSecurityManager:
         self.monitoring_threads: Dict[str, threading.Thread] = {}
         self.lock = threading.RLock()
         
-        logger.info("条码插件安全管理器初始化")
-    
     def register_plugin_permissions(self, plugin_name: str, permissions: Dict[str, bool]) -> None:
         """
         注册插件权限
@@ -102,7 +100,6 @@ class BarcodePluginSecurityManager:
             actual_signature = hash_md5.hexdigest()
             is_valid = actual_signature == expected_signature
             
-            logger.info(f"插件签名验证: {plugin_path}, 期望: {expected_signature[:8]}, 实际: {actual_signature[:8]}, 有效: {is_valid}")
             return is_valid
             
         except Exception as e:

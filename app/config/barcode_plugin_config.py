@@ -219,13 +219,11 @@ class BarcodePluginConfigManager:
             Dict[str, str]: 验证错误信息，空字典表示验证通过
         """
         with self.lock:
-            logger.info(f"set_plugin_config: plugin_name={plugin_name}, config={config}")
             # 验证配置
             errors = self.validate_config(plugin_name, config)
             if errors:
                 logger.warning(f"插件配置验证失败: {plugin_name}, 错误: {errors}")
                 return errors
-            logger.info(f"插件配置验证通过: {plugin_name}")
 
             # 更新配置
             if plugin_name not in self.plugin_configs:
@@ -283,7 +281,6 @@ class BarcodePluginConfigManager:
         try:
             with self.lock:
                 if not os.path.exists(self.config_file):
-                    logger.info(f"配置文件不存在，使用默认配置: {self.config_file}")
                     return True
                 
                 with open(self.config_file, 'r', encoding='utf-8') as f:
@@ -292,7 +289,6 @@ class BarcodePluginConfigManager:
                 self.global_config = data.get('global', {})
                 self.plugin_configs = data.get('plugins', {})
                 
-                logger.info(f"成功加载配置文件: {self.config_file}")
                 return True
                 
         except Exception as e:
@@ -339,7 +335,6 @@ class BarcodePluginConfigManager:
             if plugin_name in self.plugin_configs:
                 del self.plugin_configs[plugin_name]
                 self.save_config()
-                logger.info(f"插件配置已重置: {plugin_name}")
     
     def reset_all_configs(self) -> None:
         """
@@ -349,7 +344,6 @@ class BarcodePluginConfigManager:
             self.global_config.clear()
             self.plugin_configs.clear()
             self.save_config()
-            logger.info("所有配置已重置")
     
     def get_current_plugin(self) -> str:
         """

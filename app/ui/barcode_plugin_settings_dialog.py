@@ -238,7 +238,6 @@ class BarcodeSettingsDialog(QDialog):
                 return
 
             plugin_name = self.tab_widget.tabText(current_tab_index)
-            logger.info(f"开始拆分，使用插件: {plugin_name}")
 
             plugin = self.plugin_manager.get_plugin(plugin_name)
 
@@ -248,15 +247,12 @@ class BarcodeSettingsDialog(QDialog):
 
             # 获取插件配置
             config = self.get_plugin_config_for_saving(plugin_name)
-            logger.info(f"获取到插件配置: {config}")
 
             # 初始化插件
             init_result = plugin.initialize(config)
             if not init_result.is_success():
                 QMessageBox.critical(self, "错误", f"插件初始化失败: {init_result.message}")
                 return
-
-            logger.info(f"插件 {plugin_name} 初始化成功")
 
             # 选择要拆分的PDF文件
             file_path, _ = QFileDialog.getOpenFileName(
@@ -366,8 +362,6 @@ class BarcodeSettingsDialog(QDialog):
 
         from app.utils.logger import get_logger
         logger = get_logger('barcode_settings_dialog')
-        logger.info(f"插件 {plugin_name} 完整配置: {config}")
-
         return config
     
     def _on_all_types_toggled(self, checked, barcode_type_checkboxes):
@@ -1215,18 +1209,12 @@ class BarcodeSettingsDialog(QDialog):
         try:
             from app.utils.logger import get_logger
             logger = get_logger('barcode_settings_dialog')
-            logger.info("开始加载设置")
-
             # 为每个插件加载配置（使用带默认值的加载方法）
             for plugin_name in self.plugin_manager.list_plugins():
-                logger.info(f"加载插件 {plugin_name} 的配置")
                 config = self.config_manager.get_plugin_config_with_defaults(plugin_name)
-                logger.info(f"插件 {plugin_name} 的配置: {config}")
 
                 # 为每个配置项设置值
                 if plugin_name in self.plugin_widgets:
-                    logger.info(f"插件 {plugin_name} 在 plugin_widgets 中，包含 {len(self.plugin_widgets[plugin_name])} 个配置项")
-
                     # 特殊处理条码类型复选框
                     if 'barcode_type_checkboxes' in self.plugin_widgets[plugin_name] and 'enabled_types' in config:
                         self._load_barcode_type_checkboxes(plugin_name, config['enabled_types'])
@@ -1369,13 +1357,11 @@ class BarcodeSettingsDialog(QDialog):
         try:
             from app.utils.logger import get_logger
             logger = get_logger('barcode_settings_dialog')
-            logger.info("开始保存设置")
             success = True
             error_messages = []
 
             # 为每个插件保存配置
             for plugin_name in self.plugin_manager.list_plugins():
-                logger.info(f"保存插件 {plugin_name} 的配置")
                 if plugin_name in self.plugin_widgets:
                     config = {}
                     for key, widget in self.plugin_widgets[plugin_name].items():
@@ -1384,7 +1370,6 @@ class BarcodeSettingsDialog(QDialog):
                             continue
                         value = self.get_widget_value(widget)
                         config[key] = value
-                        logger.info(f"插件 {plugin_name} 配置项 {key}: {value} (类型: {type(value).__name__})")
                         # 特别输出枚举类型的值
                         if 'handling' in key or 'rule' in key:
                             print(f"[DEBUG] 保存配置: {plugin_name}.{key} = '{value}' (类型: {type(value).__name__})")
@@ -1409,7 +1394,6 @@ class BarcodeSettingsDialog(QDialog):
 
                     try:
                         self.config_manager.set_plugin_config(plugin_name, config)
-                        logger.info(f"插件 {plugin_name} 配置已设置到管理器")
                     except Exception as e:
                         success = False
                         error_messages.append(f"{plugin_name}: {str(e)}")
@@ -1419,7 +1403,6 @@ class BarcodeSettingsDialog(QDialog):
 
             # 保存到文件
             save_result = self.config_manager.save_config()
-            logger.info(f"配置保存到文件结果: {save_result}")
 
             if success:
                 QMessageBox.information(self, "成功", "所有设置已保存")
@@ -1435,7 +1418,6 @@ class BarcodeSettingsDialog(QDialog):
         try:
             from app.utils.logger import get_logger
             logger = get_logger('barcode_settings_dialog')
-            logger.info(f"get_widget_value: widget类型={type(widget).__name__}, widget类={widget.__class__.__name__}")
             print(f"[DEBUG] get_widget_value: widget类型={type(widget).__name__}, widget类={widget.__class__.__name__}")
 
             if isinstance(widget, QSpinBox):
@@ -1485,10 +1467,8 @@ class BarcodeSettingsDialog(QDialog):
             elif isinstance(widget, QComboBox):
                 try:
                     print(f"[DEBUG] 进入 QComboBox 分支, count={widget.count()}, currentIndex={widget.currentIndex()}")
-                    logger.info(f"QComboBox: count={widget.count()}, currentIndex={widget.currentIndex()}")
                     value = widget.currentText()
                     print(f"[DEBUG] QComboBox.currentText() 返回: {value!r} (type: {type(value).__name__})")
-                    logger.info(f"get_widget_value: QComboBox, value='{value}' (type: {type(value).__name__})")
                     # 检查值是否为空
                     if value is None or (isinstance(value, str) and not value.strip()):
                         print(f"[DEBUG] QComboBox值为空或None, value={value!r}, 返回None")
@@ -1506,13 +1486,10 @@ class BarcodeSettingsDialog(QDialog):
                                 found_key = key
                                 # 找到配置键名，构建选项映射键名
                                 options_map_key = f"{plugin_name}_{key}_options"
-                                logger.info(f"QComboBox: 找到控件对应 {plugin_name}.{key}, 查找选项映射: {options_map_key}, 存在: {hasattr(self, options_map_key)}")
                                 if hasattr(self, options_map_key):
                                     options_map = getattr(self, options_map_key)
-                                    logger.info(f"找到选项映射(实例属性): {options_map}")
                                     # 直接转换并返回
                                     mapped_value = options_map.get(value, value)
-                                    logger.info(f"QComboBox[{found_plugin_name}.{found_key}] 使用选项映射转换: {value} -> {mapped_value}")
                                     print(f"[DEBUG] QComboBox[{found_plugin_name}.{found_key}] 值转换: '{value}' -> '{mapped_value}'")
                                     return mapped_value
 

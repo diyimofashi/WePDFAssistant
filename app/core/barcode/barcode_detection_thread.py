@@ -52,7 +52,6 @@ class BarcodeDetectionThread(QThread):
             
             # 检查是否被取消
             if self._cancel_flag():
-                logger.info("条码检测被用户取消")
                 return
             
             logger.debug(f"条码检测完成，共检测到 {len(barcodes)} 个条码")

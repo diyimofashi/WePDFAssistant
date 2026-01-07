@@ -177,19 +177,15 @@ class AdvancedBarcodePlugin(BarcodePluginInterface):
             if config is None:
                 config = self.config.copy()
 
-            logger.info(f"开始拆分文档: output_dir={output_dir}, split_position_rule={config.get('split_position_rule')}")
 
             total_pages = len(doc)
 
             if progress_callback:
                 if not progress_callback(0, 100, "开始拆分..."):
-                    logger.info("用户取消了操作")
                     return {"success": False, "message": "用户取消了操作", "files_created": [], "barcodes_found": 0, "pages_processed": 0}
 
-            logger.info("开始检测条码...")
             all_barcodes = detect_barcodes_enhanced(doc, config, progress_callback)
             filtered_barcodes = filter_barcodes(all_barcodes, config)
-            logger.info(f"条码检测完成: all_barcodes={len(all_barcodes)}, filtered_barcodes={len(filtered_barcodes)}")
 
             if not filtered_barcodes:
                 logger.warning("没有找到符合条件的条码")
@@ -197,13 +193,10 @@ class AdvancedBarcodePlugin(BarcodePluginInterface):
 
             if progress_callback:
                 if not progress_callback(50, 100, f"检测到 {len(filtered_barcodes)} 个条码，开始拆分..."):
-                    logger.info("用户取消了操作")
                     return {"success": False, "message": "用户取消了操作", "files_created": [], "barcodes_found": len(all_barcodes), "pages_processed": total_pages}
 
             split_position_rule = config.get('split_position_rule', 'first_page')
-            logger.info(f"拆分规则: {split_position_rule}")
 
-            logger.info(f"开始执行拆分逻辑: {split_position_rule}")
             if split_position_rule == "first_page":
                 files_created = split_by_first_page_rule(doc, filtered_barcodes, config, output_dir, progress_callback, self._clean_filename)
             elif split_position_rule == "last_page":
@@ -213,8 +206,6 @@ class AdvancedBarcodePlugin(BarcodePluginInterface):
             else:
                 logger.error(f"未知的拆分规则: {split_position_rule}")
                 files_created = []
-
-            logger.info(f"拆分完成: files_created={len(files_created)}")
 
             if progress_callback:
                 progress_callback(100, 100, "拆分完成")

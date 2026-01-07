@@ -136,8 +136,6 @@ class OCRPluginConfigManager:
         # 加载现有配置
         self.load_config()
         
-        logger.info(f"OCR插件配置管理器初始化，配置文件: {config_file}")
-    
     def register_config_definition(self, plugin_name: str, config_items: List[ConfigItem]) -> None:
         """
         注册插件配置定义
@@ -284,7 +282,6 @@ class OCRPluginConfigManager:
         try:
             with self.lock:
                 if not os.path.exists(self.config_file):
-                    logger.info(f"配置文件不存在，使用默认配置: {self.config_file}")
                     return True
                 
                 with open(self.config_file, 'r', encoding='utf-8') as f:
@@ -293,7 +290,6 @@ class OCRPluginConfigManager:
                 self.global_config = data.get('global', {})
                 self.plugin_configs = data.get('plugins', {})
                 
-                logger.info(f"成功加载配置文件: {self.config_file}")
                 return True
                 
         except Exception as e:
@@ -340,8 +336,6 @@ class OCRPluginConfigManager:
             if plugin_name in self.plugin_configs:
                 del self.plugin_configs[plugin_name]
                 self.save_config()
-                logger.info(f"插件配置已重置: {plugin_name}")
-    
     def reset_all_configs(self) -> None:
         """
         重置所有配置为默认值
@@ -350,7 +344,6 @@ class OCRPluginConfigManager:
             self.global_config.clear()
             self.plugin_configs.clear()
             self.save_config()
-            logger.info("所有配置已重置")
     
     def get_current_plugin(self) -> str:
         """

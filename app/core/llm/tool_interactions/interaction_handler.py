@@ -24,7 +24,6 @@ class ToolInteractionHandler(QObject):
         super().__init__(parent)
         self._tool_registry = ToolRegistry()
         self._parent_widget = parent
-        logger.info("ToolInteractionHandler initialized")
 
     def set_parent_widget(self, parent: QWidget) -> None:
         """设置父窗口"""

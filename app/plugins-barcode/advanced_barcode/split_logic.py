@@ -27,8 +27,6 @@ def detect_barcodes_enhanced(doc: fitz.Document, config: Dict[str, Any], progres
     try:
         all_barcodes = []
         total_pages = len(doc)
-        logger.info(f"开始检测条码，总页数: {total_pages}")
-
         dpi_values = [300, 200, 150]
         horizontal_only = config.get('horizontal_only', False)
         filter_region = config.get('filter_region', None)
@@ -94,9 +92,6 @@ def detect_barcodes_enhanced(doc: fitz.Document, config: Dict[str, Any], progres
                 if len([b for b in all_barcodes if b.page_num == page_num]) >= max_barcode_count:
                     break
 
-        logger.info(f"条码检测完成，共检测到 {len(all_barcodes)} 个条码")
-        for i, barcode in enumerate(all_barcodes):
-            logger.debug(f"条码{i+1}: 页码={barcode.page_num+1}, 数据={barcode.data}, 类型={barcode.type}")
         return all_barcodes
     except Exception:
         logger.error("条码检测失败", exc_info=True)
@@ -174,9 +169,6 @@ def filter_barcodes(barcodes: List[BarcodeInfo], config: Dict[str, Any]) -> List
 
             filtered_barcodes.append(barcode)
 
-        logger.info(f"条码过滤完成，过滤后保留 {len(filtered_barcodes)} 个条码")
-        for i, barcode in enumerate(filtered_barcodes):
-            logger.debug(f"有效条码{i+1}: 页码={barcode.page_num+1}, 数据={barcode.data}")
         return filtered_barcodes
     except Exception:
         logger.error("条码过滤失败", exc_info=True)
@@ -192,7 +184,6 @@ def split_by_first_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo],
     try:
         files_created = []
         total_pages = len(doc)
-        logger.info(f"分隔页规则拆分开始: 总页数={total_pages}, 去除条码页={config.get('remove_barcode_pages', False)}")
 
         page_barcode_map = {}
         for barcode in barcodes:
@@ -283,7 +274,6 @@ def split_by_first_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo],
                 progress = 50 + int((file_index / max(1, len(groups))) * 50)
                 progress_callback(progress, 100, f"已创建 {file_index}/{len(groups)} 个文件")
 
-        logger.info(f"分隔页规则拆分完成，共创建 {len(files_created)} 个文件")
         return files_created
     except Exception:
         logger.error("分隔页规则拆分失败", exc_info=True)
@@ -299,7 +289,6 @@ def split_by_last_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo],
     try:
         files_created = []
         total_pages = len(doc)
-        logger.info(f"分隔页规则拆分开始: 总页数={total_pages}, 去除条码页={config.get('remove_barcode_pages', False)}")
 
         page_barcode_map = {}
         for barcode in barcodes:
@@ -376,7 +365,6 @@ def split_by_last_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo],
                 progress = 50 + int((file_index / max(1, len(groups))) * 50)
                 progress_callback(progress, 100, f"已创建 {file_index}/{len(groups)} 个文件")
 
-        logger.info(f"分隔页规则拆分完成，共创建 {len(files_created)} 个文件")
         return files_created
     except Exception:
         logger.error("分隔页规则拆分失败", exc_info=True)
@@ -394,7 +382,6 @@ def split_by_separator_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo]
     try:
         files_created = []
         total_pages = len(doc)
-        logger.info(f"分隔页规则拆分开始: 总页数={total_pages}, 去除条码页={config.get('remove_barcode_pages', False)}")
 
         page_barcode_map = {}
         for barcode in barcodes:
@@ -445,11 +432,8 @@ def split_by_separator_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo]
                 'barcode': current_barcode
             })
 
-        logger.info(f"分组结果: 共 {len(groups)} 个组")
         for i, group in enumerate(groups):
             pages_display = [p + 1 for p in group['pages']]
-            logger.info(f"组{i+1}: 条码={group['barcode']}, 页码={pages_display}, 页数={len(group['pages'])}")
-
 
         file_index = 0
 
@@ -489,7 +473,6 @@ def split_by_separator_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo]
                 progress = 50 + int((file_index / max(1, len(groups))) * 50)
                 progress_callback(progress, 100, f"已创建 {file_index}/{len(groups)} 个文件")
 
-        logger.info(f"分隔页规则拆分完成，共创建 {len(files_created)} 个文件")
         return files_created
     except Exception:
         logger.error("分隔页规则拆分失败", exc_info=True)
@@ -634,8 +617,6 @@ def preview_separator_page_rule(total_pages: int, barcodes: List[BarcodeInfo],
                               config: Dict[str, Any], clean_filename_func=None) -> List[Dict[str, Any]]:
     """预览分隔页规则拆分结果"""
     try:
-        logger.info(f"分隔页规则预览: 总页数={total_pages}, 条码数={len(barcodes)}, 去除条码页={config.get('remove_barcode_pages', False)}")
-
         page_barcode_map = {}
         for barcode in barcodes:
             if barcode.page_num not in page_barcode_map:
@@ -684,12 +665,6 @@ def preview_separator_page_rule(total_pages: int, barcodes: List[BarcodeInfo],
                 'pages': current_group.copy(),
                 'barcode': current_barcode
             })
-
-        logger.info(f"预览分组结果: 共 {len(groups)} 个组")
-        for i, group in enumerate(groups):
-            pages_display = [p + 1 for p in group['pages']]
-            logger.info(f"预览组{i+1}: 条码={group['barcode']}, 页码={pages_display}, 页数={len(group['pages'])}")
-
 
         preview_groups = []
         file_index = 0

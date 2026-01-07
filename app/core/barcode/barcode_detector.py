@@ -168,7 +168,6 @@ class BarcodeDetector:
             for i, page_num in enumerate(page_indices):
                 # 检查是否需要取消
                 if cancel_flag and cancel_flag():
-                    logger.info("用户取消了条码检测操作")
                     return all_barcodes
                     
                 if progress_callback:
@@ -176,7 +175,6 @@ class BarcodeDetector:
                 barcodes = self.detect_barcodes_in_page(doc, page_num, method=method)
                 all_barcodes.extend(barcodes)
             
-            logger.info(f"文档条码检测完成，共检测到 {len(all_barcodes)} 个条码")
             return all_barcodes
             
         except Exception as e:

@@ -62,7 +62,6 @@ class AppSettings:
                     logger.error(f"加载设置失败: {e}")
                     cls._settings_cache = {}
             else:
-                logger.info(f"设置文件不存在，使用默认设置: {cls.SETTINGS_FILE}")
                 cls._settings_cache = {}
         return cls._settings_cache
     

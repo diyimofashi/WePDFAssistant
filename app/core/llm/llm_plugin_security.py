@@ -25,7 +25,6 @@ class LLMPluginSecurity:
             plugins: 插件名称列表
         """
         self._allowed_plugins = set(plugins)
-        logger.info(f"Allowed plugins set: {', '.join(plugins)}")
 
     def is_plugin_allowed(self, plugin_name: str) -> bool:
         """
@@ -49,7 +48,6 @@ class LLMPluginSecurity:
             tools: 工具名称列表
         """
         self._allowed_tools = set(tools)
-        logger.info(f"Allowed tools set: {', '.join(tools)}")
 
     def is_tool_allowed(self, tool_name: str) -> bool:
         """
@@ -74,7 +72,6 @@ class LLMPluginSecurity:
             api_key: API密钥
         """
         self._api_keys[plugin_name] = api_key
-        logger.info(f"API key set for plugin: {plugin_name}")
 
     def get_api_key(self, plugin_name: str) -> Optional[str]:
         """
@@ -103,7 +100,6 @@ class LLMPluginSecurity:
             "reset_time": 0,
             "call_count": 0
         }
-        logger.info(f"Rate limit set for plugin {plugin_name}: {max_calls} calls/{time_window}s")
 
     def check_rate_limit(self, plugin_name: str) -> bool:
         """
@@ -137,7 +133,6 @@ class LLMPluginSecurity:
         """重置所有速率限制"""
         for plugin_name in self._rate_limits:
             self._rate_limits[plugin_name]["call_count"] = 0
-        logger.info("All rate limits reset")
 
     def sanitize_input(self, text: str, max_length: int = 100000) -> str:
         """

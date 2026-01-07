@@ -98,8 +98,6 @@ class OperationHistory(QObject):
         self.redo_stack: List[OperationState] = []  # 重做栈
         self.current_operation: Optional[OperationState] = None
         
-        logger.info(f"操作历史管理器已创建，最大历史记录数: {max_history_size}")
-    
     def add_operation(self, operation_type: OperationType, **kwargs) -> OperationState:
         """添加新操作到历史记录"""
         # 清除重做栈（添加新操作时重做栈失效）
@@ -120,8 +118,6 @@ class OperationHistory(QObject):
         
         # 设置当前操作
         self.current_operation = operation
-        
-        logger.info(f"添加操作: {operation}")
         
         # 发送信号
         self.operation_added.emit(operation)
@@ -164,8 +160,6 @@ class OperationHistory(QObject):
         # 更新当前操作
         self.current_operation = self.undo_stack[-1] if self.undo_stack else None
         
-        logger.info(f"撤销操作: {operation}")
-        
         # 发送信号
         self.operation_undone.emit(operation)
         self.history_changed.emit()
@@ -187,8 +181,6 @@ class OperationHistory(QObject):
         # 更新当前操作
         self.current_operation = operation
         
-        logger.info(f"重做操作: {operation}")
-        
         # 发送信号
         self.operation_redone.emit(operation)
         self.history_changed.emit()
@@ -200,8 +192,6 @@ class OperationHistory(QObject):
         self.undo_stack.clear()
         self.redo_stack.clear()
         self.current_operation = None
-        
-        logger.info("清空所有操作历史记录")
         
         # 发送信号
         self.history_changed.emit()
@@ -237,7 +227,6 @@ class OperationHistory(QObject):
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(history_data, f, ensure_ascii=False, indent=2)
             
-            logger.info(f"历史记录已保存到: {file_path}")
             return True
             
         except Exception as e:
@@ -274,8 +263,6 @@ class OperationHistory(QObject):
             
             # 设置当前操作
             self.current_operation = self.undo_stack[-1] if self.undo_stack else None
-            
-            logger.info(f"历史记录已从文件加载: {file_path}")
             
             # 发送信号
             self.history_changed.emit()
@@ -325,8 +312,6 @@ class OperationHistory(QObject):
         
         # 设置当前操作
         self.current_operation = operations[-1]
-        
-        logger.info(f"批量添加 {len(operations)} 个操作")
         
         # 发送信号
         self.history_changed.emit()

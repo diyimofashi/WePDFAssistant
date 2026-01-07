@@ -34,14 +34,12 @@ class LLMPluginConfigManager:
     def _load_config(self) -> None:
         """加载配置文件"""
         if not self.config_file.exists():
-            logger.info(f"Config file not found, creating default: {self.config_file}")
             self._create_default_config()
             return
 
         try:
             with open(self.config_file, 'r', encoding='utf-8') as f:
                 self._config = json.load(f)
-            logger.info(f"Config loaded from: {self.config_file}")
         except Exception as e:
             logger.error(f"Error loading config: {e}", exc_info=True)
             self._create_default_config()
@@ -105,7 +103,6 @@ class LLMPluginConfigManager:
             self.config_file.parent.mkdir(parents=True, exist_ok=True)
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self._config, f, indent=2, ensure_ascii=False)
-            logger.info(f"Config saved to: {self.config_file}")
         except Exception as e:
             logger.error(f"Error saving config: {e}", exc_info=True)
 
@@ -285,7 +282,6 @@ class LLMPluginConfigManager:
 
     def reset_to_default(self) -> None:
         """重置为默认配置"""
-        logger.info("Resetting config to default")
         self._create_default_config()
 
     def export_config(self, export_path: str) -> None:
@@ -298,7 +294,6 @@ class LLMPluginConfigManager:
         try:
             with open(export_path, 'w', encoding='utf-8') as f:
                 json.dump(self._config, f, indent=2, ensure_ascii=False)
-            logger.info(f"Config exported to: {export_path}")
         except Exception as e:
             logger.error(f"Error exporting config: {e}", exc_info=True)
 
@@ -315,6 +310,5 @@ class LLMPluginConfigManager:
 
             self._config = imported_config
             self._save_config()
-            logger.info(f"Config imported from: {import_path}")
         except Exception as e:
             logger.error(f"Error importing config: {e}", exc_info=True)

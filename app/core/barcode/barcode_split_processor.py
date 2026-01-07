@@ -209,8 +209,6 @@ class BarcodeSplitProcessor:
                         doc, all_barcodes, config, output_dir
                     )
             
-            logger.info(f"PDF条码拆分完成，共创建 {len(files_created)} 个文件")
-            
             return SplitResult(
                 success=True,
                 message=f"成功拆分PDF，创建了 {len(files_created)} 个文件",

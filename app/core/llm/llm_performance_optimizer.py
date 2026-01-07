@@ -154,7 +154,6 @@ class LLMPerformanceOptimizer:
     def clear_cache(self) -> None:
         """清空缓存"""
         self._cache.clear()
-        logger.info("LLM result cache cleared")
 
     def get_performance_report(self) -> Dict[str, Any]:
         """
@@ -201,11 +200,9 @@ class LLMPerformanceOptimizer:
                 self._metrics[key] = PerformanceMetrics()
                 if key in self._call_history:
                     self._call_history[key].clear()
-            logger.info(f"Metrics reset for plugin: {plugin_name}")
         else:
             self._metrics.clear()
             self._call_history.clear()
-            logger.info("All metrics reset")
 
     def get_slow_calls(self, threshold: float = 5.0) -> Dict[str, list]:
         """

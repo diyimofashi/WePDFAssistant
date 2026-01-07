@@ -83,7 +83,6 @@ class QwenLLMPlugin(LLMPluginInterface):
                 "Content-Type": "application/json"
             })
 
-            logger.info(f"Plugin '{self.get_plugin_name()}' initialized successfully")
             return LLMResult(
                 success=True,
                 content="",
@@ -240,7 +239,6 @@ class QwenLLMPlugin(LLMPluginInterface):
             if tools:
                 payload["tools"] = tools
                 payload["tool_choice"] = "auto"
-                logger.info(f"Sending request with {len(tools)} tools")
             else:
                 logger.warning("No tools in request")
 
@@ -277,7 +275,6 @@ class QwenLLMPlugin(LLMPluginInterface):
                             # 只发送有名称的工具调用
                             valid_tool_calls = [tc for tc in tool_calls if tc.get("name")]
                             if valid_tool_calls:
-                                logger.info(f"Stream ended with tool calls: {valid_tool_calls}")
                                 yield LLMResult(
                                     success=True,
                                     content="",
@@ -366,8 +363,6 @@ class QwenLLMPlugin(LLMPluginInterface):
             # 流结束后,如果有剩余的工具调用
             if tool_calls_buffer:
                 tool_calls = list(tool_calls_buffer.values())
-                logger.info(f"Stream ended with {len(tool_calls)} tool calls (already sent during stream)")
-                # 注意:不再次发送工具调用,因为已经在流中发送过了
 
         except Exception as e:
             logger.error(f"Error in stream chat: {e}", exc_info=True)
@@ -420,4 +415,3 @@ class QwenLLMPlugin(LLMPluginInterface):
         """清理资源"""
         if self._session:
             self._session.close()
-        logger.info(f"Plugin '{self.get_plugin_name()}' cleaned up")

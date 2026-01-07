@@ -647,12 +647,9 @@ class ContextMenuBuilder:
             self.main_window.show_message("❌ 未打开PDF文档")
             return
 
-        logger.info(f"[删除页面] _delete_page收到的page_num(0-based): {page_num}")
-
         # 验证页码是否有效
         if hasattr(self.main_window, 'pdf_processor') and self.main_window.pdf_processor.fitz_document:
             total_pages = self.main_window.pdf_processor.get_total_pages()
-            logger.info(f"[删除页面] 当前PDF总页数: {total_pages}")
             if page_num < 0 or page_num >= total_pages:
                 logger.error(f"[删除页面] 页码无效: {page_num}, 总页数: {total_pages}")
                 self.main_window.show_message(f"❌ 页码无效: {page_num}")
@@ -669,14 +666,11 @@ class ContextMenuBuilder:
             page_editor = self._get_page_editor()
             if page_editor:
                 page_num_1based = page_num + 1
-                logger.info(f"[删除页面] 调用page_editor.delete_page，传入页码(1-based): {page_num_1based}")
                 success, message = page_editor.delete_page(page_num_1based)
-                logger.info(f"[删除页面] 删除结果: success={success}, message={message}")
                 if success:
                     self.main_window.show_message(message)
                     # 删除页面后需要清除虚拟滚动的缓存
                     if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
-                        logger.info("[删除页面] 清除虚拟滚动缓存")
                         self.main_window.virtual_scroll.clear_cache()
                     # 更新预览和缩略图
                     self.main_window.update_preview()

@@ -33,19 +33,15 @@ class FileBackend(MemoryInterface):
         self._memories: Dict[str, Dict] = {}
         self._load_index()
 
-        logger.info(f"FileBackend initialized with path={storage_path}")
-
     def _load_index(self) -> None:
         """加载索引文件"""
         if not self._index_file.exists():
-            logger.info(f"Index file not found, creating new: {self._index_file}")
             self._save_index()
             return
 
         try:
             with open(self._index_file, 'r', encoding='utf-8') as f:
                 self._memories = json.load(f)
-            logger.info(f"Index loaded from: {self._index_file}")
         except Exception as e:
             logger.error(f"Error loading index: {e}", exc_info=True)
             self._memories = {}
@@ -279,7 +275,6 @@ class FileBackend(MemoryInterface):
         self._memories.clear()
         self._save_index()
 
-        logger.info("All memories cleared")
         return True
 
     def get_all_keys(self) -> List[str]:

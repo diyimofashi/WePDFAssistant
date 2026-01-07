@@ -53,7 +53,6 @@ class NewLLMChatWidget(QWidget):
         while parent_window:
             if hasattr(parent_window, '_llm_integration'):
                 self._llm_integration = parent_window._llm_integration
-                logger.info("Using parent window's LLM integration")
                 break
             parent_window = parent_window.parent()
 
@@ -71,7 +70,6 @@ class NewLLMChatWidget(QWidget):
         while parent_window:
             if hasattr(parent_window, '_llm_tool_manager'):
                 self._tool_manager = parent_window._llm_tool_manager
-                logger.info("Using parent window's LLM tool manager")
                 break
             parent_window = parent_window.parent()
 
@@ -93,7 +91,6 @@ class NewLLMChatWidget(QWidget):
 
     def _on_action_required(self, action_type: str, params: Dict[str, Any]):
         """工具需要用户操作"""
-        logger.info(f"Tool requires user action: {action_type}, params: {params}")
         bubble = self._add_action_bubble(action_type, params)
         self._pending_actions[action_type] = bubble
 
@@ -317,8 +314,6 @@ class NewLLMChatWidget(QWidget):
             self._current_plugin = enabled_plugins[0]
             self._plugin_combo.setCurrentIndex(0)
 
-        logger.info(f"Loaded {len(enabled_plugins)} enabled plugins: {enabled_plugins}")
-
         # 连接信号
         self._input_edit.textChanged.connect(self._on_input_changed)
         self._plugin_combo.currentTextChanged.connect(self._on_plugin_changed)
@@ -351,37 +346,24 @@ class NewLLMChatWidget(QWidget):
 
     def _add_action_bubble(self, action_type: str, params: Dict[str, Any]) -> ActionBubble:
         """添加用户操作气泡"""
-        logger.info(f"Step 1: Entering _add_action_bubble with {action_type}, params: {params}")
-        logger.info("Step 2: About to create ActionBubble")
         bubble = ActionBubble(action_type, params)
-        logger.info("Step 3: ActionBubble created, about to connect signal")
         bubble.action_completed.connect(self._on_action_completed)
-        logger.info("Step 4: Signal connected, about to add to layout")
         self._message_layout.addWidget(bubble)
-        logger.info("Step 5: Added to layout, about to scroll to bottom")
 
         # 直接同步滚动到底部，不使用QTimer
         # QTimer.singleShot(0, self._scroll_to_bottom)
-        # logger.info("Step 5.5: QTimer scheduled")
         self._scroll_to_bottom()
-        logger.info("Step 5.5: Scrolled to bottom synchronously")
 
-        logger.info(f"Step 6: Action bubble added successfully: {action_type}, about to return")
-        logger.info(f"Step 6.5: bubble type: {type(bubble)}, bubble object: {bubble}")
         return bubble
 
     def _scroll_to_bottom(self):
         """滚动到底部的辅助方法"""
         try:
-            logger.info("Step: Entering _scroll_to_bottom")
             message_area = self._message_container.parent()
-            logger.info(f"Step: message_area type: {type(message_area)}")
             if isinstance(message_area, QScrollArea):
-                logger.info("Step: Is QScrollArea, setting scroll value")
                 message_area.verticalScrollBar().setValue(
                     message_area.verticalScrollBar().maximum()
                 )
-                logger.info("Step: Scroll value set")
             else:
                 logger.warning("Step: message_area is not QScrollArea")
         except Exception as e:
@@ -389,7 +371,6 @@ class NewLLMChatWidget(QWidget):
 
     def _on_action_completed(self, action_type: str, result: Dict[str, Any]):
         """操作完成回调"""
-        logger.info(f"Action completed: {action_type}, result: {result}")
 
         # 特殊处理:如果是保存模式的文件选择,不添加消息,直接继续
         if action_type == "file_chooser":
@@ -464,8 +445,6 @@ class NewLLMChatWidget(QWidget):
                 if main_window:
                     try:
                         # 调用主窗口的PDF打开方法
-                        logger.info(f"Opening PDF file: {file_path}")
-                        
                         # 使用pdf_processor打开PDF文件
                         if hasattr(main_window, 'pdf_processor'):
                             success, message = main_window.pdf_processor.open_pdf(file_path, async_mode=True)
@@ -615,21 +594,14 @@ class NewLLMChatWidget(QWidget):
                     "可用工具: " + ", ".join([t["function"]["name"] for t in tools])
                 )
                 messages_to_send.insert(0, LLMMessage(role="system", content=system_prompt))
-                logger.info(f"Added system prompt to enforce tool usage")
 
-        logger.info(f"Starting generation with {len(tools) if tools else 0} tools for plugin: {self._current_plugin}")
 
         self._chat_thread = LLMChatThread(self._llm_integration, self._current_plugin, messages_to_send, tools)
         self._chat_thread.response_signal.connect(self._on_response)
-        logger.info("Signal connected, about to start thread")
         self._chat_thread.start()
-        logger.info("Thread started")
 
     def _on_response(self, content: str, is_error: bool, error_msg: str, is_complete: bool, metadata: dict):
         """处理LLM响应"""
-        logger.info("="*50)
-        logger.info("_on_response CALLED!")
-        logger.info(f"content={content[:50] if content else 'None'}, is_error={is_error}, is_complete={is_complete}")
         try:
             # 检查是否为工具调用
             metadata_has_tool_calls = metadata and "tool_calls" in metadata
@@ -658,18 +630,13 @@ class NewLLMChatWidget(QWidget):
                     )
             elif metadata_has_tool_calls:
                 # 处理工具调用
-                logger.info(f"Received tool calls: {metadata.get('tool_calls')}")
-
                 # 安全地将工具调用转换为普通数据结构，防止特殊对象引发阻塞
                 raw_tool_calls = metadata.get("tool_calls") if metadata else None
-                logger.info(f"raw_tool_calls type: {type(raw_tool_calls)}, is None: {raw_tool_calls is None}")
 
                 tool_calls = []
 
                 # 直接使用类型和长度检查,避免bool()调用
-                logger.info("About to check raw_tool_calls")
                 raw_is_list = isinstance(raw_tool_calls, list)
-                logger.info(f"raw_is_list: {raw_is_list}")
 
                 if raw_is_list:
                     raw_len = 0
@@ -677,14 +644,11 @@ class NewLLMChatWidget(QWidget):
                         raw_len = len(raw_tool_calls)
                     except Exception as e:
                         logger.error(f"Error getting len: {e}", exc_info=True)
-                    logger.info(f"raw_len: {raw_len}")
 
                     if raw_len > 0:
-                        logger.info("About to start for loop over raw_tool_calls")
                         # 将可能的特殊对象转换为普通字典
                         for idx in range(raw_len):  # 使用索引迭代,避免直接迭代
                             call = raw_tool_calls[idx]
-                            logger.info(f"Processing call at index {idx}, type: {type(call)}")
                             try:
                                 if isinstance(call, dict):
                                     # 如果已经是字典，显式构建新字典，避免调用dict()可能触发的特殊方法
@@ -719,7 +683,6 @@ class NewLLMChatWidget(QWidget):
                                 logger.error(f"Error converting tool call to dict: {e}")
 
                 if tool_calls:
-                    logger.info(f"About to call _handle_tool_calls")
                     self._handle_tool_calls(tool_calls)
 
             if is_complete:
@@ -733,8 +696,6 @@ class NewLLMChatWidget(QWidget):
                 if final_content.strip():
                     self._messages.append(LLMMessage(role="assistant", content=final_content))
                 
-                logger.info("LLM generation completed")
-
         except Exception as e:
             logger.error(f"Error in _on_response: {e}", exc_info=True)
             self._add_message_bubble("assistant", f"❌ 处理响应时出错: {str(e)}")
@@ -749,8 +710,6 @@ class NewLLMChatWidget(QWidget):
         处理工具调用
         """
         try:
-            logger.info(f"Step 1: Entering _handle_tool_calls")
-
             tool_calls_len = 0
             if tool_calls is not None:
                 try:
@@ -759,12 +718,7 @@ class NewLLMChatWidget(QWidget):
                     logger.error(f"Error getting len of tool_calls: {e}", exc_info=True)
                     tool_calls_len = 0
 
-            logger.info(f"_handle_tool_calls called with {tool_calls_len} tool calls, tool_manager: {self._tool_manager is not None}")
-
-            logger.info("Step 2: Checking tool_manager")
             tool_manager_available = self._tool_manager is not None
-
-            logger.info(f"Step 3: Checking tool_calls, tool_calls is None: {tool_calls is None}")
 
             tool_calls_len_for_check = 0
             if tool_calls is not None and isinstance(tool_calls, list):
@@ -775,21 +729,12 @@ class NewLLMChatWidget(QWidget):
 
             tool_calls_available = tool_calls is not None and isinstance(tool_calls, list) and tool_calls_len_for_check > 0
 
-            logger.info(f"Step 4: tool_calls_available={tool_calls_available}, tool_manager_available={tool_manager_available}")
             if not tool_calls_available or not tool_manager_available:
                 logger.warning(f"Skipping tool calls: tool_calls={tool_calls_available}, tool_manager={tool_manager_available}")
                 return
 
-            logger.info("Step 5: Received tool calls")
-            logger.info(f"Received {tool_calls_len_for_check} tool calls")
-
-            # 检查 tool_calls 是否为纯列表
-            logger.info(f"tool_calls type: {type(tool_calls)}, is list: {isinstance(tool_calls, list)}")
-
             # 安全地获取并输出首个工具调用名称日志，满足用户要求
             first_tool_name = 'N/A'
-            logger.info("Step 6: About to check first tool_call")
-
             tool_calls_len_for_check2 = 0
             if tool_calls is not None and isinstance(tool_calls, list):
                 try:
@@ -800,7 +745,6 @@ class NewLLMChatWidget(QWidget):
             if tool_calls and tool_calls_len_for_check2 > 0:
                 try:
                     first_tool_call = tool_calls[0]
-                    logger.info(f"First tool_call type: {type(first_tool_call)}, is dict: {isinstance(first_tool_call, dict)}")
                     if hasattr(first_tool_call, 'get'):
                         first_tool_name = first_tool_call.get('name', 'N/A')
                     elif isinstance(first_tool_call, dict):
@@ -811,11 +755,8 @@ class NewLLMChatWidget(QWidget):
                     logger.error(f"Error getting first tool call name: {e}", exc_info=True)
                     first_tool_name = 'Error'
 
-            logger.info(f"First tool call name: {first_tool_name}")
-
             # 注意:工具调用已经在 _on_response 中添加到消息历史,这里不需要再次添加
 
-            logger.info("About to enter for loop")
             # 执行每个工具调用
             for tool_call in tool_calls:
                 logger.debug(f"Processing tool_call: {tool_call}")
@@ -842,35 +783,21 @@ class NewLLMChatWidget(QWidget):
                     logger.warning(f"Tool call has empty name, skipping. Arguments: {arguments_str}")
                     continue
 
-                logger.info(f"About to parse arguments for tool: {tool_name}")
-
                 try:
                     # 安全解析参数
                     try:
-                        logger.info(f"Before json.loads, arguments_str type: {type(arguments_str)}, length: {len(arguments_str) if isinstance(arguments_str, str) else 'N/A'}")
                         arguments = json.loads(arguments_str)
-                        logger.info(f"After json.loads, arguments type: {type(arguments)}")
                     except json.JSONDecodeError as e:
                         logger.error(f"Failed to parse arguments: {arguments_str}, error: {e}")
                         arguments = {}
 
-                    logger.info(f"Executing tool: {tool_name} with args: {arguments}")
-
-                    logger.debug(f"Checking tool type: {tool_name}, expected 'file_chooser'")
-                    logger.debug(f"Tool name == 'file_chooser': {tool_name == 'file_chooser'}")
-                    
                     # 特殊处理file_chooser工具 - 在对话中显示文件选择UI
                     if tool_name == "file_chooser":
-                        logger.info(f"About to add file_chooser bubble with args: {arguments}")
                         try:
-                            logger.info("Step: Before calling _add_action_bubble")
                             bubble = self._add_action_bubble("file_chooser", arguments)
-                            logger.info(f"Step: After _add_action_bubble returned, bubble: {bubble}")
-                            logger.info(f"file_chooser bubble added, continuing to next tool")
                         except Exception as e:
                             logger.error(f"Error adding file_chooser bubble: {e}", exc_info=True)
                             self._add_message_bubble("assistant", f"\n❌ 无法显示文件选择界面: {str(e)}\n")
-                        logger.info("Step: About to execute continue")
                         continue  # 直接处理下一个工具调用
 
                     # 特殊处理confirm工具 - 在对话中显示确认UI
@@ -931,8 +858,6 @@ class NewLLMChatWidget(QWidget):
                             file_path = arguments.get("file_path")
                             page_num = arguments.get("page_num", 0)
 
-                            logger.info(f"show_pdf called with file_path={file_path}, page_num={page_num}")
-
                             # 获取主窗口
                             parent_window = self.parent()
                             main_window = None
@@ -944,7 +869,6 @@ class NewLLMChatWidget(QWidget):
 
                             if main_window and hasattr(main_window, 'open_pdf'):
                                 # 调用主窗口的打开PDF方法
-                                logger.info(f"Calling main_window.open_pdf with {file_path}")
                                 main_window.open_pdf(file_path)
                                 result = {"success": True, "message": f"PDF已显示: {file_path}"}
                             else:
@@ -972,7 +896,6 @@ class NewLLMChatWidget(QWidget):
                             continue
 
                     # 对于其他工具，异步执行
-                    logger.info(f"Executing general tool: {tool_name}")
                     loop = asyncio.get_event_loop()
                     try:
                         if loop.is_running():
@@ -1002,8 +925,6 @@ class NewLLMChatWidget(QWidget):
                 except Exception as e:
                     logger.error(f"Error processing tool call {tool_name}: {e}", exc_info=True)
                     self._add_message_bubble("assistant", f"\n❌ 工具执行错误: {str(e)}\n")
-
-            logger.info("For loop completed, exiting _handle_tool_calls")
 
         except Exception as e:
             logger.error(f"Error in _handle_tool_calls: {e}", exc_info=True)
@@ -1078,7 +999,6 @@ class NewLLMChatWidget(QWidget):
                 if main_window:
                     try:
                         main_window.update_preview()
-                        logger.info(f"Triggered PDF preview update for marker: {marker}")
                         handled = True
                     except Exception as e:
                         logger.error(f"Error updating PDF preview for {marker}: {e}")
@@ -1087,11 +1007,9 @@ class NewLLMChatWidget(QWidget):
                 try:
                     if hasattr(main_window, 'update_preview'):
                         main_window.update_preview()
-                        logger.info(f"Triggered UI refresh for marker: {marker}")
                         handled = True
                     elif hasattr(main_window, 'repaint'):
                         main_window.repaint()
-                        logger.info(f"Triggered UI repaint for marker: {marker}")
                         handled = True
                 except Exception as e:
                     logger.error(f"Error refreshing UI for {marker}: {e}")
@@ -1100,7 +1018,6 @@ class NewLLMChatWidget(QWidget):
                 if main_window and hasattr(main_window, 'toggle_thumbnails'):
                     try:
                         main_window.toggle_thumbnails()
-                        logger.info(f"Triggered thumbnails display for marker: {marker}")
                         handled = True
                     except Exception as e:
                         logger.error(f"Error showing thumbnails for {marker}: {e}")
@@ -1109,7 +1026,6 @@ class NewLLMChatWidget(QWidget):
                 if main_window and hasattr(main_window, 'view_controller') and hasattr(main_window.view_controller, 'fit_to_width'):
                     try:
                         main_window.view_controller.fit_to_width()
-                        logger.info(f"Triggered fit to width for marker: {marker}")
                         handled = True
                     except Exception as e:
                         logger.error(f"Error fitting to width for {marker}: {e}")
@@ -1118,7 +1034,6 @@ class NewLLMChatWidget(QWidget):
                 if main_window and hasattr(main_window, 'view_controller') and hasattr(main_window.view_controller, 'fit_to_height'):
                     try:
                         main_window.view_controller.fit_to_height()
-                        logger.info(f"Triggered fit to height for marker: {marker}")
                         handled = True
                     except Exception as e:
                         logger.error(f"Error fitting to height for {marker}: {e}")

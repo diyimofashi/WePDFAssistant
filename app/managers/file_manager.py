@@ -17,7 +17,6 @@ class FileManager:
         
     def open_file(self):
         """打开PDF文件或图片文件"""
-        logger.info("开始打开文件...")
         last_dir = AppSettings.get_last_open_dir()
 
         # 添加图片文件格式支持，支持多选
@@ -26,8 +25,6 @@ class FileManager:
             "所有支持的文件 (*.pdf *.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;PDF文件 (*.pdf);;图片文件 (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;所有文件 (*.*)")
 
         if file_paths:
-            logger.info(f"选择了{len(file_paths)}个文件: {file_paths}")
-            
             # 如果选择了多个文件，优先处理图片
             image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
             image_files = []
@@ -53,7 +50,6 @@ class FileManager:
     
     def open_multiple_images(self):
         """打开多张图片文件"""
-        logger.info("开始打开多张图片...")
         last_dir = AppSettings.get_last_open_dir()
 
         # 支持多选图片文件
@@ -62,14 +58,11 @@ class FileManager:
             "图片文件 (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;JPEG图片 (*.jpg *.jpeg);;PNG图片 (*.png);;BMP图片 (*.bmp);;所有文件 (*.*)")
 
         if image_paths:
-            logger.info(f"选择了{len(image_paths)}张图片文件")
-            
             # 按文件名排序，确保按选择顺序显示
             self.parent.show_progress_dialog(f"正在加载{len(image_paths)}张图片...")
             success, message = self.parent.pdf_processor.open_multiple_images(image_paths, async_mode=True)
             
             if success:
-                logger.info("多图片异步加载启动成功")
                 AppSettings.set_last_open_dir(os.path.dirname(image_paths[0]))
             else:
                 logger.error(f"多图片异步加载启动失败: {message}")
@@ -80,8 +73,6 @@ class FileManager:
     
     def _load_multiple_images(self, image_paths):
         """加载指定的多张图片文件"""
-        logger.info(f"开始加载{len(image_paths)}张图片...")
-        
         if len(image_paths) == 1:
             # 单张图片直接加载
             self.parent.show_progress_dialog("正在加载图片文件...")
@@ -107,15 +98,12 @@ class FileManager:
     
     def open_image_directory(self):
         """打开目录，加载该目录下的所有图片"""
-        logger.info("开始从目录打开图片...")
         last_dir = AppSettings.get_last_open_dir()
         
         directory_path = QFileDialog.getExistingDirectory(
             self.parent, "选择包含图片的目录", last_dir)
         
         if directory_path:
-            logger.info(f"选择了目录: {directory_path}")
-            
             # 获取目录下所有图片文件
             image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
             image_files = []
@@ -141,7 +129,6 @@ class FileManager:
                 success, message = self.parent.pdf_processor.open_multiple_images(image_files, async_mode=True, source_directory=directory_path)
                 
                 if success:
-                    logger.info(f"目录图片异步加载启动成功，共{len(image_files)}张图片")
                     AppSettings.set_last_open_dir(directory_path)
                 else:
                     logger.error(f"目录图片异步加载启动失败: {message}")
@@ -208,20 +195,16 @@ class FileManager:
     
     def open_images_from_directory(self):
         """从目录打开所有图片并合并为PDF"""
-        logger.info("开始从目录打开图片...")
         last_dir = AppSettings.get_last_open_dir()
         
         directory_path = QFileDialog.getExistingDirectory(
             self.parent, "选择包含图片的目录", last_dir)
         
         if directory_path:
-            logger.info(f"选择了目录: {directory_path}")
-            
             self.parent.show_progress_dialog("正在加载图片文件...")
             success, message = self.parent.pdf_processor.open_images_from_directory(directory_path, async_mode=True)
             
             if success:
-                logger.info("异步加载启动成功")
                 AppSettings.set_last_open_dir(directory_path)
             else:
                 logger.error(f"异步加载启动失败: {message}")
@@ -501,8 +484,6 @@ class FileManager:
             logger.info("未选择图片文件")
             return
         
-        logger.info(f"选择了{len(image_paths)}张图片文件")
-        
         progress_dialog = QProgressDialog("正在导入图片...", "取消", 0, len(image_paths), self.parent)
         progress_dialog.setWindowTitle("导入图片")
         progress_dialog.setWindowModality(Qt.WindowModal)
@@ -513,7 +494,6 @@ class FileManager:
             if self.parent.pdf_processor.fitz_document:
                 insert_after_page = self.parent.pdf_processor.current_page
                 total_pages = len(self.parent.pdf_processor.fitz_document)
-                logger.info(f"[file_manager.import_images] 当前页面(0-based): {insert_after_page}, 总页数: {total_pages}")
 
             success, message = self.parent.pdf_processor.import_images(image_paths, insert_after_page)
             
@@ -534,12 +514,10 @@ class FileManager:
         """导入图片后更新界面状态"""
         # 关键：清除渲染缓存，避免显示旧的缓存内容
         if hasattr(self.parent.pdf_processor, 'clear_render_cache'):
-            logger.info("清除渲染缓存...")
             self.parent.pdf_processor.clear_render_cache()
 
         # 清除虚拟滚动区域的缓存
         if hasattr(self.parent, 'virtual_scroll') and hasattr(self.parent.virtual_scroll, 'clear_cache'):
-            logger.info("清除虚拟滚动区域缓存...")
             self.parent.virtual_scroll.clear_cache()
 
         total_pages = self.parent.pdf_processor.get_total_pages()
@@ -549,5 +527,3 @@ class FileManager:
 
         if self.parent.show_thumbnails:
             self.parent._force_reload_thumbnails()
-
-        logger.info("界面状态已更新")

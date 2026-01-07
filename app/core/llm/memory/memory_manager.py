@@ -21,7 +21,6 @@ class MemoryManager:
             backend: 记忆后端实例,如果为None则使用内存后端
         """
         self._backend = backend or InMemoryBackend()
-        logger.info(f"MemoryManager initialized with backend: {type(self._backend).__name__}")
 
     @classmethod
     def create_in_memory(cls, max_size: int = 1000) -> 'MemoryManager':

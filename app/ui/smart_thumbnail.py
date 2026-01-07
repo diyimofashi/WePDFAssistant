@@ -362,7 +362,6 @@ class SmartThumbnailManager(QListWidget):
         if self.pdf_processor:
             success, message = self.pdf_processor.delete_page(page_num)
             if success:
-                logger.info(f"页面删除成功: {message}")
                 # 通知主窗口更新界面
                 if hasattr(self, 'parent') and self.parent:
                     self.parent.update_save_actions_state()
@@ -380,7 +379,6 @@ class SmartThumbnailManager(QListWidget):
         if self.pdf_processor:
             success, message = self.pdf_processor.rotate_page(page_num, 90)  # 默认旋转90度
             if success:
-                logger.info(f"页面旋转成功: {message}")
                 # 通知主窗口更新界面
                 if hasattr(self, 'parent') and self.parent:
                     self.parent.update_save_actions_state()

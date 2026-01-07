@@ -62,7 +62,6 @@ class TemplateLLMPlugin(LLMPluginInterface):
             self._config = config
             self._initialized = True
 
-            logger.info(f"Plugin '{self.get_plugin_name()}' initialized successfully")
             return LLMResult(
                 success=True,
                 content="",

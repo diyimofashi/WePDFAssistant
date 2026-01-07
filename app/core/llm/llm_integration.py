@@ -46,8 +46,6 @@ class LLMIntegration:
         self._default_plugin: str | None = None
         self._initialized: bool = True
 
-        logger.info("LLMIntegration initialized")
-
     def set_plugin_manager(self, plugin_manager: Any) -> None:
         """
         设置插件管理器
@@ -56,7 +54,6 @@ class LLMIntegration:
             plugin_manager: 插件管理器实例
         """
         self._plugin_manager = plugin_manager
-        logger.info("Plugin manager set")
 
     def set_memory_manager(self, memory_manager: Any) -> None:
         """
@@ -66,7 +63,6 @@ class LLMIntegration:
             memory_manager: 记忆管理器实例
         """
         self._memory_manager = memory_manager
-        logger.info("Memory manager set")
 
     def set_tool_manager(self, tool_manager: Any) -> None:
         """
@@ -76,7 +72,6 @@ class LLMIntegration:
             tool_manager: 工具管理器实例
         """
         self._tool_manager = tool_manager
-        logger.info("Tool manager set")
 
     def initialize_system(self, plugin_configs: Dict[str, Any] | None = None) -> Dict[str, bool]:
         """
@@ -92,8 +87,6 @@ class LLMIntegration:
             logger.error("Plugin manager not set")
             return {}
 
-        logger.info("Initializing LLM system...")
-
         # 加载所有插件
         results = self._plugin_manager.load_all_plugins(plugin_configs)
 
@@ -103,15 +96,12 @@ class LLMIntegration:
                 plugin = self._plugin_manager.get_plugin(plugin_name)
                 if plugin:
                     self._plugins[plugin_name] = plugin
-                    logger.info(f"Plugin '{plugin_name}' integrated successfully")
 
         # 设置第一个成功的插件为默认插件
         loaded_plugins = [name for name, success in results.items() if success]
         if loaded_plugins:
             self._default_plugin = loaded_plugins[0]
-            logger.info(f"Default plugin set to: {self._default_plugin}")
 
-        logger.info(f"LLM system initialized with {len(self._plugins)} plugins")
         return results
 
     def chat(
@@ -328,7 +318,6 @@ class LLMIntegration:
                 memory_messages = [LLMMessage(**msg) for msg in memories.get("messages", [])]
                 # 将记忆消息插入到消息列表中
                 messages = memory_messages + messages
-                logger.info(f"Loaded {len(memory_messages)} messages from memory")
         except Exception as e:
             logger.error(f"Error loading memory: {e}")
 
@@ -537,7 +526,6 @@ class LLMIntegration:
             return False
 
         self._default_plugin = plugin_name
-        logger.info(f"Default plugin set to: {plugin_name}")
         return True
 
     def get_security(self) -> LLMPluginSecurity:

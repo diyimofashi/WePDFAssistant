@@ -23,8 +23,6 @@ class BarcodeIntegration:
         self.config_manager = barcode_config_manager
         self.performance_stats = {}
         
-        logger.info("条码系统集成模块初始化")
-    
     def initialize_system(self, plugin_configs: Dict[str, Dict[str, Any]] = None) -> Dict[str, bool]:
         """
         初始化条码系统
@@ -38,7 +36,6 @@ class BarcodeIntegration:
         try:
             # 加载所有插件
             load_results = self.plugin_manager.load_all_plugins()
-            logger.info(f"插件加载结果: {load_results}")
             
             # 初始化所有插件
             init_results = self.plugin_manager.initialize_all_plugins(plugin_configs)
@@ -50,7 +47,6 @@ class BarcodeIntegration:
                 if not result.is_success():
                     logger.error(f"插件初始化失败: {plugin_name}, 错误: {result.message}")
             
-            logger.info(f"条码系统初始化完成，结果: {results}")
             return results
             
         except Exception as e:

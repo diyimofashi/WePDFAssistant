@@ -32,14 +32,12 @@ class LLMToolConfigManager:
     def _load_config(self) -> None:
         """加载配置文件"""
         if not self.config_file.exists():
-            logger.info(f"Tool config file not found, creating default: {self.config_file}")
             self._create_default_config()
             return
 
         try:
             with open(self.config_file, 'r', encoding='utf-8') as f:
                 self._config = json.load(f)
-            logger.info(f"Tool config loaded from: {self.config_file}")
         except Exception as e:
             logger.error(f"Error loading tool config: {e}", exc_info=True)
             self._create_default_config()
@@ -88,7 +86,6 @@ class LLMToolConfigManager:
             self.config_file.parent.mkdir(parents=True, exist_ok=True)
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self._config, f, indent=2, ensure_ascii=False)
-            logger.info(f"Tool config saved to: {self.config_file}")
         except Exception as e:
             logger.error(f"Error saving tool config: {e}", exc_info=True)
 

@@ -46,10 +46,8 @@ class UploadPluginConfigManager:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     self.config_data = json.load(f)
                 
-                logger.info(f"上传插件配置已从 {self.config_file} 加载")
                 return True
             else:
-                logger.info(f"上传插件配置文件不存在: {self.config_file}，使用默认配置")
                 self.config_data = {
                     "current_plugin": "",
                     "plugins": {}
@@ -80,7 +78,6 @@ class UploadPluginConfigManager:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self.config_data, f, ensure_ascii=False, indent=2)
             
-            logger.info(f"上传插件配置已保存到 {self.config_file}")
             return True
             
         except Exception as e:
