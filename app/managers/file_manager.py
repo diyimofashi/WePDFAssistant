@@ -43,8 +43,11 @@ class FileManager:
             # 如果没有图片但有PDF文件，加载第一个PDF
             elif pdf_files:
                 self._open_pdf_file(pdf_files[0])
-            
-            AppSettings.set_last_open_dir(os.path.dirname(file_paths[0]))
+                # 只在这里保存目录,避免重复保存
+                AppSettings.set_last_open_dir(pdf_files[0])
+            else:
+                # 如果选择了其他类型的文件,保存第一个文件的目录
+                AppSettings.set_last_open_dir(file_paths[0])
         else:
             logger.info("未选择文件")
     
@@ -61,9 +64,9 @@ class FileManager:
             # 按文件名排序，确保按选择顺序显示
             self.parent.show_progress_dialog(f"正在加载{len(image_paths)}张图片...")
             success, message = self.parent.pdf_processor.open_multiple_images(image_paths, async_mode=True)
-            
+
             if success:
-                AppSettings.set_last_open_dir(os.path.dirname(image_paths[0]))
+                AppSettings.set_last_open_dir(image_paths[0])
             else:
                 logger.error(f"多图片异步加载启动失败: {message}")
                 self.parent.hide_progress_dialog()
@@ -123,13 +126,18 @@ class FileManager:
                 if not image_files:
                     QMessageBox.information(self.parent, "提示", "所选目录中没有找到图片文件")
                     return
-                
+
                 # 加载所有图片
                 self.parent.show_progress_dialog(f"正在加载目录中的{len(image_files)}张图片...")
                 success, message = self.parent.pdf_processor.open_multiple_images(image_files, async_mode=True, source_directory=directory_path)
-                
+
                 if success:
-                    AppSettings.set_last_open_dir(directory_path)
+                    # directory_path本身就是目录,不需要再调用dirname
+                    # 设置为空字符串,让set_last_open_dir直接使用directory_path
+                    # 这里用一个特殊处理:手动更新settings
+                    settings = AppSettings._load_settings()
+                    settings['last_open_dir'] = directory_path
+                    AppSettings._save_settings()
                 else:
                     logger.error(f"目录图片异步加载启动失败: {message}")
                     self.parent.hide_progress_dialog()
@@ -186,8 +194,6 @@ class FileManager:
 
         if success:
             logger.info("异步加载启动成功")
-            # 保存最近打开的目录
-            AppSettings.set_last_open_dir(file_path)
         else:
             logger.error(f"异步加载启动失败: {message}")
             self.parent.hide_progress_dialog()
@@ -203,9 +209,12 @@ class FileManager:
         if directory_path:
             self.parent.show_progress_dialog("正在加载图片文件...")
             success, message = self.parent.pdf_processor.open_images_from_directory(directory_path, async_mode=True)
-            
+
             if success:
-                AppSettings.set_last_open_dir(directory_path)
+                # directory_path本身就是目录,不需要再调用dirname
+                settings = AppSettings._load_settings()
+                settings['last_open_dir'] = directory_path
+                AppSettings._save_settings()
             else:
                 logger.error(f"异步加载启动失败: {message}")
                 self.parent.hide_progress_dialog()
