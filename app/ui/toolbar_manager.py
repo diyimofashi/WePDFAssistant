@@ -174,10 +174,15 @@ class ToolbarManager(QObject):
         ocr_settings_action.triggered.connect(self.parent.show_ocr_settings)
         ocr_menu.addAction(ocr_settings_action)
         
-        # 执行OCR
-        perform_ocr_action = QAction("🔤 执行OCR", self.parent)
+        # 对当前页执行OCR
+        perform_ocr_action = QAction("🔤 对当前页执行OCR", self.parent)
         perform_ocr_action.triggered.connect(self.parent.perform_ocr_on_current_page)
         ocr_menu.addAction(perform_ocr_action)
+        
+        # 对全部页面执行OCR
+        perform_all_pages_ocr_action = QAction("📚 对全部页面执行OCR", self.parent)
+        perform_all_pages_ocr_action.triggered.connect(self.parent.perform_ocr_on_all_pages)
+        ocr_menu.addAction(perform_all_pages_ocr_action)
         
         # 创建可搜索PDF
         create_searchable_action = QAction("📄 创建可搜索PDF", self.parent)
