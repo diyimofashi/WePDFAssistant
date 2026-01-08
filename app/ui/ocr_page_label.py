@@ -29,13 +29,11 @@ class OCRPageLabel(QWidget):
         self.ocr_data = []  # OCR识别结果数据
         self.page_scale = 1.0  # 页面缩放比例
         self.page_offset = QPoint(0, 0)  # 页面偏移量
-        self.debug_mode = True  # 默认启用调试模式，方便用户测试
+        self.debug_mode = False  # 默认禁用调试模式
         self.pixmap = None  # 存储当前pixmap
 
         # 初始化UI
         self._init_ui()
-
-        logger.info(f"[OCRPageLabel.__init__] 初始化完成，默认debug_mode={self.debug_mode}")
 
     def _init_ui(self):
         """初始化UI组件"""
@@ -61,8 +59,6 @@ class OCRPageLabel(QWidget):
         self.setFixedSize(pixmap.width(), pixmap.height())
         self.image_label.setFixedSize(pixmap.width(), pixmap.height())
 
-        logger.info(f"[OCRPageLabel.setPixmap] 设置图像尺寸: {pixmap.width()}x{pixmap.height()}, widget: {self.size()}")
-
     def set_ocr_data(self, ocr_data, page_scale=1.0, page_offset=QPoint(0, 0)):
         """
         设置OCR数据
@@ -72,18 +68,12 @@ class OCRPageLabel(QWidget):
             page_scale: 页面缩放比例
             page_offset: 页面偏移量
         """
-        logger.info(f"[OCRPageLabel.set_ocr_data] 开始设置OCR数据")
-        logger.info(f"[OCRPageLabel.set_ocr_data] page_scale={page_scale}, page_offset={page_offset}")
-
         self.ocr_data = ocr_data if ocr_data else []
         self.page_scale = page_scale
         self.page_offset = page_offset
 
-        logger.info(f"[OCRPageLabel.set_ocr_data] OCR数据条数: {len(self.ocr_data)}")
-
         # 更新文本层
         if self.ocr_data:
-            logger.info(f"[OCRPageLabel.set_ocr_data] OCR数据不为空，调用_update_text_layer")
             self._update_text_layer()
         else:
             logger.warning(f"[OCRPageLabel.set_ocr_data] OCR数据为空，跳过更新")
@@ -153,8 +143,6 @@ class OCRPageLabel(QWidget):
             # 清除旧的文本块
             self._clear_text_blocks()
 
-            logger.info(f"开始更新文本层，OCR数据条数: {len(self.ocr_data)}")
-
             # 分批处理，每批处理50个文本块
             batch_size = 50
             self._current_batch = 0
@@ -194,8 +182,6 @@ class OCRPageLabel(QWidget):
             if current_batch_data:
                 self._batches.append(current_batch_data)
 
-            logger.info(f"准备完成，共 {len(self._batches)} 个批次，预计创建 {sum(len(batch) for batch in self._batches)} 个文本块")
-
             # 开始处理第一批
             self._process_next_batch()
 
@@ -207,7 +193,6 @@ class OCRPageLabel(QWidget):
     def _process_next_batch(self):
         """处理下一批文本块"""
         if self._current_batch >= len(self._batches):
-            logger.info(f"文本层更新完成，创建了 {len(self.text_blocks)} 个文本块")
             self._batches.clear()
             self._current_batch = 0
             return
@@ -222,8 +207,6 @@ class OCRPageLabel(QWidget):
 
         # 批量添加到列表
         self.text_blocks.extend(new_text_blocks)
-        logger.info(f"已处理 {self._current_batch + 1}/{len(self._batches)} 批次，累计 {len(self.text_blocks)} 个文本块")
-
         # 继续处理下一批
         self._current_batch += 1
         QTimer.singleShot(0, self._process_next_batch)

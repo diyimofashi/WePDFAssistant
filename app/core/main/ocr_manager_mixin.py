@@ -1,7 +1,20 @@
 """OCR管理混入类 - 重构版"""
 
 import os
+import traceback
+import tempfile
+import uuid
+import subprocess
+from base64 import b64encode
+
+from PyQt5.QtWidgets import QMessageBox, QApplication, QFileDialog, QProgressDialog
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+
 from app.utils.logger import get_logger
+from app.ui.ocr_settings_dialog import OCRSettingsDialog
+from app.core.ocr.ocr_plugin_interface import OCRResult, OCRErrorCode
+from app.core.ocr.ocr_searchable_pdf import create_searchable_pdf
+
 
 logger = get_logger('main')
 
@@ -23,36 +36,29 @@ class OCRManagerMixin:
 
             # 更新所有已渲染页面的调试模式
             if hasattr(self, 'virtual_scroll_area') and self.virtual_scroll_area:
-                for page_num, page_label in self.virtual_scroll_area.rendered_pages.items():
-                    if hasattr(page_label, 'set_debug_mode'):
-                        page_label.set_debug_mode(self._ocr_debug_mode)
+                self.virtual_scroll_area.set_all_pages_debug_mode(self._ocr_debug_mode)
+            else:
+                logger.warning(f"[toggle_ocr_debug_mode] virtual_scroll_area不存在或为空")
 
             # 显示提示信息
             mode_text = "启用" if self._ocr_debug_mode else "禁用"
             self.show_message(f"OCR文本层调试模式已{mode_text}")
-            logger.info(f"OCR文本层调试模式已切换: {self._ocr_debug_mode}")
-
         except Exception as e:
             logger.error(f"切换OCR调试模式时出错: {e}")
     
     def show_ocr_settings(self):
         """显示OCR设置对话框"""
         try:
-            from app.ui.ocr_settings_dialog import OCRSettingsDialog
             dialog = OCRSettingsDialog(self)
             dialog.exec_()
         except Exception as e:
             logger.error(f"显示OCR设置对话框时出错: {e}")
-            from PyQt5.QtWidgets import QMessageBox
+            
             QMessageBox.critical(self, "错误", f"无法打开OCR设置: {str(e)}")
     
     def perform_ocr_on_current_page(self):
         """对当前页面执行OCR识别"""
         try:
-            from PyQt5.QtWidgets import QMessageBox
-            from PyQt5.QtWidgets import QApplication
-            from app.core.ocr.ocr_plugin_interface import OCRResult
-            
             # 检查是否有打开的PDF文档
             if not self.pdf_processor.pdf_document:
                 QMessageBox.warning(self, "警告", "请先打开PDF文件")
@@ -103,7 +109,6 @@ class OCRManagerMixin:
                 
                 # 如果方法1失败，尝试方法2: 转换为Base64字符串
                 if not ocr_result.is_success():
-                    from base64 import b64encode
                     image_base64 = b64encode(page_image_data).decode('utf-8')
                     # 移除可能存在的前缀
                     if image_base64.startswith('data:image'):
@@ -113,8 +118,6 @@ class OCRManagerMixin:
                 
                 # 如果方法2也失败，尝试方法3: 保存为临时文件并使用文件路径
                 if not ocr_result.is_success():
-                    import tempfile
-                    import uuid
                     # 使用完整路径避免短文件名问题
                     temp_dir = os.path.realpath(tempfile.gettempdir())
                     temp_filename = f"ocr_temp_{uuid.uuid4().hex}.png"
@@ -164,18 +167,12 @@ class OCRManagerMixin:
                 
         except Exception as e:
             logger.error(f"执行OCR时出错: {e}")
-            import traceback
             logger.error(traceback.format_exc())
             QMessageBox.critical(self, "错误", f"执行OCR时发生异常: {str(e)}")
     
     def perform_ocr_on_all_pages(self):
         """对所有页面执行OCR识别"""
         try:
-            from PyQt5.QtWidgets import QMessageBox, QProgressDialog
-            from PyQt5.QtWidgets import QApplication
-            from PyQt5.QtCore import Qt, QThread, pyqtSignal
-            from app.core.ocr.ocr_plugin_interface import OCRResult, OCRErrorCode
-            
             # 检查是否有打开的PDF文档
             if not self.pdf_processor.fitz_document:
                 QMessageBox.warning(self, "警告", "请先打开PDF文件")
@@ -227,8 +224,6 @@ class OCRManagerMixin:
                 def run(self):
                     try:
                         total_pages = self.pdf_processor.get_total_pages()
-                        logger.info(f"开始对所有 {total_pages} 页进行OCR识别...")
-                        
                         # 初始化插件（如果尚未初始化）
                         if not self.ocr_plugin.is_initialized:
                             plugin_config = self.ocr_config_manager.get_plugin_config(self.ocr_plugin.plugin_name)
@@ -261,7 +256,6 @@ class OCRManagerMixin:
                                 
                                 # 如果方法1失败，尝试方法2: 转换为Base64字符串
                                 if not ocr_result.is_success():
-                                    from base64 import b64encode
                                     image_base64 = b64encode(page_image_data).decode('utf-8')
                                     if image_base64.startswith('data:image'):
                                         image_base64 = image_base64.split(',')[1] if ',' in image_base64 else image_base64
@@ -269,8 +263,6 @@ class OCRManagerMixin:
                                 
                                 # 如果方法2也失败，尝试方法3: 保存为临时文件并使用文件路径
                                 if not ocr_result.is_success():
-                                    import tempfile
-                                    import uuid
                                     temp_dir = os.path.realpath(tempfile.gettempdir())
                                     temp_filename = f"ocr_temp_{uuid.uuid4().hex}.png"
                                     tmp_file_path = os.path.join(temp_dir, temp_filename)
@@ -318,7 +310,6 @@ class OCRManagerMixin:
                         
                     except Exception as e:
                         logger.error(f"批量OCR识别失败: {e}")
-                        import traceback
                         logger.error(traceback.format_exc())
                         self.finished.emit(False, f"批量OCR识别失败: {str(e)}")
                 
@@ -362,7 +353,6 @@ class OCRManagerMixin:
             
         except Exception as e:
             logger.error(f"启动批量OCR时出错: {e}")
-            import traceback
             logger.error(traceback.format_exc())
             QMessageBox.critical(self, "错误", f"启动批量OCR时发生异常: {str(e)}")
     
@@ -402,9 +392,6 @@ class OCRManagerMixin:
     
     def create_searchable_pdf(self):
         """创建可搜索PDF"""
-        from PyQt5.QtWidgets import QFileDialog, QMessageBox, QProgressDialog
-        from PyQt5.QtCore import Qt, QThread, pyqtSignal
-        
         # 检查是否有打开的PDF文档
         if not self.pdf_processor.pdf_document:
             QMessageBox.warning(self, "警告", "请先打开PDF文件")
@@ -452,7 +439,6 @@ class OCRManagerMixin:
             
             def run(self):
                 try:
-                    from app.core.ocr.ocr_searchable_pdf import create_searchable_pdf
                     self.progress_updated.emit(10, "正在初始化OCR引擎...")
                     
                     success = create_searchable_pdf(
@@ -524,7 +510,6 @@ class OCRManagerMixin:
                 # 打开文件所在目录
                 try:
                     output_dir = os.path.dirname(output_file)
-                    import subprocess
                     subprocess.Popen(['explorer', output_dir])
                 except Exception as e:
                     logger.error(f"打开目录失败: {e}")
@@ -564,10 +549,6 @@ class OCRManagerMixin:
                 current_scale = 1.0  # OCR识别时使用的zoom_factor已经在图像中体现，bbox坐标对应缩放后的图像
                 self.virtual_scroll_area.update_page_ocr_layer(page_num, ocr_result, page_scale=current_scale)
             
-            logger.info(f"已在第{page_num+1}页完成OCR识别，识别时的zoom_factor={self.pdf_processor.zoom_factor}")
-            
-            
         except Exception as e:
             logger.error(f"添加OCR文本层时出错: {e}")
-            import traceback
             logger.error(traceback.format_exc())
