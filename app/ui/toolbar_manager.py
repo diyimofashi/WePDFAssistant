@@ -1,6 +1,6 @@
 """工具栏管理器模块"""
 
-from PyQt5.QtWidgets import QToolBar, QAction, QSpinBox, QLabel, QMenu
+from PyQt5.QtWidgets import QToolBar, QAction, QSpinBox, QLabel, QMenu, QComboBox
 from PyQt5.QtCore import QObject, QSize, Qt
 from PyQt5.QtGui import QIcon
 from app.utils.logger import get_logger
@@ -110,6 +110,21 @@ class ToolbarManager(QObject):
         fit_width_btn.setToolTip("适应页面宽度")
         fit_width_btn.triggered.connect(lambda: self.parent.fit_to_width())
         toolbar.addAction(fit_width_btn)
+        
+        # 添加缩放比例下拉列表
+        self.parent.zoom_combo = QComboBox()
+        self.parent.zoom_combo.setEditable(True)
+        self.parent.zoom_combo.setFixedWidth(100)
+        self.parent.zoom_combo.setToolTip("选择缩放比例")
+        # 添加新的常用缩放比例
+        zoom_levels = ["8%", "12.5%", "25%", "50%", "75%", "100%", "125%", "150%", "200%", "300%", "400%", "600%", "800%", "1200%", "1600%", "2400%", "3200%", "4800%", "6400%"]
+        self.parent.zoom_combo.addItems(zoom_levels)
+        # 设置默认值为100%
+        self.parent.zoom_combo.setCurrentText("100%")
+        # 连接缩放变化事件
+        self.parent.zoom_combo.currentTextChanged.connect(self.parent.on_zoom_combo_changed)
+        toolbar.addWidget(QLabel("缩放:"))
+        toolbar.addWidget(self.parent.zoom_combo)
     
     def _add_navigation_actions(self, toolbar):
         """添加导航按钮"""

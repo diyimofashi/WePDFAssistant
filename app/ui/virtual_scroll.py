@@ -71,6 +71,15 @@ class VirtualScrollArea(QScrollArea):
         # 连接滚动事件
         self.verticalScrollBar().valueChanged.connect(self._on_scroll_changed)
         
+    def get_container_size(self):
+        """获取容器的实际可用尺寸"""
+        # 获取视口的尺寸作为容器尺寸
+        viewport = self.viewport()
+        width = viewport.width() - 40  # 减去一些边距和滚动条空间
+        height = viewport.height() - 20  # 减去一些边距
+        
+        return width, height
+
     def update_content(self):
         """更新内容显示"""
         if self.pages_data:

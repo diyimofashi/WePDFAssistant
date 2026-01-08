@@ -6,6 +6,7 @@ import sys
 
 # 添加项目根目录到Python路径，解决模块导入问题
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 sys.path.insert(0, project_root)
 
 # 导入日志模块
@@ -139,3 +140,100 @@ class PDFNavigation:
             }
         except:
             return None
+
+    def fit_to_width(self, container_width=None):
+        """适应宽度 - 根据容器宽度自动计算合适的缩放比例"""
+        if not self.fitz_document or self.get_total_pages() == 0:
+            return False, "请先打开PDF文件"
+            
+        # 获取当前页面的尺寸
+        page_dims = self.get_page_dimensions(self.current_page)
+        if not page_dims:
+            return False, "无法获取页面尺寸信息"
+            
+        # 如果没有提供容器宽度，则使用默认缩放
+        if container_width is None:
+            # 使用默认适应宽度的缩放
+            page_width = page_dims['width']
+            # 假设容器宽度为800像素（实际应用中应该从UI组件获取）
+            container_width = 800
+            
+        # 计算适应宽度的缩放比例
+        # container_width = page_width * zoom_factor * base_zoom
+        # 所以 zoom_factor = container_width / (page_width * base_zoom)
+        target_zoom_factor = container_width / (page_width * self.base_zoom)
+        
+        # 确保缩放比例在有效范围内
+        target_zoom_factor = max(0.25, min(4.0, target_zoom_factor))
+        
+        # 应用缩放
+        actual_zoom = target_zoom_factor * self.base_zoom
+        self.zoom_factor = actual_zoom
+        
+        return True, f"已适应宽度，缩放比例为{int(target_zoom_factor * 100)}%"
+
+    def fit_to_height(self, container_height=None):
+        """适应高度 - 根据容器高度自动计算合适的缩放比例"""
+        if not self.fitz_document or self.get_total_pages() == 0:
+            return False, "请先打开PDF文件"
+            
+        # 获取当前页面的尺寸
+        page_dims = self.get_page_dimensions(self.current_page)
+        if not page_dims:
+            return False, "无法获取页面尺寸信息"
+            
+        # 如果没有提供容器高度，则使用默认缩放
+        if container_height is None:
+            # 使用默认适应高度的缩放
+            page_height = page_dims['height']
+            # 假设容器高度为600像素（实际应用中应该从UI组件获取）
+            container_height = 600
+            
+        # 计算适应高度的缩放比例
+        # container_height = page_height * zoom_factor * base_zoom
+        # 所以 zoom_factor = container_height / (page_height * base_zoom)
+        target_zoom_factor = container_height / (page_height * self.base_zoom)
+        
+        # 确保缩放比例在有效范围内
+        target_zoom_factor = max(0.25, min(4.0, target_zoom_factor))
+        
+        # 应用缩放
+        actual_zoom = target_zoom_factor * self.base_zoom
+        self.zoom_factor = actual_zoom
+        
+        return True, f"已适应高度，缩放比例为{int(target_zoom_factor * 100)}%"
+
+    def fit_to_container(self, container_width=None, container_height=None):
+        """适应容器 - 同时考虑宽度和高度，选择较小的缩放比例以确保完整显示"""
+        if not self.fitz_document or self.get_total_pages() == 0:
+            return False, "请先打开PDF文件"
+            
+        # 获取当前页面的尺寸
+        page_dims = self.get_page_dimensions(self.current_page)
+        if not page_dims:
+            return False, "无法获取页面尺寸信息"
+            
+        # 如果没有提供容器尺寸，则使用默认值
+        if container_width is None:
+            container_width = 800
+        if container_height is None:
+            container_height = 600
+            
+        page_width = page_dims['width']
+        page_height = page_dims['height']
+        
+        # 计算适应宽度和高度的缩放比例
+        zoom_for_width = container_width / (page_width * self.base_zoom)
+        zoom_for_height = container_height / (page_height * self.base_zoom)
+        
+        # 选择较小的缩放比例以确保页面完全适应容器
+        target_zoom_factor = min(zoom_for_width, zoom_for_height)
+        
+        # 确保缩放比例在有效范围内
+        target_zoom_factor = max(0.25, min(4.0, target_zoom_factor))
+        
+        # 应用缩放
+        actual_zoom = target_zoom_factor * self.base_zoom
+        self.zoom_factor = actual_zoom
+        
+        return True, f"已适应容器，缩放比例为{int(target_zoom_factor * 100)}%"

@@ -29,19 +29,26 @@ class ViewController:
             self.parent.update_preview()
         self.parent.show_message(message)
     
-    def fit_to_width(self):
+    def fit_to_width(self, container_width=None):
         """适应宽度"""
-        success, message = self.parent.pdf_processor.set_zoom(1.0)
+        success, message = self.parent.pdf_processor.fit_to_width(container_width)
         if success:
             self.parent.update_preview()
-        self.parent.show_message("适合宽度显示")
+        self.parent.show_message("已适应宽度显示")
     
-    def fit_to_height(self):
+    def fit_to_height(self, container_height=None):
         """适应页面"""
-        success, message = self.parent.pdf_processor.set_zoom(1.0)
+        success, message = self.parent.pdf_processor.fit_to_height(container_height)
         if success:
             self.parent.update_preview()
-        self.parent.show_message("适合页面显示")
+        self.parent.show_message("已适应高度显示")
+    
+    def fit_to_container(self, container_width=None, container_height=None):
+        """适应容器"""
+        success, message = self.parent.pdf_processor.fit_to_container(container_width, container_height)
+        if success:
+            self.parent.update_preview()
+        self.parent.show_message("已适应容器显示")
     
     def set_actual_size(self):
         """设置原始尺寸"""
