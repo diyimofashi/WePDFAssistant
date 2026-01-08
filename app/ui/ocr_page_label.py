@@ -15,7 +15,7 @@ logger = get_logger('ocr_page_label')
 
 from PyQt5.QtWidgets import QLabel, QWidget, QTextEdit, QApplication, QVBoxLayout, QHBoxLayout
 from PyQt5.QtGui import QPixmap, QFont, QFontMetrics
-from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal
+from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QTimer
 
 
 class OCRPageLabel(QWidget):
@@ -143,67 +143,90 @@ class OCRPageLabel(QWidget):
         return selected_text.strip()
 
     def _update_text_layer(self):
-        """更新文本层内容 - 根据bbox创建独立的文本块"""
+        """更新文本层内容 - 根据bbox创建独立的文本块（延迟执行以优化性能）"""
+        # 使用QTimer延迟执行，避免阻塞UI
+        QTimer.singleShot(0, self._do_update_text_layer)
+
+    def _do_update_text_layer(self):
+        """实际执行文本层更新（分批处理以保持UI响应）"""
         try:
             # 清除旧的文本块
             self._clear_text_blocks()
 
             logger.info(f"开始更新文本层，OCR数据条数: {len(self.ocr_data)}")
 
-            # 获取图像标签的位置（在OCRPageLabel中，所以是(0,0)）
-            # 图像和文本块都是OCRPageLabel的子控件
+            # 分批处理，每批处理50个文本块
+            batch_size = 50
+            self._current_batch = 0
+            self._batches = []
 
-            # 为每个OCR文本块创建独立的文本区域
+            # 准备批次数据
+            current_batch_data = []
             for idx, item in enumerate(self.ocr_data):
                 if not isinstance(item, dict):
                     continue
 
                 text = item.get("text", "")
-                # 兼容两种bbox格式: "bbox" 和 "box"
                 bbox = item.get("bbox") or item.get("box", [])
-                # 获取end字段，用于处理换行
                 end = item.get("end", "")
 
-                if not text:
-                    logger.warning(f"文本块 {idx}: 文本为空，跳过")
+                if not text or not bbox:
                     continue
-
-                if not bbox:
-                    logger.warning(f"文本块 {idx} '{text[:30]}': bbox为空，跳过")
-                    continue
-
-                logger.debug(f"处理文本块 {idx}: text='{text[:30]}...', bbox={bbox}, end='{repr(end)}'")
 
                 # 处理bbox格式：[[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
-                # 例如：[[583, 146], [903, 129], [906, 172], [585, 189]]
                 if isinstance(bbox, list) and len(bbox) == 4:
-                    # 扁平化bbox
                     flattened_bbox = []
                     for point in bbox:
                         if isinstance(point, list) and len(point) >= 2:
                             flattened_bbox.extend(point)
 
-                    # 计算文本框位置
                     if len(flattened_bbox) >= 8:
                         rect = self._bbox_to_rect(flattened_bbox)
-                        # 缩放位置
                         scaled_rect = self._scale_rect(rect)
+                        current_batch_data.append((text, scaled_rect, end))
 
-                        logger.debug(f"文本块 {idx}: 原始rect={rect}, 缩放后rect={scaled_rect}")
+                        # 达到批次大小，添加到批次列表
+                        if len(current_batch_data) >= batch_size:
+                            self._batches.append(current_batch_data)
+                            current_batch_data = []
 
-                        # 创建文本块标签（相对于OCRPageLabel的绝对定位）
-                        self._create_text_block(text, scaled_rect, end)
-                    else:
-                        logger.warning(f"文本块 {idx}: bbox扁平化后长度不足8，跳过")
-                else:
-                    logger.warning(f"文本块 {idx}: bbox格式不正确，需要4个点的坐标数组")
+            # 添加剩余的数据
+            if current_batch_data:
+                self._batches.append(current_batch_data)
 
-            logger.info(f"文本层更新完成，创建了 {len(self.text_blocks)} 个文本块")
+            logger.info(f"准备完成，共 {len(self._batches)} 个批次，预计创建 {sum(len(batch) for batch in self._batches)} 个文本块")
+
+            # 开始处理第一批
+            self._process_next_batch()
 
         except Exception as e:
             logger.error(f"更新文本层失败: {e}")
             import traceback
             logger.error(traceback.format_exc())
+
+    def _process_next_batch(self):
+        """处理下一批文本块"""
+        if self._current_batch >= len(self._batches):
+            logger.info(f"文本层更新完成，创建了 {len(self.text_blocks)} 个文本块")
+            self._batches.clear()
+            self._current_batch = 0
+            return
+
+        batch_data = self._batches[self._current_batch]
+        new_text_blocks = []
+
+        for text, rect, end in batch_data:
+            text_block = self._create_text_block(text, rect, end)
+            if text_block:
+                new_text_blocks.append(text_block)
+
+        # 批量添加到列表
+        self.text_blocks.extend(new_text_blocks)
+        logger.info(f"已处理 {self._current_batch + 1}/{len(self._batches)} 批次，累计 {len(self.text_blocks)} 个文本块")
+
+        # 继续处理下一批
+        self._current_batch += 1
+        QTimer.singleShot(0, self._process_next_batch)
 
     def _clear_text_blocks(self):
         """清除所有文本块"""
@@ -219,78 +242,72 @@ class OCRPageLabel(QWidget):
             text: 文本内容
             rect: QRect，文本块的位置和大小（已缩放）
             end: 文本结束标记，"\n" 表示换行
+
+        Returns:
+            QTextEdit: 创建的文本块，如果失败返回None
         """
-        # 根据end字段处理文本换行
-        if end == "\n":
-            # OCR返回end=\n表示需要换行，但文本选择时需要保持完整
-            display_text = text
-        else:
-            display_text = text
+        try:
+            # 计算字体大小
+            font_size = max(int(rect.height() * 0.5), 8)
 
-        # 创建文本块
-        text_block = QTextEdit(self)
-        text_block.setReadOnly(True)
-        text_block.setPlainText(display_text)
-        text_block.setFrameStyle(QTextEdit.NoFrame)
-        text_block.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        text_block.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        # 禁用文本换行，确保文本在一行内显示
-        text_block.setLineWrapMode(QTextEdit.NoWrap)
-        # 设置文本垂直居中对齐
-        text_block.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-
-        # 计算字体大小
-        font_size = max(int(rect.height() * 0.5), 8)
-        font = QFont("Arial", font_size)
-        text_block.setFont(font)
-
-        logger.debug(f"[OCRPageLabel._create_text_block] 字体大小: {font_size} (rect.height={rect.height()})")
-
-        #  计算文本所需宽高
-        # 2. 逐步减小字体，直到文本宽度 ≤ rect.width()
-        fm = QFontMetrics(font)
-        while fm.horizontalAdvance(text) > rect.width() and font_size > 6:
-            font_size -= 1
-            font.setPointSize(font_size)
+            # 计算合适的字体大小 - 使用二分查找优化
+            font = QFont("Arial", font_size)
             fm = QFontMetrics(font)
+            text_width = fm.horizontalAdvance(text)
 
-        # 3. 根据最终字体高度，同步调整 rect 的高度（宽不变）
-        text_height = fm.height()
-        padding = 0
-        rect.setHeight(text_height + padding * 2)
+            # 如果文本宽度超过矩形宽度，调整字体大小
+            if text_width > rect.width() and font_size > 6:
+                # 计算需要的缩放比例
+                scale_ratio = rect.width() / text_width
+                font_size = max(int(font_size * scale_ratio * 0.95), 6)  # 0.95是安全边距
+                font.setPointSize(font_size)
 
-        text_block.setFont(font)
-        text_block.setGeometry(rect)
+            # 计算最终文本高度
+            fm = QFontMetrics(font)
+            text_height = fm.height()
 
-        # 设置样式
-        if self.debug_mode:
-            text_block.setStyleSheet("""
-                QTextEdit {
-                    background-color: rgba(255, 255, 0, 80);
-                    border: none;
-                    color: rgba(0, 0, 0, 255);
-                }
-            """)
-        else:
-            text_block.setStyleSheet("""
-                QTextEdit {
-                    background-color: transparent;
-                    border: none;
-                    color: transparent;
-                }
-            """)
+            # 创建文本块
+            text_block = QTextEdit(self)
+            text_block.setReadOnly(True)
+            text_block.setPlainText(text)
+            text_block.setFrameStyle(QTextEdit.NoFrame)
+            text_block.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            text_block.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            text_block.setLineWrapMode(QTextEdit.NoWrap)
+            text_block.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+            text_block.setFont(font)
 
-        # 设置位置和大小（相对于OCRPageLabel）
-        text_block.setGeometry(rect)
+            # 调整矩形高度
+            adjusted_rect = QRect(rect.x(), rect.y(), rect.width(), text_height)
+            text_block.setGeometry(adjusted_rect)
 
-        # 提升到最上层，确保在图像之上
-        text_block.raise_()
-        text_block.show()  # 确保文本块可见
+            # 设置样式
+            if self.debug_mode:
+                text_block.setStyleSheet("""
+                    QTextEdit {
+                        background-color: rgba(255, 255, 0, 80);
+                        border: none;
+                        color: rgba(0, 0, 0, 255);
+                    }
+                """)
+            else:
+                text_block.setStyleSheet("""
+                    QTextEdit {
+                        background-color: transparent;
+                        border: none;
+                        color: transparent;
+                    }
+                """)
 
-        # 添加到列表
-        self.text_blocks.append(text_block)
+            # 显示文本块
+            text_block.raise_()
+            text_block.show()
 
-        logger.debug(f"[OCRPageLabel._create_text_block] 创建文本块完成: text='{text[:20]}...', pos={text_block.pos()}, size={text_block.size()}, visible={text_block.isVisible()}")
+            return text_block
+
+        except Exception as e:
+            logger.error(f"创建文本块失败: {e}")
+            return None
 
     def _scale_rect(self, rect):
         """
