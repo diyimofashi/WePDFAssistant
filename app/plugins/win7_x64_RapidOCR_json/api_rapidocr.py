@@ -295,20 +295,20 @@ class Api(OCRPluginInterface):  # 公开接口
     def _convert_result(self, raw_result: Dict[str, Any]) -> OCRResult:
         """
         转换RapidOCR的原始结果到标准格式
-        
+
         Args:
             raw_result: RapidOCR的原始结果
-            
+
         Returns:
             OCRResult: 转换后的标准结果
         """
         try:
             # 检查结果码
             code = raw_result.get("code", 0)
-            
+
             if code == 100 or code == 101:  # 成功或部分成功
                 data = raw_result.get("data", [])
-                
+
                 # 转换数据格式
                 converted_data = []
                 for item in data:
@@ -316,11 +316,12 @@ class Api(OCRPluginInterface):  # 公开接口
                         converted_item = {
                             "text": item.get("text", ""),
                             "confidence": item.get("score", 0),
-                            "bbox": item.get("box", []),
-                            "language": "unknown"  # RapidOCR不直接提供语言信息
+                            "bbox": item.get("box", []),  # RapidOCR返回"box"，映射到标准格式"bbox"
+                            "language": "unknown",  # RapidOCR不直接提供语言信息
+                            "end": item.get("end", "")
                         }
                         converted_data.append(converted_item)
-                
+
                 return OCRResult(
                     code=OCRErrorCode.SUCCESS,
                     data=converted_data,
@@ -341,7 +342,7 @@ class Api(OCRPluginInterface):  # 公开接口
                     message=f"OCR识别失败: {error_msg}",
                     plugin_name=self.plugin_name
                 )
-                
+
         except Exception as e:
             return OCRResult(
                 code=OCRErrorCode.RECOGNITION_FAILED,

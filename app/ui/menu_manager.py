@@ -222,21 +222,29 @@ class MenuManager(QObject):
         # OCR工具子菜单
         tools_menu.addSeparator()
         ocr_menu = tools_menu.addMenu("🔍 OCR工具")
-        
+
         # OCR设置
         ocr_settings_action = QAction("⚙️ OCR设置", self.parent)
         ocr_settings_action.triggered.connect(self.parent.show_ocr_settings)
         ocr_menu.addAction(ocr_settings_action)
-        
+
         # 执行OCR
         perform_ocr_action = QAction("🔤 执行OCR", self.parent)
         perform_ocr_action.triggered.connect(self.parent.perform_ocr_on_current_page)
         ocr_menu.addAction(perform_ocr_action)
-        
+
         # 创建可搜索PDF
         searchable_pdf_action = QAction("📄 创建可搜索PDF", self.parent)
         searchable_pdf_action.triggered.connect(self.parent.create_searchable_pdf)
         ocr_menu.addAction(searchable_pdf_action)
+
+        # OCR文本层调试模式
+        ocr_menu.addSeparator()
+        self.parent.ocr_debug_mode_action = QAction("🔍 OCR文本层调试模式", self.parent)
+        self.parent.ocr_debug_mode_action.setCheckable(True)
+        self.parent.ocr_debug_mode_action.setChecked(False)
+        self.parent.ocr_debug_mode_action.triggered.connect(self.parent.toggle_ocr_debug_mode)
+        ocr_menu.addAction(self.parent.ocr_debug_mode_action)
         
         # 上传工具子菜单
         tools_menu.addSeparator()

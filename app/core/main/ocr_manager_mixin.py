@@ -7,6 +7,33 @@ logger = get_logger('main')
 
 class OCRManagerMixin:
     """OCR管理混入类 - 处理OCR相关功能"""
+
+    def toggle_ocr_debug_mode(self):
+        """切换OCR文本层调试模式"""
+        try:
+            # 切换调试模式状态
+            if not hasattr(self, '_ocr_debug_mode'):
+                self._ocr_debug_mode = False
+
+            self._ocr_debug_mode = not self._ocr_debug_mode
+
+            # 更新菜单项状态
+            if hasattr(self, 'ocr_debug_mode_action'):
+                self.ocr_debug_mode_action.setChecked(self._ocr_debug_mode)
+
+            # 更新所有已渲染页面的调试模式
+            if hasattr(self, 'virtual_scroll_area') and self.virtual_scroll_area:
+                for page_num, page_label in self.virtual_scroll_area.rendered_pages.items():
+                    if hasattr(page_label, 'set_debug_mode'):
+                        page_label.set_debug_mode(self._ocr_debug_mode)
+
+            # 显示提示信息
+            mode_text = "启用" if self._ocr_debug_mode else "禁用"
+            self.show_message(f"OCR文本层调试模式已{mode_text}")
+            logger.info(f"OCR文本层调试模式已切换: {self._ocr_debug_mode}")
+
+        except Exception as e:
+            logger.error(f"切换OCR调试模式时出错: {e}")
     
     def show_ocr_settings(self):
         """显示OCR设置对话框"""

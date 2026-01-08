@@ -425,6 +425,9 @@ class MainWindowBase(QMainWindow):
     def _on_zoom_changed(self):
         """缩放变化时的处理"""
         self.update_zoom_label()
+        # 更新所有页面的OCR文本层缩放
+        if hasattr(self, 'virtual_scroll_area') and self.virtual_scroll_area:
+            self.virtual_scroll_area.update_all_pages_scale()
     
     def _on_loading_progress(self, progress):
         """处理加载进度"""

@@ -647,9 +647,8 @@ class PDFRenderer:
             # 获取页面
             page = self.fitz_document[page_num]
             
-            # 设置渲染参数（300 DPI以获得高质量图像）
-            zoom = 2.0  # 2倍缩放以获得更好的OCR效果
-            mat = fitz.Matrix(zoom, zoom)
+            # 使用和显示相同的缩放比例，确保OCR bbox坐标正确
+            mat = fitz.Matrix(self.zoom_factor, self.zoom_factor)
             
             # 渲染页面为图像
             pix = page.get_pixmap(matrix=mat, alpha=False)

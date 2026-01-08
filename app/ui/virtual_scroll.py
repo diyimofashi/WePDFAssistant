@@ -13,7 +13,7 @@ sys.path.insert(0, project_root)
 from app.utils.logger import get_logger
 logger = get_logger('virtual_scroll')
 
-from PyQt5.QtWidgets import QScrollArea, QWidget, QVBoxLayout, QLabel
+from PyQt5.QtWidgets import QScrollArea, QWidget, QVBoxLayout, QLabel, QHBoxLayout
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QPoint
 from PyQt5.QtGui import QContextMenuEvent
 from .ocr_page_label import OCRPageLabel
@@ -152,29 +152,33 @@ class VirtualScrollArea(QScrollArea):
             child = self.virtual_widget_layout.itemAt(i).widget()
             if child:
                 child.setParent(None)
-        
+
         # 清除占位符页面
         self.placeholder_pages.clear()
         # 也要清除已渲染的页面记录
         self.rendered_pages.clear()
         self.visible_pages.clear()
-        
+
         # 为每个页面创建占位符
         for i, page_data in enumerate(self.pages_data):
-            # 创建页面容器
+            # 创建页面容器 - 不设置固定宽度，让内容自适应
             page_container = QWidget()
             page_container.setProperty('page_index', i)
-            
-            # 设置容器大小和位置，确保使用整数
+
+            # 设置容器位置和高度，宽度不限制（自适应）
             height = self.page_heights[i] if i < len(self.page_heights) else 1100
-            # 只增加少量额外空间以确保内容不会被截断
             adjusted_height = height + 40  # 增加额外空间到40像素
             y_position = self.page_positions[i]
-            page_container.setGeometry(0, int(y_position), self.width(), int(adjusted_height))
-            
-            # 添加到布局，不添加额外的间距
-            self.virtual_widget_layout.addWidget(page_container)
-            
+            # 只设置Y位置和高度，宽度不设置，使用-1表示自适应
+            page_container.setGeometry(0, int(y_position), -1, int(adjusted_height))
+            # 设置最小高度
+            page_container.setMinimumHeight(int(adjusted_height))
+
+            # 使用水平布局实现居中
+            container_layout = QHBoxLayout(page_container)
+            container_layout.setContentsMargins(0, 0, 0, 0)
+            container_layout.setSpacing(0)
+
             # 创建占位符标签
             placeholder = QLabel(f"第 {i + 1} 页")
             placeholder.setAlignment(Qt.AlignCenter)
@@ -187,52 +191,94 @@ class VirtualScrollArea(QScrollArea):
                     margin: 2px;
                 }
             """)
-            
-            # 设置占位符大小，确保使用整数
-            placeholder.setGeometry(0, 0, self.width(), int(adjusted_height))
-            placeholder.setParent(page_container)
-            
+
+            # 添加占位符到布局并居中
+            container_layout.addStretch()
+            container_layout.addWidget(placeholder)
+            container_layout.addStretch()
+
             self.placeholder_pages[i] = placeholder
-            
+
+            # 添加到布局
+            self.virtual_widget_layout.addWidget(page_container)
         
-    def update_page_ocr_layer(self, page_num, ocr_result):
+    def update_page_ocr_layer(self, page_num, ocr_result, page_scale=1.0):
         """更新指定页面的OCR文本层"""
-        
+        logger.info(f"[VirtualScroll.update_page_ocr_layer] 更新第{page_num + 1}页OCR文本层, page_scale={page_scale}")
+
         # 如果页面已经渲染，直接更新其OCR文本层
         if page_num in self.rendered_pages:
             page_label = self.rendered_pages[page_num]
             if isinstance(page_label, OCRPageLabel):
-                self._set_page_ocr_layer(page_num, page_label, ocr_result)
+                logger.info(f"[VirtualScroll.update_page_ocr_layer] 页面{page_num + 1}已渲染，直接更新OCR层")
+                self._set_page_ocr_layer(page_num, page_label, ocr_result, page_scale)
+            else:
+                logger.warning(f"[VirtualScroll.update_page_ocr_layer] 页面{page_num + 1}不是OCRPageLabel类型")
         else:
             # 页面尚未渲染，存储OCR数据供后续渲染时使用
+            logger.info(f"[VirtualScroll.update_page_ocr_layer] 页面{page_num + 1}尚未渲染，存储OCR数据")
             if not hasattr(self, '_pending_ocr_data'):
                 self._pending_ocr_data = {}
-            self._pending_ocr_data[page_num] = ocr_result
+            # 存储OCR结果和缩放比例
+            self._pending_ocr_data[page_num] = {
+                'ocr_result': ocr_result,
+                'page_scale': page_scale
+            }
+            logger.debug(f"[VirtualScroll.update_page_ocr_layer] 待处理的OCR数据: {len(self._pending_ocr_data)} 页")
     
-    def _set_page_ocr_layer(self, page_num, page_label, ocr_result=None):
+    def _set_page_ocr_layer(self, page_num, page_label, ocr_result=None, page_scale=1.0):
         """设置页面的OCR文本层"""
         try:
+            logger.info(f"[VirtualScroll._set_page_ocr_layer] 设置第{page_num + 1}页OCR文本层")
+
             # 如果没有提供OCR结果，则尝试从_pending_ocr_data中获取
             if ocr_result is None:
+                logger.debug(f"[VirtualScroll._set_page_ocr_layer] OCR结果为空，尝试从待处理数据获取")
                 if hasattr(self, '_pending_ocr_data') and page_num in self._pending_ocr_data:
-                    ocr_result = self._pending_ocr_data[page_num]
+                    pending_data = self._pending_ocr_data[page_num]
+                    # 处理字典格式
+                    if isinstance(pending_data, dict):
+                        ocr_result = pending_data.get('ocr_result')
+                        page_scale = pending_data.get('page_scale', page_scale)
+                        logger.debug(f"[VirtualScroll._set_page_ocr_layer] 从待处理数据获取: page_scale={page_scale}")
+                    else:
+                        ocr_result = pending_data
                 else:
                     # 尝试从父窗口的PDF处理器获取OCR结果
                     parent = self.parent()
                     while parent and not hasattr(parent, 'pdf_processor'):
                         parent = parent.parent()
-                    
+
                     if parent and hasattr(parent, 'pdf_processor'):
                         pdf_processor = parent.pdf_processor
                         if hasattr(pdf_processor, 'ocr_results') and page_num in pdf_processor.ocr_results:
                             ocr_result = pdf_processor.ocr_results[page_num]
-            
-            # 如果有OCR结果，设置到页面标签
-            if ocr_result and hasattr(ocr_result, 'data'):
-                page_label.set_ocr_data(ocr_result.data)
-                
+                            logger.debug(f"[VirtualScroll._set_page_ocr_layer] 从PDF处理器获取OCR结果")
+
+            # 检查OCR结果
+            if ocr_result is None:
+                logger.warning(f"[VirtualScroll._set_page_ocr_layer] OCR结果为None，无法设置文本层")
+                return
+
+            # 检查OCR结果数据
+            if hasattr(ocr_result, 'data'):
+                ocr_data = ocr_result.data
+                logger.info(f"[VirtualScroll._set_page_ocr_layer] OCR数据条数: {len(ocr_data)}")
+                if len(ocr_data) > 0:
+                    logger.debug(f"[VirtualScroll._set_page_ocr_layer] 第一个文本块示例: {ocr_data[0].get('text', '')[:50]}...")
+                page_label.set_ocr_data(ocr_data, page_scale=page_scale)
+                logger.info(f"[VirtualScroll._set_page_ocr_layer] 成功设置OCR数据到页面标签")
+            elif isinstance(ocr_result, dict) and 'ocr_result' in ocr_result:
+                # 处理存储的字典格式
+                page_label.set_ocr_data(ocr_result['ocr_result'].data, page_scale=page_scale)
+                logger.info(f"[VirtualScroll._set_page_ocr_layer] 从字典格式设置OCR数据")
+            else:
+                logger.warning(f"[VirtualScroll._set_page_ocr_layer] OCR结果格式不正确: {type(ocr_result)}")
+
         except Exception as e:
             logger.error(f"设置第{page_num + 1}页OCR文本层失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
     
     def get_visible_range(self):
         """获取当前可见的页面范围"""
@@ -433,53 +479,64 @@ class VirtualScrollArea(QScrollArea):
         """页面渲染完成回调"""
         if page_num >= len(self.pages_data):
             return
-            
+
         if not pixmap:
             return
-            
+
         try:
             # 创建OCR页面标签
             page_label = OCRPageLabel()
             page_label.setPixmap(pixmap)
-            page_label.setAlignment(Qt.AlignCenter)
-            
+
             # 设置页面样式，减小margin
             page_label.setStyleSheet("""
-                QLabel {
+                OCRPageLabel {
                     background-color: #FFFFFF;
                     border: 1px solid #CCCCCC;
                     border-radius: 3px;
                     padding: 2px;
                     margin: 2px;
                 }
+                OCRPageLabel > QLabel {
+                    background-color: #FFFFFF;
+                }
             """)
-            
-            # 设置页面大小，确保使用整数
+
+            # 设置页面大小为固定大小，不设置最小大小以避免布局问题
             height = self.page_heights[page_num] if page_num < len(self.page_heights) else 1100
-            # 只增加少量额外高度以确保内容不会被截断
-            adjusted_height = int(height + 30)  # 增加额外空间到30像素
-            page_label.setMinimumSize(int(pixmap.width()), adjusted_height)
-            page_label.resize(int(pixmap.width()), adjusted_height)
-            
+            adjusted_height = int(height + 30)
+            # 使用固定大小，确保页面不会被拉伸
+            page_label.setFixedSize(int(pixmap.width()), adjusted_height)
+
             # 获取页面容器
             if page_num < self.virtual_widget_layout.count():
                 page_container = self.virtual_widget_layout.itemAt(page_num).widget()
                 if page_container:
-                    # 清除容器中已有的内容
-                    for i in reversed(range(page_container.layout().count() if page_container.layout() else 0)):
-                        child = page_container.layout().itemAt(i).widget() if page_container.layout() else None
-                        if child:
-                            child.setParent(None)
-                    
-                    # 添加到容器
-                    page_label.setParent(page_container)
-                    # 使用布局管理器而不是手动设置几何位置
-                    page_label.setGeometry(0, 0, page_container.width(), adjusted_height)
-                    page_label.show()
-                    
+                    # 获取容器的水平布局
+                    if page_container.layout():
+                        # 清除布局中的控件，但保留占位符
+                        layout = page_container.layout()
+                        while layout.count():
+                            item = layout.itemAt(0)
+                            widget = item.widget()
+                            if widget:
+                                if widget is not self.placeholder_pages.get(page_num):
+                                    widget.setParent(None)
+                                else:
+                                    layout.removeItem(item)
+                            else:
+                                layout.removeItem(item)
+
+                        # 添加OCR页面标签到布局中（占位符前面）
+                        layout.insertWidget(1, page_label)
+                    else:
+                        # 如果没有布局，直接添加
+                        page_label.setParent(page_container)
+                        page_label.show()
+
                     # 缓存渲染的页面
                     self.rendered_pages[page_num] = page_label
-                    
+
                     # 隐藏占位符
                     if page_num in self.placeholder_pages:
                         self.placeholder_pages[page_num].hide()
@@ -489,14 +546,14 @@ class VirtualScrollArea(QScrollArea):
                     logger.debug(f"页面容器不存在")
             else:
                 logger.debug(f"页面容器索引超出范围: {page_num}")
-                
+
             # 如果该页面有OCR数据，设置OCR文本层
             # 计算页面缩放比例，使OCR文本位置正确
             if hasattr(self, 'parent') and self.parent():
                 parent = self.parent()
                 while parent and not hasattr(parent, 'pdf_processor'):
                     parent = parent.parent()
-                
+
                 if parent and hasattr(parent, 'pdf_processor'):
                     pdf_processor = parent.pdf_processor
                     # 获取页面实际尺寸
@@ -507,15 +564,49 @@ class VirtualScrollArea(QScrollArea):
                         # 计算缩放比例
                         scale_x = pixmap.width() / actual_width if actual_width > 0 else 1.0
                         scale_y = pixmap.height() / actual_height if actual_height > 0 else 1.0
-                        # 使用平均缩放比例
-                        page_scale = (scale_x + scale_y) / 2.0
-                        # 设置页面标签的缩放比例
-                        page_label.page_scale = page_scale
-            
-            self._set_page_ocr_layer(page_num, page_label)
-                
+
+                        logger.info(f"[VirtualScroll.on_page_rendered] 页面{page_num+1}: 原始尺寸={actual_width:.1f}x{actual_height:.1f}, pixmap尺寸={pixmap.width()}x{pixmap.height()}, scale_x={scale_x:.3f}, scale_y={scale_y:.3f}")
+
+                        # OCR识别使用和显示相同的缩放比例，所以bbox坐标直接对应，不需要额外缩放
+                        # page_scale 应该设置为 1.0
+                        page_scale = 1.0
+                        # 设置OCR文本层
+                        self._set_page_ocr_layer(page_num, page_label, page_scale=page_scale)
+
         except Exception as e:
             logger.error(f"显示渲染页面 {page_num} 失败: {e}")
+
+    def update_all_pages_scale(self):
+        """更新所有已渲染页面的缩放比例"""
+        if not hasattr(self, 'parent') or not self.parent():
+            return
+
+        parent = self.parent()
+        while parent and not hasattr(parent, 'pdf_processor'):
+            parent = parent.parent()
+
+        if not parent or not hasattr(parent, 'pdf_processor'):
+            return
+
+        pdf_processor = parent.pdf_processor
+
+        # 更新所有已渲染页面的OCR文本层
+        for page_num, page_label in self.rendered_pages.items():
+            if isinstance(page_label, OCRPageLabel) and hasattr(page_label, 'text_layer'):
+                # 获取当前渲染的尺寸
+                pixmap = page_label.image_label.pixmap()
+                if pixmap:
+                    # 获取页面实际尺寸
+                    page_dimensions = pdf_processor.get_page_dimensions(page_num)
+                    if page_dimensions:
+                        actual_width = page_dimensions['width']
+                        actual_height = page_dimensions['height']
+                        # 计算新的缩放比例
+                        scale_x = pixmap.width() / actual_width if actual_width > 0 else 1.0
+                        scale_y = pixmap.height() / actual_height if actual_height > 0 else 1.0
+                        new_page_scale = (scale_x + scale_y) / 2.0
+                        # 更新页面标签的缩放比例
+                        page_label.update_page_scale(new_page_scale)
             
     def clear_cache(self):
         """清除渲染缓存"""
@@ -538,19 +629,29 @@ class VirtualScrollArea(QScrollArea):
             scroll_pos = self.page_positions[page_num]
             self.verticalScrollBar().setValue(int(scroll_pos))
             
-    def update_page_ocr_layer(self, page_num, ocr_result):
+    def update_page_ocr_layer(self, page_num, ocr_result, page_scale=1.0):
         """更新指定页面的OCR文本层"""
-        
+        logger.info(f"[VirtualScroll.update_page_ocr_layer] 更新第{page_num + 1}页OCR文本层, page_scale={page_scale}")
+
         # 如果页面已经渲染，直接更新其OCR文本层
         if page_num in self.rendered_pages:
             page_label = self.rendered_pages[page_num]
             if isinstance(page_label, OCRPageLabel):
-                self._set_page_ocr_layer(page_num, page_label, ocr_result)
+                logger.info(f"[VirtualScroll.update_page_ocr_layer] 页面{page_num + 1}已渲染，直接更新OCR层")
+                self._set_page_ocr_layer(page_num, page_label, ocr_result, page_scale)
+            else:
+                logger.warning(f"[VirtualScroll.update_page_ocr_layer] 页面{page_num + 1}不是OCRPageLabel类型")
         else:
             # 页面尚未渲染，存储OCR数据供后续渲染时使用
+            logger.info(f"[VirtualScroll.update_page_ocr_layer] 页面{page_num + 1}尚未渲染，存储OCR数据")
             if not hasattr(self, '_pending_ocr_data'):
                 self._pending_ocr_data = {}
-            self._pending_ocr_data[page_num] = ocr_result
+            # 存储OCR结果和缩放比例
+            self._pending_ocr_data[page_num] = {
+                'ocr_result': ocr_result,
+                'page_scale': page_scale
+            }
+            logger.debug(f"[VirtualScroll.update_page_ocr_layer] 待处理的OCR数据: {len(self._pending_ocr_data)} 页")
     
 
     
