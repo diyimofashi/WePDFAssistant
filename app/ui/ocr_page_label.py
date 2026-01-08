@@ -161,6 +161,8 @@ class OCRPageLabel(QWidget):
                 text = item.get("text", "")
                 # 兼容两种bbox格式: "bbox" 和 "box"
                 bbox = item.get("bbox") or item.get("box", [])
+                # 获取end字段，用于处理换行
+                end = item.get("end", "")
 
                 if not text:
                     logger.warning(f"文本块 {idx}: 文本为空，跳过")
@@ -170,7 +172,7 @@ class OCRPageLabel(QWidget):
                     logger.warning(f"文本块 {idx} '{text[:30]}': bbox为空，跳过")
                     continue
 
-                logger.debug(f"处理文本块 {idx}: text='{text[:30]}...', bbox={bbox}")
+                logger.debug(f"处理文本块 {idx}: text='{text[:30]}...', bbox={bbox}, end='{repr(end)}'")
 
                 # 处理bbox格式：[[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
                 # 例如：[[583, 146], [903, 129], [906, 172], [585, 189]]
@@ -189,8 +191,8 @@ class OCRPageLabel(QWidget):
 
                         logger.debug(f"文本块 {idx}: 原始rect={rect}, 缩放后rect={scaled_rect}")
 
-                        # 创建文本块标签（相对于content_container的绝对定位）
-                        self._create_text_block(text, scaled_rect)
+                        # 创建文本块标签（相对于OCRPageLabel的绝对定位）
+                        self._create_text_block(text, scaled_rect, end)
                     else:
                         logger.warning(f"文本块 {idx}: bbox扁平化后长度不足8，跳过")
                 else:
@@ -209,18 +211,26 @@ class OCRPageLabel(QWidget):
             block.setParent(None)
         self.text_blocks.clear()
 
-    def _create_text_block(self, text, rect):
+    def _create_text_block(self, text, rect, end=""):
         """
         创建文本块标签
 
         Args:
             text: 文本内容
             rect: QRect，文本块的位置和大小（已缩放）
+            end: 文本结束标记，"\n" 表示换行
         """
+        # 根据end字段处理文本换行
+        if end == "\n":
+            # OCR返回end=\n表示需要换行，但文本选择时需要保持完整
+            display_text = text
+        else:
+            display_text = text
+
         # 创建文本块
         text_block = QTextEdit(self)
         text_block.setReadOnly(True)
-        text_block.setPlainText(text)
+        text_block.setPlainText(display_text)
         text_block.setFrameStyle(QTextEdit.NoFrame)
         text_block.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         text_block.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)

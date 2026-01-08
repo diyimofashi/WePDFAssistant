@@ -232,6 +232,7 @@ class VirtualScrollArea(QScrollArea):
             logger.info(f"[VirtualScroll._set_page_ocr_layer] 设置第{page_num + 1}页OCR文本层")
 
             # 如果没有提供OCR结果，则尝试从_pending_ocr_data中获取
+            ocr_zoom_factor = None
             if ocr_result is None:
                 logger.debug(f"[VirtualScroll._set_page_ocr_layer] OCR结果为空，尝试从待处理数据获取")
                 if hasattr(self, '_pending_ocr_data') and page_num in self._pending_ocr_data:
@@ -240,7 +241,8 @@ class VirtualScrollArea(QScrollArea):
                     if isinstance(pending_data, dict):
                         ocr_result = pending_data.get('ocr_result')
                         page_scale = pending_data.get('page_scale', page_scale)
-                        logger.debug(f"[VirtualScroll._set_page_ocr_layer] 从待处理数据获取: page_scale={page_scale}")
+                        ocr_zoom_factor = pending_data.get('zoom_factor', None)
+                        logger.debug(f"[VirtualScroll._set_page_ocr_layer] 从待处理数据获取: page_scale={page_scale}, ocr_zoom_factor={ocr_zoom_factor}")
                     else:
                         ocr_result = pending_data
                 else:
@@ -252,18 +254,40 @@ class VirtualScrollArea(QScrollArea):
                     if parent and hasattr(parent, 'pdf_processor'):
                         pdf_processor = parent.pdf_processor
                         if hasattr(pdf_processor, 'ocr_results') and page_num in pdf_processor.ocr_results:
-                            ocr_result = pdf_processor.ocr_results[page_num]
-                            logger.debug(f"[VirtualScroll._set_page_ocr_layer] 从PDF处理器获取OCR结果")
+                            ocr_data = pdf_processor.ocr_results[page_num]
+                            # 处理新的字典格式（包含zoom_factor）
+                            if isinstance(ocr_data, dict):
+                                ocr_result = ocr_data.get('ocr_result')
+                                ocr_zoom_factor = ocr_data.get('zoom_factor', None)
+                                logger.debug(f"[VirtualScroll._set_page_ocr_layer] 从PDF处理器获取OCR结果: ocr_zoom_factor={ocr_zoom_factor}")
+                            else:
+                                # 兼容旧格式（直接是OCRResult对象）
+                                ocr_result = ocr_data
 
             # 检查OCR结果
             if ocr_result is None:
                 logger.warning(f"[VirtualScroll._set_page_ocr_layer] OCR结果为None，无法设置文本层")
                 return
 
+            # 如果存储了OCR识别时的zoom_factor，需要计算缩放比率
+            if ocr_zoom_factor is not None:
+                # 获取当前的zoom_factor
+                parent = self.parent()
+                while parent and not hasattr(parent, 'pdf_processor'):
+                    parent = parent.parent()
+
+                if parent and hasattr(parent, 'pdf_processor'):
+                    current_zoom_factor = parent.pdf_processor.zoom_factor
+                    # 计算缩放比率：当前zoom_factor / OCR识别时的zoom_factor
+                    scale_ratio = current_zoom_factor / ocr_zoom_factor if ocr_zoom_factor > 0 else 1.0
+                    logger.info(f"[VirtualScroll._set_page_ocr_layer] OCR识别时zoom_factor={ocr_zoom_factor:.3f}, 当前zoom_factor={current_zoom_factor:.3f}, 缩放比率={scale_ratio:.3f}")
+                    # 更新page_scale为缩放比率
+                    page_scale = scale_ratio
+
             # 检查OCR结果数据
             if hasattr(ocr_result, 'data'):
                 ocr_data = ocr_result.data
-                logger.info(f"[VirtualScroll._set_page_ocr_layer] OCR数据条数: {len(ocr_data)}")
+                logger.info(f"[VirtualScroll._set_page_ocr_layer] OCR数据条数: {len(ocr_data)}, page_scale={page_scale:.3f}")
                 if len(ocr_data) > 0:
                     logger.debug(f"[VirtualScroll._set_page_ocr_layer] 第一个文本块示例: {ocr_data[0].get('text', '')[:50]}...")
                 page_label.set_ocr_data(ocr_data, page_scale=page_scale)
@@ -567,11 +591,9 @@ class VirtualScrollArea(QScrollArea):
 
                         logger.info(f"[VirtualScroll.on_page_rendered] 页面{page_num+1}: 原始尺寸={actual_width:.1f}x{actual_height:.1f}, pixmap尺寸={pixmap.width()}x{pixmap.height()}, scale_x={scale_x:.3f}, scale_y={scale_y:.3f}")
 
-                        # OCR识别使用和显示相同的缩放比例，所以bbox坐标直接对应，不需要额外缩放
-                        # page_scale 应该设置为 1.0
-                        page_scale = 1.0
+                        # 不在这里设置page_scale，让_set_page_ocr_layer根据OCR识别时的zoom_factor自动计算
                         # 设置OCR文本层
-                        self._set_page_ocr_layer(page_num, page_label, page_scale=page_scale)
+                        self._set_page_ocr_layer(page_num, page_label)
 
         except Exception as e:
             logger.error(f"显示渲染页面 {page_num} 失败: {e}")
@@ -592,21 +614,10 @@ class VirtualScrollArea(QScrollArea):
 
         # 更新所有已渲染页面的OCR文本层
         for page_num, page_label in self.rendered_pages.items():
-            if isinstance(page_label, OCRPageLabel) and hasattr(page_label, 'text_layer'):
-                # 获取当前渲染的尺寸
-                pixmap = page_label.image_label.pixmap()
-                if pixmap:
-                    # 获取页面实际尺寸
-                    page_dimensions = pdf_processor.get_page_dimensions(page_num)
-                    if page_dimensions:
-                        actual_width = page_dimensions['width']
-                        actual_height = page_dimensions['height']
-                        # 计算新的缩放比例
-                        scale_x = pixmap.width() / actual_width if actual_width > 0 else 1.0
-                        scale_y = pixmap.height() / actual_height if actual_height > 0 else 1.0
-                        new_page_scale = (scale_x + scale_y) / 2.0
-                        # 更新页面标签的缩放比例
-                        page_label.update_page_scale(new_page_scale)
+            if isinstance(page_label, OCRPageLabel) and hasattr(page_label, 'ocr_data') and page_label.ocr_data:
+                # 重新调用_set_page_ocr_layer，它将根据OCR识别时的zoom_factor自动计算缩放比率
+                # 不传递ocr_result和page_scale参数，让它自动获取并计算
+                self._set_page_ocr_layer(page_num, page_label)
             
     def clear_cache(self):
         """清除渲染缓存"""

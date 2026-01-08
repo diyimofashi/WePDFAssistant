@@ -310,10 +310,16 @@ class OCRManagerMixin:
             self.show_message(f"第{page_num+1}页OCR识别完成，共识别到{len(ocr_result.data) if isinstance(ocr_result.data, list) else 0}个文本元素")
             
             # 将OCR结果存储到PDF处理器中，供后续渲染使用
+            # 同时存储识别时的缩放比例，以便后续根据当前缩放调整bbox坐标
+            ocr_data_with_scale = {
+                'ocr_result': ocr_result,
+                'zoom_factor': self.pdf_processor.zoom_factor
+            }
+            
             if hasattr(self.pdf_processor, 'ocr_results'):
-                self.pdf_processor.ocr_results[page_num] = ocr_result
+                self.pdf_processor.ocr_results[page_num] = ocr_data_with_scale
             else:
-                self.pdf_processor.ocr_results = {page_num: ocr_result}
+                self.pdf_processor.ocr_results = {page_num: ocr_data_with_scale}
             
             # 刷新页面显示，触发重新渲染
             self.pdf_processor.clear_render_cache()
@@ -322,9 +328,12 @@ class OCRManagerMixin:
             # 如果虚拟滚动区域存在，直接更新该页面的OCR文本层
             if hasattr(self, 'virtual_scroll_area') and self.virtual_scroll_area:
                 # 通知虚拟滚动区域更新指定页面的OCR文本层
-                self.virtual_scroll_area.update_page_ocr_layer(page_num, ocr_result)
+                # 计算当前缩放比例与OCR识别时缩放比例的比率
+                current_scale = 1.0  # OCR识别时使用的zoom_factor已经在图像中体现，bbox坐标对应缩放后的图像
+                self.virtual_scroll_area.update_page_ocr_layer(page_num, ocr_result, page_scale=current_scale)
             
-            logger.info(f"已在第{page_num+1}页完成OCR识别")
+            logger.info(f"已在第{page_num+1}页完成OCR识别，识别时的zoom_factor={self.pdf_processor.zoom_factor}")
+            
             
         except Exception as e:
             logger.error(f"添加OCR文本层时出错: {e}")
