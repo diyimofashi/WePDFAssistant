@@ -626,10 +626,15 @@ class VirtualScrollArea(QScrollArea):
             if page_widget and page_widget.parent():
                 page_widget.hide()
                 page_widget.setParent(None)
-            
+
         self.rendered_pages.clear()
         self.visible_pages.clear()
-        
+
+        # 清除待处理的OCR数据
+        if hasattr(self, '_pending_ocr_data'):
+            self._pending_ocr_data.clear()
+            logger.debug("[VirtualScroll.clear_cache] 已清理待处理的OCR数据")
+
         # 重新显示占位符
         for placeholder in self.placeholder_pages.values():
             placeholder.show()

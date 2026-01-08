@@ -161,6 +161,12 @@ class PDFProcessor(QObject, PDFLoader, PDFRenderer, PDFNavigation, PDFSearch, PD
             self.pdf_document = None
             self.current_file = None
             self.current_page = 0
+            
+            # 清理OCR结果数据，避免打开新文档时显示旧文档的OCR文本
+            if hasattr(self, 'ocr_results'):
+                self.ocr_results = {}
+                logger.debug("已清理OCR结果数据")
+            
             logger.debug("文档已关闭")
             
             # 强制垃圾回收，避免解释器退出时fitz.Document.__del__报错
