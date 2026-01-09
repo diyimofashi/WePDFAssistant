@@ -143,22 +143,24 @@ class PDFSearch:
         except Exception as e:
             return False, f"搜索失败: {str(e)}"
     
-    def highlight_search_result(self, page_num, rect, color=(1, 1, 0, 0.3)):
-        """高亮显示搜索结果"""
+    def highlight_search_result(self, page_num, rect, color=(1, 1, 0, 0.4)):
+        """高亮显示搜索结果（黄色半透明背景）"""
         if not self.fitz_document:
             return False
-        
+
         try:
             # 获取页面
             page = self.fitz_document[page_num]
-            
+
             # 添加高亮注释
             highlight = page.add_highlight_annot(rect)
-            
-            # 设置高亮颜色（黄色透明）
-            highlight.set_colors(stroke=color)
+
+            # 设置高亮颜色（黄色半透明，透明度0.4）
+            # color=(1, 1, 0, 0.4) 表示黄色RGB(255, 255, 0)，透明度40%
+            highlight.set_colors(stroke=(1, 1, 0, 0.6), fill=(1, 1, 0, 0.4))
             highlight.update()
-            
+
+            logger.debug(f"已添加高亮：页面{page_num+1}，位置{rect}")
             return True
         except Exception as e:
             logger.error(f"高亮失败: {e}")

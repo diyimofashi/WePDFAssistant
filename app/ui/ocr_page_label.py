@@ -101,10 +101,11 @@ class OCRPageLabel(QWidget):
         # 更新所有文本块的样式
         for block in self.text_blocks:
             if enabled:
+                # 调试模式：黄色背景，透明度0.3
                 block.setStyleSheet("""
                     QTextEdit {
-                        background-color: rgba(255, 255, 0, 80);
-                        border: 1px solid rgba(0, 255, 0, 150);
+                        background-color: rgba(255, 255, 0, 77);
+                        border: none;
                         color: rgba(0, 0, 0, 255);
                     }
                 """)
@@ -257,18 +258,30 @@ class OCRPageLabel(QWidget):
             text_block.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             text_block.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             text_block.setLineWrapMode(QTextEdit.NoWrap)
-            text_block.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+            text_block.setAlignment(Qt.AlignLeft)  # 只水平左对齐
             text_block.setFont(font)
 
-            # 调整矩形高度
-            adjusted_rect = QRect(rect.x(), rect.y(), rect.width(), text_height)
+            # 直接使用PDF的bbox，不做任何调整
+            # PyMuPDF的bbox已经是文本的精确位置
+            adjusted_rect = QRect(rect.x(), rect.y(), rect.width(), rect.height())
             text_block.setGeometry(adjusted_rect)
+
+            # 调试日志：输出位置信息
+            if len(self.text_blocks) < 3:  # 只记录前3个文本块
+                fm = QFontMetrics(font)
+                ascent = fm.ascent()
+                descent = fm.descent()
+                logger.debug(f"[OCRPageLabel._create_text_block] 文本='{text[:10]}...', "
+                           f"rect=({rect.x()}, {rect.y()}, {rect.width()}, {rect.height()}), "
+                           f"text_height={text_height}, font_size={font_size}, "
+                           f"ascent={ascent}, descent={descent}")
 
             # 设置样式
             if self.debug_mode:
+                # 调试模式：黄色背景，透明度0.3 (0.3 * 255 ≈ 77)
                 text_block.setStyleSheet("""
                     QTextEdit {
-                        background-color: rgba(255, 255, 0, 80);
+                        background-color: rgba(255, 255, 0, 77);
                         border: none;
                         color: rgba(0, 0, 0, 255);
                     }
@@ -348,4 +361,4 @@ class OCRPageLabel(QWidget):
         min_y = min(y_coords)
         max_y = max(y_coords)
 
-        return QRect(int(min_x), int(min_y+15), int(max_x - min_x), int(max_y - min_y))
+        return QRect(int(min_x), int(min_y + 5), int(max_x - min_x), int(max_y - min_y))

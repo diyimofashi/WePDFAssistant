@@ -1,6 +1,6 @@
 """工具栏管理器模块"""
 
-from PyQt5.QtWidgets import QToolBar, QAction, QSpinBox, QLabel, QMenu, QComboBox
+from PyQt5.QtWidgets import QToolBar, QAction, QSpinBox, QLabel, QMenu, QComboBox, QLineEdit, QWidget, QHBoxLayout
 from PyQt5.QtCore import QObject, QSize, Qt
 from PyQt5.QtGui import QIcon
 from app.utils.logger import get_logger
@@ -166,11 +166,11 @@ class ToolbarManager(QObject):
     
     def _add_mode_actions(self, toolbar):
         """添加模式切换按钮"""
-        # 搜索
+        # 搜索按钮（打开搜索面板）
         search_btn = QAction("🔍 搜索", self.parent)
         search_btn.setToolTip("搜索文本 (Ctrl+F)")
         search_btn.setShortcut("Ctrl+F")
-        search_btn.triggered.connect(self.parent.show_search_options)
+        search_btn.triggered.connect(self.parent.show_search_panel)
         toolbar.addAction(search_btn)
     
     def _add_convert_actions(self, toolbar):

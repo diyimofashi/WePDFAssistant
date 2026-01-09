@@ -6,6 +6,8 @@ import tempfile
 import uuid
 import subprocess
 from base64 import b64encode
+import shutil
+import fitz
 
 from PyQt5.QtWidgets import QMessageBox, QApplication, QFileDialog, QProgressDialog
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
@@ -360,7 +362,51 @@ class OCRManagerMixin:
         """单页OCR完成回调"""
         try:
             if ocr_result and ocr_result.is_success():
-                # 将OCR结果存储到PDF处理器中
+                # 将OCR文本插入PDF文档
+                page = self.pdf_processor.fitz_document[page_num]
+                
+                # 遍历OCR结果，将文本插入PDF
+                for item in ocr_result.data:
+                    text = item.get("text", "")
+                    bbox = item.get("bbox") or item.get("box", [])
+                    
+                    if not text or not bbox:
+                        continue
+                    
+                    # 计算文本插入位置
+                    if isinstance(bbox, list) and len(bbox) == 4:
+                        x_coords = [point[0] for point in bbox]
+                        y_coords = [point[1] for point in bbox]
+                        x = min(x_coords)
+                        y = max(y_coords)
+                        
+                        # 计算字体大小
+                        font_size = self._calculate_font_size(bbox, text)
+                        
+                        # 插入文本
+                        if hasattr(self, '_ocr_debug_mode') and self._ocr_debug_mode:
+                            # 调试模式
+                            page.insert_text(
+                                (x, y),
+                                text,
+                                color=(1, 0, 0, 1),
+                                fontsize=font_size,
+                                fontname="helv"
+                            )
+                            highlight = page.add_highlight_annot(fitz.Rect(x, y - font_size, x + len(text) * font_size * 0.6, y))
+                            highlight.set_colors(stroke=(1, 1, 0, 0.3))
+                            highlight.update()
+                        else:
+                            # 正常模式：透明文本
+                            page.insert_text(
+                                (x, y),
+                                text,
+                                color=(1, 1, 1, 0),
+                                fontsize=font_size,
+                                fontname="helv"
+                            )
+                
+                # 存储OCR结果到缓存
                 ocr_data_with_scale = {
                     'ocr_result': ocr_result,
                     'zoom_factor': zoom_factor
@@ -370,10 +416,7 @@ class OCRManagerMixin:
                     self.pdf_processor.ocr_results[page_num] = ocr_data_with_scale
                 else:
                     self.pdf_processor.ocr_results = {page_num: ocr_data_with_scale}
-                
-                # 如果虚拟滚动区域存在，更新该页面的OCR文本层
-                if hasattr(self, 'virtual_scroll_area') and self.virtual_scroll_area:
-                    self.virtual_scroll_area.update_page_ocr_layer(page_num, ocr_result, page_scale=1.0)
+                    
         except Exception as e:
             logger.error(f"处理第 {page_num + 1} 页OCR结果时出错: {e}")
     
@@ -521,34 +564,169 @@ class OCRManagerMixin:
             self.show_message("❌ 创建可搜索PDF失败")
     
     def add_text_layer_to_page(self, page_num, ocr_result):
-        """在指定页面上添加OCR文本层"""
+        """在指定页面上添加OCR文本层（插入PDF文档）"""
         try:
             # 显示提示信息
-            self.show_message(f"第{page_num+1}页OCR识别完成，共识别到{len(ocr_result.data) if isinstance(ocr_result.data, list) else 0}个文本元素")
-            
-            # 将OCR结果存储到PDF处理器中，供后续渲染使用
-            # 同时存储识别时的缩放比例，以便后续根据当前缩放调整bbox坐标
-            ocr_data_with_scale = {
-                'ocr_result': ocr_result,
-                'zoom_factor': self.pdf_processor.zoom_factor
-            }
-            
-            if hasattr(self.pdf_processor, 'ocr_results'):
-                self.pdf_processor.ocr_results[page_num] = ocr_data_with_scale
-            else:
-                self.pdf_processor.ocr_results = {page_num: ocr_data_with_scale}
-            
-            # 刷新页面显示，触发重新渲染
+            self.show_message(f"正在将OCR文本插入第{page_num+1}页...")
+            QApplication.processEvents()  # 确保状态栏更新立即显示
+
+            if not ocr_result.is_success():
+                logger.error(f"OCR识别失败: {ocr_result.message}")
+                QMessageBox.critical(self, "错误", f"OCR识别失败: {ocr_result.message}")
+                return
+
+            # 检查是否需要切换到临时文件
+            self._ensure_temp_file_if_needed()
+
+            # 获取PDF页面
+            page = self.pdf_processor.fitz_document[page_num]
+
+            # 检查页面是否已有文本（避免双重文本）
+            has_existing_text = self._page_has_text(page)
+
+            if has_existing_text:
+                self.show_message(f"⚠️ 第{page_num+1}页已有文本层，跳过OCR文本插入")
+                # 存储OCR结果到缓存（供调试模式使用）
+                self._store_ocr_result(page_num, ocr_result)
+                return
+
+            # 遍历OCR结果，将文本插入PDF
+            for item in ocr_result.data:
+                text = item.get("text", "")
+                bbox = item.get("bbox") or item.get("box", [])
+
+                if not text or not bbox:
+                    continue
+
+                # 计算文本插入位置
+                # bbox格式：[[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
+                if isinstance(bbox, list) and len(bbox) == 4:
+                    x_coords = [point[0] for point in bbox]
+                    y_coords = [point[1] for point in bbox]
+                    x = min(x_coords)
+                    y = max(y_coords)  # 文本基线位置
+
+                    # 计算字体大小
+                    font_size = self._calculate_font_size(bbox, text)
+
+                    # 插入文本
+                    # 调试模式：黄色背景，透明度0.3
+                    # 正常模式：完全透明
+                    if hasattr(self, '_ocr_debug_mode') and self._ocr_debug_mode:
+                        # 调试模式：可见文本，黄色背景
+                        page.insert_text(
+                            (x, y),
+                            text,
+                            color=(1, 0, 0, 1),  # 黑色文字
+                            fontsize=font_size,
+                            fontname="helv"
+                        )
+                        # 添加黄色高亮注释
+                        highlight = page.add_highlight_annot(fitz.Rect(x, y - font_size, x + len(text) * font_size * 0.6, y))
+                        highlight.set_colors(stroke=(1, 1, 0, 0.3))  # 黄色，透明度0.3
+                        highlight.update()
+                    else:
+                        # 正常模式：透明文本（不可见但可搜索和复制）
+                        page.insert_text(
+                            (x, y),
+                            text,
+                            color=(1, 1, 1, 0),  # 白色，完全透明（alpha=0）
+                            fontsize=font_size,
+                            fontname="helv"
+                        )
+
+            # 存储OCR结果到缓存（供调试模式使用）
+            self._store_ocr_result(page_num, ocr_result)
+
+            # 清除渲染缓存并刷新显示
             self.pdf_processor.clear_render_cache()
             self.update_preview()
-            
-            # 如果虚拟滚动区域存在，直接更新该页面的OCR文本层
-            if hasattr(self, 'virtual_scroll_area') and self.virtual_scroll_area:
-                # 通知虚拟滚动区域更新指定页面的OCR文本层
-                # 计算当前缩放比例与OCR识别时缩放比例的比率
-                current_scale = 1.0  # OCR识别时使用的zoom_factor已经在图像中体现，bbox坐标对应缩放后的图像
-                self.virtual_scroll_area.update_page_ocr_layer(page_num, ocr_result, page_scale=current_scale)
-            
+
+            self.show_message(f"✅ 第{page_num+1}页OCR识别完成，文本已插入PDF，共{len(ocr_result.data)}个文本元素")
+
         except Exception as e:
             logger.error(f"添加OCR文本层时出错: {e}")
             logger.error(traceback.format_exc())
+            QMessageBox.critical(self, "错误", f"添加OCR文本层失败: {str(e)}")
+
+    def _page_has_text(self, page):
+        """检查页面是否已有文本"""
+        try:
+            text = page.get_text()
+            return bool(text.strip())
+        except Exception as e:
+            logger.error(f"检查页面文本失败: {e}")
+            return False
+
+    def _store_ocr_result(self, page_num, ocr_result):
+        """存储OCR结果到缓存"""
+        if hasattr(self.pdf_processor, 'ocr_results'):
+            self.pdf_processor.ocr_results[page_num] = {
+                'ocr_result': ocr_result,
+                'zoom_factor': self.pdf_processor.zoom_factor
+            }
+        else:
+            self.pdf_processor.ocr_results = {
+                page_num: {
+                    'ocr_result': ocr_result,
+                    'zoom_factor': self.pdf_processor.zoom_factor
+                }
+            }
+    
+    def _calculate_font_size(self, bbox, text):
+        """根据bbox和文本计算合适的字体大小"""
+        if not bbox or not text:
+            return 10
+        
+        # 计算bbox高度
+        y_coords = [point[1] for point in bbox]
+        height = max(y_coords) - min(y_coords)
+        
+        # 字体大小约为bbox高度的80%
+        font_size = max(int(height * 0.8), 8)
+        
+        return font_size
+    
+    def _ensure_temp_file_if_needed(self):
+        """如果当前是原始文件，切换到临时文件以避免修改原始文件"""
+        if not self.pdf_processor.fitz_document:
+            return
+        
+        current_file = self.pdf_processor.current_file
+        if not current_file:
+            return
+        
+        # 检查是否已经是临时文件
+        if current_file.startswith(tempfile.gettempdir()):
+            logger.debug(f"当前已是临时文件: {current_file}")
+            return
+        
+        # 创建临时文件
+        temp_dir = os.path.realpath(tempfile.gettempdir())
+        temp_filename = f"pypdf_temp_{uuid.uuid4().hex}.pdf"
+        temp_file = os.path.join(temp_dir, temp_filename)
+        
+        try:
+            # 保存当前文档到临时文件
+            self.pdf_processor.fitz_document.save(temp_file, garbage=4, deflate=True)
+            
+            # 关闭当前文档
+            self.pdf_processor.fitz_document.close()
+            
+            # 重新打开临时文件
+            self.pdf_processor.fitz_document = fitz.open(temp_file)
+            
+            # 更新当前文件路径
+            self.pdf_processor.current_file = temp_file
+            
+            logger.info(f"已切换到临时文件: {temp_file}")
+            self.show_message(f"✅ 文档已切换到临时文件，原始文件不会被修改")
+            
+            # 标记文档有未保存的更改
+            if hasattr(self.pdf_processor, 'page_editor') and self.pdf_processor.page_editor:
+                self.pdf_processor.page_editor.is_modified = True
+                self.pdf_processor.page_editor._emit_state_changed()
+            
+        except Exception as e:
+            logger.error(f"切换到临时文件失败: {e}")
+            raise

@@ -237,6 +237,98 @@ class VirtualScrollArea(QScrollArea):
             if isinstance(page_label, OCRPageLabel):
                 page_label.set_debug_mode(enabled)
 
+    def _has_ocr_data(self, page_num, pdf_processor):
+        """检查页面是否有OCR数据"""
+        # 检查待处理的OCR数据
+        if hasattr(self, '_pending_ocr_data') and page_num in self._pending_ocr_data:
+            return True
+
+        # 检查PDF处理器的OCR结果
+        if hasattr(pdf_processor, 'ocr_results') and page_num in pdf_processor.ocr_results:
+            return True
+
+        return False
+
+    def _set_pdf_text_layer(self, page_num, page_label, pdf_processor, pixmap, actual_width, actual_height):
+        """从PDF提取原生文本并创建文本层"""
+        try:
+            import fitz
+
+            # 获取PDF页面
+            page = pdf_processor.fitz_document[page_num]
+
+            # 使用 dict 模式获取详细的文本信息
+            # 包含每个字符的精确位置信息
+            text_dict = page.get_text("dict")
+
+            logger.debug(f"[VirtualScroll._set_pdf_text_layer] 第{page_num + 1}页提取到文本字典")
+
+            if not text_dict or "blocks" not in text_dict:
+                logger.warning(f"[VirtualScroll._set_pdf_text_layer] 第{page_num + 1}页没有文本块")
+                return
+
+            # 准备OCR格式的数据
+            ocr_data = []
+
+            for block in text_dict["blocks"]:
+                if block.get("type") != 0:  # 只处理文本块
+                    continue
+
+                # 获取文本行的bbox和基线信息
+                if "lines" not in block:
+                    continue
+
+                for line in block["lines"]:
+                    line_bbox = line.get("bbox")  # (x0, y0, x1, y1)
+                    if not line_bbox:
+                        continue
+
+                    # 合并同一行的所有span（文本片段）
+                    line_text = ""
+                    line_x0, line_x1 = line_bbox[0], line_bbox[2]
+                    line_y0, line_y1 = line_bbox[1], line_bbox[3]
+
+                    if "spans" in line:
+                        for span in line["spans"]:
+                            span_text = span.get("text", "")
+                            if span_text:
+                                line_text += span_text
+
+                    if not line_text.strip():
+                        continue
+
+                    # 使用行的bbox - PyMuPDF的bbox是文本的精确包围盒
+                    # 直接使用，不做任何调整
+                    ocr_bbox = [
+                        [line_bbox[0], line_bbox[1]],  # 左上
+                        [line_bbox[2], line_bbox[1]],  # 右上
+                        [line_bbox[2], line_bbox[3]],  # 右下
+                        [line_bbox[0], line_bbox[3]]   # 左下
+                    ]
+
+                    ocr_data.append({
+                        "text": line_text,
+                        "bbox": ocr_bbox,
+                        "confidence": 1.0,
+                        "end": len(line_text)
+                    })
+
+            if ocr_data:
+                # 计算缩放比例
+                scale_x = pixmap.width() / actual_width if actual_width > 0 else 1.0
+                scale_y = pixmap.height() / actual_height if actual_height > 0 else 1.0
+                page_scale = max(scale_x, scale_y)
+
+                logger.debug(f"[VirtualScroll._set_pdf_text_layer] 第{page_num + 1}页已提取{len(ocr_data)}个文本块，page_scale={page_scale}")
+
+                # 设置文本层（完全透明）
+                page_label.set_ocr_data(ocr_data, page_scale=page_scale)
+
+        except Exception as e:
+            logger.error(f"[VirtualScroll._set_pdf_text_layer] 提取PDF文本失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
     def _set_page_ocr_layer(self, page_num, page_label, ocr_result=None, page_scale=1.0):
         """设置页面的OCR文本层"""
         try:
@@ -601,9 +693,17 @@ class VirtualScrollArea(QScrollArea):
                         scale_x = pixmap.width() / actual_width if actual_width > 0 else 1.0
                         scale_y = pixmap.height() / actual_height if actual_height > 0 else 1.0
 
-                        # 不在这里设置page_scale，让_set_page_ocr_layer根据OCR识别时的zoom_factor自动计算
-                        # 设置OCR文本层
-                        self._set_page_ocr_layer(page_num, page_label)
+                        # 检查是否有OCR数据
+                        has_ocr_data = self._has_ocr_data(page_num, pdf_processor)
+                        logger.debug(f"[VirtualScroll.on_page_rendered] 第{page_num+1}页 has_ocr_data={has_ocr_data}")
+
+                        # 如果有OCR数据，设置OCR文本层
+                        if has_ocr_data:
+                            self._set_page_ocr_layer(page_num, page_label)
+                        else:
+                            # 如果没有OCR数据，尝试从PDF提取原生文本
+                            logger.debug(f"[VirtualScroll.on_page_rendered] 第{page_num+1}页尝试从PDF提取原生文本")
+                            self._set_pdf_text_layer(page_num, page_label, pdf_processor, pixmap, actual_width, actual_height)
 
         except Exception as e:
             logger.error(f"显示渲染页面 {page_num} 失败: {e}")
