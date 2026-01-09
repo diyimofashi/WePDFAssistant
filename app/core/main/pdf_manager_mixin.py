@@ -42,7 +42,8 @@ class PDFManagerMixin:
                     logger.error(f"更新总页数显示失败: {e}")
                     self.total_pages_label.setText("/ 0")
             
-            # 更新虚拟滚动区域内容
+                
+            # 更新虚拟滚动区域内容（已经包含了滚动到第一页和渲染的调用）
             if hasattr(self, 'virtual_scroll') and self.pdf_processor.fitz_document:
                 try:
                     # 构建页面数据
@@ -67,15 +68,12 @@ class PDFManagerMixin:
                     
                     self.virtual_scroll.set_pages_data(pages_data)
                     
-                    # 立即触发虚拟滚动区域更新和渲染
+                    # 触发虚拟滚动区域更新和渲染（update_content内部会延迟渲染）
                     self.virtual_scroll.update_content()
                     
-                    # 强制滚动到第一页以确保显示
+                    # 延迟滚动到第一页
                     from PyQt5.QtCore import QTimer
-                    QTimer.singleShot(100, lambda: self.virtual_scroll.scroll_to_page(0) if hasattr(self.virtual_scroll, 'scroll_to_page') else None)
-                    
-                    # 立即开始渲染当前页面
-                    QTimer.singleShot(150, self._start_rendering_current_page)
+                    QTimer.singleShot(200, lambda: self.virtual_scroll.scroll_to_page(0) if hasattr(self.virtual_scroll, 'scroll_to_page') else None)
                 except Exception as e:
                     logger.error(f"设置虚拟滚动页面数据失败: {e}")
                     import traceback
@@ -102,24 +100,13 @@ class PDFManagerMixin:
                 else:
                     self.show_message(f"✅ 成功加载: {file_name}")
                     logger.debug(f"PDF加载完成: {file_name}")
-                
-                # 立即渲染当前页面（第一页）
-                from PyQt5.QtCore import QTimer
-                QTimer.singleShot(200, self._render_current_page_immediately)
             
-            # 修复图片不显示问题：确保先清除缓存再刷新预览
+            # 清除渲染缓存，确保使用最新的缩放设置
             self.pdf_processor.clear_render_cache()
-            self._force_refresh_preview()
-            logger.debug("已强制刷新预览区域")
             
-            # 额外确保图片立即显示：延迟再次触发渲染
-            from PyQt5.QtCore import QTimer
-            QTimer.singleShot(200, self._ensure_image_displayed)
-                            
+            # 加载缩略图（如果需要）
             if self.show_thumbnails:
-                logger.debug("开始强制重新加载缩略图...")
-                self._force_reload_thumbnails()
-                logger.debug("缩略图强制重新加载完成")
+                self.view_controller.load_thumbnails()
             
             self.update_save_actions_state()
         else:

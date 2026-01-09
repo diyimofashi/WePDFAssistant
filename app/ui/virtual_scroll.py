@@ -85,10 +85,8 @@ class VirtualScrollArea(QScrollArea):
         if self.pages_data:
             self._calculate_layout()
             self._update_virtual_widget()
-            # 延迟渲染可见页面，确保布局完成，增加延迟时间确保图片加载完成
-            QTimer.singleShot(100, self._render_visible_pages)
-            # 额外延迟再次尝试渲染，确保图片显示
-            QTimer.singleShot(300, self._render_visible_pages)
+            # 延迟渲染可见页面，确保布局完成，只调用一次避免重复渲染
+            QTimer.singleShot(150, self._render_visible_pages)
         else:
             # 如果没有页面数据，尝试从父窗口获取
             parent = self.parent()

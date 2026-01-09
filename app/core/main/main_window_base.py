@@ -515,13 +515,17 @@ class MainWindowBase(QMainWindow):
     def resizeEvent(self, a0):
         """窗口大小变化事件"""
         super().resizeEvent(a0)
-        self.resize_timer.start(100)
+        # 使用防抖定时器，避免频繁触发
+        if hasattr(self, 'resize_timer') and not self.resize_timer.isActive():
+            self.resize_timer.start(100)
     
     def changeEvent(self, a0):
         """窗口状态变化事件"""
         super().changeEvent(a0)
         if a0.type() == a0.WindowStateChange:
-            self.resize_timer.start(100)
+            # 使用防抖定时器，避免频繁触发
+            if hasattr(self, 'resize_timer') and not self.resize_timer.isActive():
+                self.resize_timer.start(100)
     
     def _update_render_size(self):
         """更新渲染尺寸"""
