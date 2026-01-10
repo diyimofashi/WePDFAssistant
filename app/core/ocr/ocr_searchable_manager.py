@@ -224,17 +224,114 @@ class OCRSearchablePDFHandler:
         # 将页面OCR结果存储到管理器中
         self.ocr_searchable_manager.page_ocr_results[page_num] = ocr_result
         
-        # 如果还没有创建可搜索PDF，则创建一个
-        if not self.ocr_searchable_manager.get_searchable_pdf_path():
-            # 需要创建一个包含OCR文本的可搜索PDF
-            self._create_or_update_searchable_pdf_for_page(page_num, ocr_result)
-        else:
-            # 如果已有可搜索PDF，更新对应页面
-            self._update_existing_searchable_pdf_page(page_num, ocr_result)
+        # 注意：这里不立即创建或更新可搜索PDF，而是等到所有页面OCR完成后统一处理
+        # 这是为了避免在批量OCR过程中频繁地重新生成整个PDF文件
+        
+    def handle_batch_ocr_completed(self, ocr_results_dict, progress_callback=None):
+        """
+        批量处理多个页面的OCR完成事件，一次性生成完整的可搜索PDF
+        
+        Args:
+            ocr_results_dict: 包含所有页面OCR结果的字典 {page_num: ocr_result}
+            progress_callback: 进度回调函数
+        
+        Returns:
+            (success, message) 元组
+        """
+        try:
+            original_pdf_path = self.pdf_processor.current_file
+            if not original_pdf_path:
+                logger.error("没有打开的PDF文件")
+                return False, "没有打开的PDF文件"
+            
+            # 更新管理器中的所有OCR结果
+            self.ocr_searchable_manager.page_ocr_results.update(ocr_results_dict)
+            
+            # 获取原始PDF文档
+            original_doc = fitz.open(original_pdf_path)
+            
+            # 创建新的PDF文档
+            output_doc = fitz.open()
+            total_pages = len(original_doc)
+            
+            if progress_callback:
+                progress_callback(10, "正在创建可搜索PDF...")
+            
+            # 遍历所有页面
+            for i in range(total_pages):
+                if progress_callback:
+                    progress = 10 + int((i / total_pages) * 80)  # 10%-90%
+                    progress_callback(progress, f"正在处理第 {i+1}/{total_pages} 页...")
+                
+                page = original_doc[i]
+                
+                # 获取页面图像
+                matrix = fitz.Matrix(2.0, 2.0)  # 2倍缩放
+                pix = page.get_pixmap(matrix=matrix)
+                img_data = pix.tobytes("png")
+                
+                # 创建新页面
+                new_page = output_doc.new_page(width=page.rect.width, height=page.rect.height)
+                new_page.insert_image(new_page.rect, stream=img_data)
+                
+                # 检查是否有对应的OCR结果
+                if i in ocr_results_dict:
+                    ocr_result = ocr_results_dict[i]
+                    if ocr_result and ocr_result.is_success():
+                        # 计算缩放比例
+                        scale_x = new_page.rect.width / pix.width
+                        scale_y = new_page.rect.height / pix.height
+                        
+                        # 使用OCRSearchablePDF的add_text_layer方法
+                        from app.core.ocr.ocr_searchable_pdf import OCRSearchablePDF
+                        processor = OCRSearchablePDF(
+                            ocr_plugin_manager=self.ocr_searchable_manager.ocr_plugin_manager,
+                            ocr_config_manager=self.ocr_searchable_manager.ocr_config_manager
+                        )
+                        processor.add_text_layer(new_page, ocr_result.data, scale_x, scale_y, show_text_boxes=False)
+            
+            if progress_callback:
+                progress_callback(95, "正在保存可搜索PDF...")
+            
+            # 生成临时文件路径
+            temp_dir = tempfile.gettempdir()
+            temp_filename = f"temp_searchable_batch_{int(time.time())}_{os.path.basename(original_pdf_path)}"
+            temp_searchable_pdf_path = os.path.join(temp_dir, temp_filename)
+            
+            # 保存输出PDF
+            output_doc.save(temp_searchable_pdf_path, garbage=4, deflate=True, clean=True)
+            output_doc.close()
+            original_doc.close()
+            
+            # 更新OCRSearchableManager的临时文件路径
+            self.ocr_searchable_manager.temp_searchable_pdf_path = temp_searchable_pdf_path
+            self.ocr_searchable_manager.original_pdf_path = original_pdf_path
+            
+            # 切换到可搜索PDF
+            if self.is_using_searchable_pdf and self.pdf_processor.fitz_document:
+                self.pdf_processor.fitz_document.close()
+            
+            self.pdf_processor.fitz_document = fitz.open(temp_searchable_pdf_path)
+            self.is_using_searchable_pdf = True
+            
+            # 清除渲染缓存并触发重新渲染
+            if hasattr(self.pdf_processor, 'clear_render_cache'):
+                self.pdf_processor.clear_render_cache()
+            
+            if progress_callback:
+                progress_callback(100, "可搜索PDF创建完成")
+            
+            logger.info(f"批量OCR完成后创建了可搜索PDF: {temp_searchable_pdf_path}")
+            return True, f"批量OCR完成，已创建可搜索PDF: {temp_searchable_pdf_path}"
+            
+        except Exception as e:
+            logger.error(f"批量创建可搜索PDF时出错: {e}")
+            logger.error(traceback.format_exc())
+            return False, f"批量创建可搜索PDF失败: {str(e)}"
     
     def _create_or_update_searchable_pdf_for_page(self, page_num, ocr_result):
         """
-        为单个页面创建或更新可搜索PDF
+        为单个页面创建或更新可搜索PDF（保留原有方法供其他用途使用）
         """
         try:
             # 为当前页面创建可搜索PDF

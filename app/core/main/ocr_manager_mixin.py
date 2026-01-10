@@ -214,7 +214,7 @@ class OCRManagerMixin:
             class AllPagesOCRThread(QThread):
                 progress_updated = pyqtSignal(int, str, int)  # 当前页, 消息, 总页数
                 page_ocr_finished = pyqtSignal(int, object, float)  # 页码, OCR结果, zoom_factor
-                finished = pyqtSignal(bool, str)
+                finished = pyqtSignal(bool, str, dict)  # 成功状态, 消息, 所有OCR结果字典
                 
                 def __init__(self, pdf_processor, ocr_plugin, ocr_plugin_manager, ocr_config_manager):
                     super().__init__()
@@ -232,15 +232,18 @@ class OCRManagerMixin:
                             plugin_config = self.ocr_config_manager.get_plugin_config(self.ocr_plugin.plugin_name)
                             init_result = self.ocr_plugin_manager.initialize_plugin(self.ocr_plugin.plugin_name, plugin_config)
                             if not init_result.is_success():
-                                self.finished.emit(False, f"插件初始化失败: {init_result.message}")
+                                self.finished.emit(False, f"插件初始化失败: {init_result.message}", {})
                                 return
                         
                         # 获取OCR识别时的zoom_factor
                         ocr_zoom_factor = self.pdf_processor.zoom_factor
                         
+                        # 用于收集所有OCR结果
+                        all_ocr_results = {}
+                        
                         for page_num in range(total_pages):
                             if self.should_stop:
-                                self.finished.emit(False, "OCR识别已取消")
+                                self.finished.emit(False, "OCR识别已取消", all_ocr_results)
                                 return
                             
                             self.progress_updated.emit(page_num + 1, f"正在处理第 {page_num + 1}/{total_pages} 页...", total_pages)
@@ -250,7 +253,7 @@ class OCRManagerMixin:
                                 page_image_data = self.pdf_processor.get_page_image_data(page_num)
                                 if not page_image_data:
                                     logger.error(f"无法获取第 {page_num + 1} 页图像数据")
-                                    self.page_ocr_finished.emit(page_num, None, ocr_zoom_factor)
+                                    all_ocr_results[page_num] = None  # 记录失败的页面
                                     continue
                                 
                                 # 尝试不同的OCR识别方法
@@ -297,8 +300,8 @@ class OCRManagerMixin:
                                         except Exception as cleanup_error:
                                             logger.warning(f"清理临时文件时出错: {cleanup_error}")
                                 
-                                # 发送页面OCR完成信号
-                                self.page_ocr_finished.emit(page_num, ocr_result, ocr_zoom_factor)
+                                # 存储OCR结果
+                                all_ocr_results[page_num] = ocr_result
                                 
                                 if ocr_result.is_success():
                                     logger.info(f"第 {page_num + 1} 页OCR识别完成，识别到 {len(ocr_result.data) if isinstance(ocr_result.data, list) else 0} 个文本元素")
@@ -307,14 +310,14 @@ class OCRManagerMixin:
                                 
                             except Exception as e:
                                 logger.error(f"第 {page_num + 1} 页OCR处理失败: {e}")
-                                self.page_ocr_finished.emit(page_num, None, ocr_zoom_factor)
+                                all_ocr_results[page_num] = None  # 记录失败的页面
                         
-                        self.finished.emit(True, f"所有页面OCR识别完成，共处理 {total_pages} 页")
+                        self.finished.emit(True, f"所有页面OCR识别完成，共处理 {total_pages} 页", all_ocr_results)
                         
                     except Exception as e:
                         logger.error(f"批量OCR识别失败: {e}")
                         logger.error(traceback.format_exc())
-                        self.finished.emit(False, f"批量OCR识别失败: {str(e)}")
+                        self.finished.emit(False, f"批量OCR识别失败: {str(e)}", {})
                 
                 def stop(self):
                     """停止OCR识别"""
@@ -340,12 +343,13 @@ class OCRManagerMixin:
                 lambda value, msg, total: progress_dialog.setValue(value) or progress_dialog.setLabelText(msg)
             )
             
-            self.all_pages_ocr_thread.page_ocr_finished.connect(
-                lambda page_num, ocr_result, zoom_factor: self._on_page_ocr_finished(page_num, ocr_result, zoom_factor)
-            )
+            # 注意：不再处理单个页面的OCR完成信号，改为在所有页面完成后统一处理
+            # self.all_pages_ocr_thread.page_ocr_finished.connect(
+            #     lambda page_num, ocr_result, zoom_factor: self._on_page_ocr_finished(page_num, ocr_result, zoom_factor)
+            # )
             
             self.all_pages_ocr_thread.finished.connect(
-                lambda success, message: self._on_all_pages_ocr_finished(success, message, progress_dialog)
+                lambda success, message, all_ocr_results: self._on_all_pages_ocr_finished(success, message, progress_dialog, all_ocr_results)
             )
             
             progress_dialog.canceled.connect(
@@ -381,15 +385,78 @@ class OCRManagerMixin:
         except Exception as e:
             logger.error(f"处理第 {page_num + 1} 页OCR结果时出错: {e}")
     
-    def _on_all_pages_ocr_finished(self, success, message, progress_dialog):
-        """所有页面OCR完成回调"""
+    def _on_page_ocr_finished(self, page_num, ocr_result, zoom_factor):
+        """单页OCR完成回调（在批量OCR模式下不使用此方法，仅保留供其他功能使用）"""
+        try:
+            if ocr_result and ocr_result.is_success():
+                # 初始化OCR可搜索PDF处理器（如果尚未初始化）
+                if not hasattr(self, 'ocr_searchable_handler') or not self.ocr_searchable_handler:
+                    self.ocr_searchable_handler = OCRSearchablePDFHandler(
+                        self.pdf_processor,
+                        self.ocr_plugin_manager,
+                        self.ocr_config_manager
+                    )
+                
+                # 调用处理器的页面OCR完成回调方法
+                self.ocr_searchable_handler.handle_page_ocr_completed(page_num, ocr_result)
+                
+                # 刷新页面显示
+                self.pdf_processor.clear_render_cache()
+                self.update_preview()
+
+        except Exception as e:
+            logger.error(f"处理第 {page_num + 1} 页OCR结果时出错: {e}")
+
+    def _on_all_pages_ocr_finished(self, success, message, progress_dialog, all_ocr_results):
+        """所有页面OCR完成回调，一次性处理所有结果"""
         progress_dialog.close()
         
         if success:
-            # 刷新页面显示
-            self.pdf_processor.clear_render_cache()
-            self.update_preview()
-            self.show_message(f"✅ {message}")
+            try:
+                # 初始化OCR可搜索PDF处理器（如果尚未初始化）
+                if not hasattr(self, 'ocr_searchable_handler') or not self.ocr_searchable_handler:
+                    self.ocr_searchable_handler = OCRSearchablePDFHandler(
+                        self.pdf_processor,
+                        self.ocr_plugin_manager,
+                        self.ocr_config_manager
+                    )
+                
+                # 显示进度对话框
+                batch_progress_dialog = QProgressDialog("正在生成可搜索PDF...", "取消", 0, 100, self)
+                batch_progress_dialog.setWindowTitle("生成可搜索PDF")
+                batch_progress_dialog.setWindowModality(Qt.WindowModal)
+                
+                # 定义进度回调函数
+                def progress_callback(value, msg):
+                    batch_progress_dialog.setValue(value)
+                    batch_progress_dialog.setLabelText(msg)
+                    QApplication.processEvents()  # 确保UI更新
+                    
+                    # 检查用户是否取消
+                    if batch_progress_dialog.wasCanceled():
+                        # 这里我们不能直接中断处理，因为是在同一线程中
+                        # 可以记录取消状态并在后续实现中断功能
+                        pass
+                
+                batch_progress_dialog.show()
+                
+                # 使用处理器的一次性批量处理方法
+                success, msg = self.ocr_searchable_handler.handle_batch_ocr_completed(all_ocr_results, progress_callback)
+                
+                batch_progress_dialog.close()
+                
+                if success:
+                    # 刷新页面显示
+                    self.pdf_processor.clear_render_cache()
+                    self.update_preview()
+                    self.show_message(f"✅ {message}，已生成可搜索PDF")
+                else:
+                    self.show_message(f"⚠️ {message}，但生成可搜索PDF时出现问题: {msg}")
+                    
+            except Exception as e:
+                logger.error(f"批量处理OCR结果时出错: {e}")
+                logger.error(traceback.format_exc())
+                self.show_message(f"⚠️ {message}，但处理结果时出错: {str(e)}")
         else:
             QMessageBox.critical(self, "错误", f"❌ {message}")
             self.show_message("❌ 批量OCR识别失败")
