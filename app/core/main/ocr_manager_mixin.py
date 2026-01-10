@@ -362,61 +362,18 @@ class OCRManagerMixin:
         """单页OCR完成回调"""
         try:
             if ocr_result and ocr_result.is_success():
-                # 将OCR文本插入PDF文档
-                page = self.pdf_processor.fitz_document[page_num]
-                
-                # 遍历OCR结果，将文本插入PDF
-                for item in ocr_result.data:
-                    text = item.get("text", "")
-                    bbox = item.get("bbox") or item.get("box", [])
-                    
-                    if not text or not bbox:
-                        continue
-                    
-                    # 计算文本插入位置
-                    if isinstance(bbox, list) and len(bbox) == 4:
-                        x_coords = [point[0] for point in bbox]
-                        y_coords = [point[1] for point in bbox]
-                        x = min(x_coords)
-                        y = max(y_coords)
-                        
-                        # 计算字体大小
-                        font_size = self._calculate_font_size(bbox, text)
-                        
-                        # 插入文本
-                        if hasattr(self, '_ocr_debug_mode') and self._ocr_debug_mode:
-                            # 调试模式
-                            page.insert_text(
-                                (x, y),
-                                text,
-                                color=(1, 0, 0, 1),
-                                fontsize=font_size,
-                                fontname="helv"
-                            )
-                            highlight = page.add_highlight_annot(fitz.Rect(x, y - font_size, x + len(text) * font_size * 0.6, y))
-                            highlight.set_colors(stroke=(1, 1, 0, 0.3))
-                            highlight.update()
-                        else:
-                            # 正常模式：透明文本
-                            page.insert_text(
-                                (x, y),
-                                text,
-                                color=(1, 1, 1, 0),
-                                fontsize=font_size,
-                                fontname="helv"
-                            )
-                
-                # 存储OCR结果到缓存
+                # 只存储OCR结果到缓存，供UI层使用
+                # 不再将文本插入PDF文档，避免双重文本层问题
                 ocr_data_with_scale = {
                     'ocr_result': ocr_result,
                     'zoom_factor': zoom_factor
                 }
-                
+
                 if hasattr(self.pdf_processor, 'ocr_results'):
                     self.pdf_processor.ocr_results[page_num] = ocr_data_with_scale
                 else:
                     self.pdf_processor.ocr_results = {page_num: ocr_data_with_scale}
-                    
+
         except Exception as e:
             logger.error(f"处理第 {page_num + 1} 页OCR结果时出错: {e}")
     
@@ -564,10 +521,10 @@ class OCRManagerMixin:
             self.show_message("❌ 创建可搜索PDF失败")
     
     def add_text_layer_to_page(self, page_num, ocr_result):
-        """在指定页面上添加OCR文本层（插入PDF文档）"""
+        """在指定页面上添加OCR文本层（仅使用UI层，不修改PDF文档）"""
         try:
             # 显示提示信息
-            self.show_message(f"正在将OCR文本插入第{page_num+1}页...")
+            self.show_message(f"正在为第{page_num+1}页添加OCR文本层...")
             QApplication.processEvents()  # 确保状态栏更新立即显示
 
             if not ocr_result.is_success():
@@ -575,74 +532,25 @@ class OCRManagerMixin:
                 QMessageBox.critical(self, "错误", f"OCR识别失败: {ocr_result.message}")
                 return
 
-            # 检查是否需要切换到临时文件
-            self._ensure_temp_file_if_needed()
-
-            # 获取PDF页面
+            # 检查页面是否已有文本
             page = self.pdf_processor.fitz_document[page_num]
-
-            # 检查页面是否已有文本（避免双重文本）
             has_existing_text = self._page_has_text(page)
 
             if has_existing_text:
-                self.show_message(f"⚠️ 第{page_num+1}页已有文本层，跳过OCR文本插入")
+                self.show_message(f"⚠️ 第{page_num+1}页已有文本层，跳过OCR文本层添加")
                 # 存储OCR结果到缓存（供调试模式使用）
                 self._store_ocr_result(page_num, ocr_result)
                 return
 
-            # 遍历OCR结果，将文本插入PDF
-            for item in ocr_result.data:
-                text = item.get("text", "")
-                bbox = item.get("bbox") or item.get("box", [])
-
-                if not text or not bbox:
-                    continue
-
-                # 计算文本插入位置
-                # bbox格式：[[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
-                if isinstance(bbox, list) and len(bbox) == 4:
-                    x_coords = [point[0] for point in bbox]
-                    y_coords = [point[1] for point in bbox]
-                    x = min(x_coords)
-                    y = max(y_coords)  # 文本基线位置
-
-                    # 计算字体大小
-                    font_size = self._calculate_font_size(bbox, text)
-
-                    # 插入文本
-                    # 调试模式：黄色背景，透明度0.3
-                    # 正常模式：完全透明
-                    if hasattr(self, '_ocr_debug_mode') and self._ocr_debug_mode:
-                        # 调试模式：可见文本，黄色背景
-                        page.insert_text(
-                            (x, y),
-                            text,
-                            color=(1, 0, 0, 1),  # 黑色文字
-                            fontsize=font_size,
-                            fontname="helv"
-                        )
-                        # 添加黄色高亮注释
-                        highlight = page.add_highlight_annot(fitz.Rect(x, y - font_size, x + len(text) * font_size * 0.6, y))
-                        highlight.set_colors(stroke=(1, 1, 0, 0.3))  # 黄色，透明度0.3
-                        highlight.update()
-                    else:
-                        # 正常模式：透明文本（不可见但可搜索和复制）
-                        page.insert_text(
-                            (x, y),
-                            text,
-                            color=(1, 1, 1, 0),  # 白色，完全透明（alpha=0）
-                            fontsize=font_size,
-                            fontname="helv"
-                        )
-
-            # 存储OCR结果到缓存（供调试模式使用）
+            # 只存储OCR结果到缓存，供UI层使用
+            # 不再插入文本到PDF文档中，避免双重文本层问题
             self._store_ocr_result(page_num, ocr_result)
 
             # 清除渲染缓存并刷新显示
             self.pdf_processor.clear_render_cache()
             self.update_preview()
 
-            self.show_message(f"✅ 第{page_num+1}页OCR识别完成，文本已插入PDF，共{len(ocr_result.data)}个文本元素")
+            self.show_message(f"✅ 第{page_num+1}页OCR识别完成，文本层已添加，共{len(ocr_result.data)}个文本元素")
 
         except Exception as e:
             logger.error(f"添加OCR文本层时出错: {e}")
