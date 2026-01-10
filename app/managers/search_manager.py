@@ -194,7 +194,6 @@ class SearchManager:
 
         if success:
             self.search_results = result['results']
-            self.current_search_index = 0
             self.last_search_text = search_text
 
             # 更新搜索面板的结果标签
@@ -204,9 +203,11 @@ class SearchManager:
             self.parent.show_message(result['message'])
 
             if self.search_results:
-                self.highlight_current_match()
-
-            self.parent.update_preview()
+                # 设置初始索引为0（第一个匹配项）
+                self.current_search_index = 0
+                self._navigate_to_match()  # 跳转到第一个匹配项
+            else:
+                self.parent.update_preview()  # 如果没有结果，仍需更新预览
         else:
             # 更新搜索面板的结果标签
             if self.search_panel:
@@ -301,6 +302,11 @@ class SearchManager:
         self.parent.pdf_processor.current_page = result['page_index']
         self.highlight_current_match()
         self.parent.update_preview()
+        
+        # 确保UI滚动到目标页面
+        if hasattr(self.parent, 'virtual_scroll'):
+            # 滚动到目标页面（使用1基索引）
+            self.parent.virtual_scroll.scroll_to_page(result['page_index'])
     
     def highlight_current_match(self):
         """高亮当前匹配项"""
