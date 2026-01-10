@@ -224,8 +224,15 @@ class OCRSearchablePDFHandler:
         # 将页面OCR结果存储到管理器中
         self.ocr_searchable_manager.page_ocr_results[page_num] = ocr_result
         
-        # 注意：这里不立即创建或更新可搜索PDF，而是等到所有页面OCR完成后统一处理
-        # 这是为了避免在批量OCR过程中频繁地重新生成整个PDF文件
+        # 立即为当前页面创建或更新可搜索PDF，使当前页面立即变成可搜索的
+        success, message = self._create_or_update_searchable_pdf_for_page(page_num, ocr_result)
+        if success:
+            logger.info(f"第{page_num+1}页OCR完成，已更新为可搜索PDF")
+        else:
+            logger.error(f"更新第{page_num+1}页为可搜索PDF失败: {message}")
+            # 作为备选方案，尝试启用完整的可搜索OCR功能
+            if not self.is_using_searchable_pdf:
+                self.enable_searchable_ocr_feature()
         
     def handle_batch_ocr_completed(self, ocr_results_dict, progress_callback=None):
         """

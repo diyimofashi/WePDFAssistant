@@ -381,6 +381,10 @@ class OCRManagerMixin:
                 # 刷新页面显示
                 self.pdf_processor.clear_render_cache()
                 self.update_preview()
+                
+                # 确保回到原页面
+                if hasattr(self, 'virtual_scroll'):
+                    self.virtual_scroll.scroll_to_page(page_num)
 
         except Exception as e:
             logger.error(f"处理第 {page_num + 1} 页OCR结果时出错: {e}")
@@ -396,14 +400,18 @@ class OCRManagerMixin:
                         self.ocr_plugin_manager,
                         self.ocr_config_manager
                     )
-                
+                    
                 # 调用处理器的页面OCR完成回调方法
                 self.ocr_searchable_handler.handle_page_ocr_completed(page_num, ocr_result)
-                
+                    
                 # 刷新页面显示
                 self.pdf_processor.clear_render_cache()
                 self.update_preview()
-
+                    
+                # 确保回到原页面
+                if hasattr(self, 'virtual_scroll'):
+                    self.virtual_scroll.scroll_to_page(page_num)
+    
         except Exception as e:
             logger.error(f"处理第 {page_num + 1} 页OCR结果时出错: {e}")
 
@@ -449,6 +457,12 @@ class OCRManagerMixin:
                     # 刷新页面显示
                     self.pdf_processor.clear_render_cache()
                     self.update_preview()
+                    
+                    # 批量OCR完成后尝试回到之前所在的页面（这里保持在当前显示的页面）
+                    current_page_index = self.pdf_processor.current_page
+                    if hasattr(self, 'virtual_scroll'):
+                        self.virtual_scroll.scroll_to_page(current_page_index)
+                    
                     self.show_message(f"✅ {message}，已生成可搜索PDF")
                 else:
                     self.show_message(f"⚠️ {message}，但生成可搜索PDF时出现问题: {msg}")
@@ -610,6 +624,10 @@ class OCRManagerMixin:
             # 刷新页面显示
             self.pdf_processor.clear_render_cache()
             self.update_preview()
+            
+            # OCR完成后确保回到原页面
+            if hasattr(self, 'virtual_scroll'):
+                self.virtual_scroll.scroll_to_page(page_num)
             
             self.show_message(f"✅ 第{page_num+1}页OCR识别完成，已添加到可搜索PDF")
             
