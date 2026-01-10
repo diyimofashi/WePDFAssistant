@@ -16,6 +16,7 @@ from app.utils.logger import get_logger
 from app.ui.ocr_settings_dialog import OCRSettingsDialog
 from app.core.ocr.ocr_plugin_interface import OCRResult, OCRErrorCode
 from app.core.ocr.ocr_searchable_pdf import create_searchable_pdf
+from app.core.ocr.ocr_searchable_manager import OCRSearchablePDFHandler
 
 
 logger = get_logger('main')
@@ -157,8 +158,8 @@ class OCRManagerMixin:
                 
                 # 处理OCR结果
                 if ocr_result.is_success():
-                    # 在文档上增加文本层
-                    self.add_text_layer_to_page(current_page, ocr_result)
+                    # 创建临时可搜索PDF以支持搜索功能
+                    self._create_ocr_searchable_pdf_for_current_page(current_page, ocr_result)
                     # 不再显示OCR结果对话框
                 else:
                     QMessageBox.critical(self, "OCR识别失败", f"识别失败: {ocr_result.message}")
@@ -362,17 +363,20 @@ class OCRManagerMixin:
         """单页OCR完成回调"""
         try:
             if ocr_result and ocr_result.is_success():
-                # 只存储OCR结果到缓存，供UI层使用
-                # 不再将文本插入PDF文档，避免双重文本层问题
-                ocr_data_with_scale = {
-                    'ocr_result': ocr_result,
-                    'zoom_factor': zoom_factor
-                }
-
-                if hasattr(self.pdf_processor, 'ocr_results'):
-                    self.pdf_processor.ocr_results[page_num] = ocr_data_with_scale
-                else:
-                    self.pdf_processor.ocr_results = {page_num: ocr_data_with_scale}
+                # 初始化OCR可搜索PDF处理器（如果尚未初始化）
+                if not hasattr(self, 'ocr_searchable_handler') or not self.ocr_searchable_handler:
+                    self.ocr_searchable_handler = OCRSearchablePDFHandler(
+                        self.pdf_processor,
+                        self.ocr_plugin_manager,
+                        self.ocr_config_manager
+                    )
+                
+                # 调用处理器的页面OCR完成回调方法
+                self.ocr_searchable_handler.handle_page_ocr_completed(page_num, ocr_result)
+                
+                # 刷新页面显示
+                self.pdf_processor.clear_render_cache()
+                self.update_preview()
 
         except Exception as e:
             logger.error(f"处理第 {page_num + 1} 页OCR结果时出错: {e}")
@@ -520,80 +524,32 @@ class OCRManagerMixin:
             QMessageBox.critical(self, "错误", f"❌ {message}")
             self.show_message("❌ 创建可搜索PDF失败")
     
-    def add_text_layer_to_page(self, page_num, ocr_result):
-        """在指定页面上添加OCR文本层（仅使用UI层，不修改PDF文档）"""
+
+    
+    def _create_ocr_searchable_pdf_for_current_page(self, page_num, ocr_result):
+        """为当前页面创建OCR可搜索PDF"""
         try:
-            # 显示提示信息
-            self.show_message(f"正在为第{page_num+1}页添加OCR文本层...")
-            QApplication.processEvents()  # 确保状态栏更新立即显示
-
-            if not ocr_result.is_success():
-                logger.error(f"OCR识别失败: {ocr_result.message}")
-                QMessageBox.critical(self, "错误", f"OCR识别失败: {ocr_result.message}")
-                return
-
-            # 检查页面是否已有文本
-            page = self.pdf_processor.fitz_document[page_num]
-            has_existing_text = self._page_has_text(page)
-
-            if has_existing_text:
-                self.show_message(f"⚠️ 第{page_num+1}页已有文本层，跳过OCR文本层添加")
-                # 存储OCR结果到缓存（供调试模式使用）
-                self._store_ocr_result(page_num, ocr_result)
-                return
-
-            # 只存储OCR结果到缓存，供UI层使用
-            # 不再插入文本到PDF文档中，避免双重文本层问题
-            self._store_ocr_result(page_num, ocr_result)
-
-            # 清除渲染缓存并刷新显示
+            # 初始化OCR可搜索PDF处理器（如果尚未初始化）
+            if not hasattr(self, 'ocr_searchable_handler') or not self.ocr_searchable_handler:
+                self.ocr_searchable_handler = OCRSearchablePDFHandler(
+                    self.pdf_processor,
+                    self.ocr_plugin_manager,
+                    self.ocr_config_manager
+                )
+            
+            # 调用处理器的页面OCR完成回调方法
+            self.ocr_searchable_handler.handle_page_ocr_completed(page_num, ocr_result)
+            
+            # 刷新页面显示
             self.pdf_processor.clear_render_cache()
             self.update_preview()
-
-            self.show_message(f"✅ 第{page_num+1}页OCR识别完成，文本层已添加，共{len(ocr_result.data)}个文本元素")
-
+            
+            self.show_message(f"✅ 第{page_num+1}页OCR识别完成，已添加到可搜索PDF")
+            
         except Exception as e:
-            logger.error(f"添加OCR文本层时出错: {e}")
+            logger.error(f"创建OCR可搜索PDF时出错: {e}")
             logger.error(traceback.format_exc())
-            QMessageBox.critical(self, "错误", f"添加OCR文本层失败: {str(e)}")
-
-    def _page_has_text(self, page):
-        """检查页面是否已有文本"""
-        try:
-            text = page.get_text()
-            return bool(text.strip())
-        except Exception as e:
-            logger.error(f"检查页面文本失败: {e}")
-            return False
-
-    def _store_ocr_result(self, page_num, ocr_result):
-        """存储OCR结果到缓存"""
-        if hasattr(self.pdf_processor, 'ocr_results'):
-            self.pdf_processor.ocr_results[page_num] = {
-                'ocr_result': ocr_result,
-                'zoom_factor': self.pdf_processor.zoom_factor
-            }
-        else:
-            self.pdf_processor.ocr_results = {
-                page_num: {
-                    'ocr_result': ocr_result,
-                    'zoom_factor': self.pdf_processor.zoom_factor
-                }
-            }
-    
-    def _calculate_font_size(self, bbox, text):
-        """根据bbox和文本计算合适的字体大小"""
-        if not bbox or not text:
-            return 10
-        
-        # 计算bbox高度
-        y_coords = [point[1] for point in bbox]
-        height = max(y_coords) - min(y_coords)
-        
-        # 字体大小约为bbox高度的80%
-        font_size = max(int(height * 0.8), 8)
-        
-        return font_size
+            QMessageBox.critical(self, "错误", f"创建OCR可搜索PDF失败: {str(e)}")
     
     def _ensure_temp_file_if_needed(self):
         """如果当前是原始文件，切换到临时文件以避免修改原始文件"""
@@ -638,3 +594,66 @@ class OCRManagerMixin:
         except Exception as e:
             logger.error(f"切换到临时文件失败: {e}")
             raise
+    
+    def enable_ocr_searchable_pdf(self):
+        """启用OCR可搜索PDF功能"""
+        try:
+            # 检查是否有打开的PDF文档
+            if not self.pdf_processor.fitz_document:
+                QMessageBox.warning(self, "警告", "请先打开PDF文件")
+                return
+            
+            # 检查是否有配置OCR插件
+            current_plugin_name = self.ocr_config_manager.get_current_plugin()
+            if not current_plugin_name:
+                QMessageBox.warning(self, "警告", "请先在OCR设置中选择一个OCR插件")
+                return
+            
+            # 初始化OCR可搜索PDF处理器
+            if not hasattr(self, 'ocr_searchable_handler') or not self.ocr_searchable_handler:
+                self.ocr_searchable_handler = OCRSearchablePDFHandler(
+                    self.pdf_processor,
+                    self.ocr_plugin_manager,
+                    self.ocr_config_manager
+                )
+            
+            # 显示进度对话框
+            progress_dialog = QProgressDialog("正在创建临时可搜索PDF以支持搜索功能...", "取消", 0, 100, self)
+            progress_dialog.setWindowTitle("OCR可搜索PDF")
+            progress_dialog.setWindowModality(Qt.WindowModal)
+            progress_dialog.show()
+            
+            def progress_callback(value, message):
+                progress_dialog.setValue(value)
+                progress_dialog.setLabelText(message)
+                QApplication.processEvents()  # 确保进度条更新
+            
+            # 启用OCR可搜索功能
+            success, message = self.ocr_searchable_handler.enable_searchable_ocr_feature(progress_callback)
+            
+            progress_dialog.close()
+            
+            if success:
+                QMessageBox.information(self, "成功", f"✅ {message}\n\n现在可以搜索OCR识别的文本了！")
+                self.show_message("OCR可搜索功能已启用")
+            else:
+                QMessageBox.critical(self, "错误", f"❌ {message}")
+                self.show_message("OCR可搜索功能启用失败")
+                
+        except Exception as e:
+            logger.error(f"启用OCR可搜索PDF功能时出错: {e}")
+            logger.error(traceback.format_exc())
+            QMessageBox.critical(self, "错误", f"启用OCR可搜索功能失败: {str(e)}")
+
+    def disable_ocr_searchable_pdf(self):
+        """禁用OCR可搜索PDF功能，恢复原始PDF"""
+        try:
+            if hasattr(self, 'ocr_searchable_handler') and self.ocr_searchable_handler:
+                self.ocr_searchable_handler.disable_searchable_ocr_feature()
+                self.show_message("OCR可搜索功能已禁用，恢复原始PDF")
+            else:
+                self.show_message("OCR可搜索功能未启用")
+        except Exception as e:
+            logger.error(f"禁用OCR可搜索PDF功能时出错: {e}")
+            logger.error(traceback.format_exc())
+            QMessageBox.critical(self, "错误", f"禁用OCR可搜索功能失败: {str(e)}")

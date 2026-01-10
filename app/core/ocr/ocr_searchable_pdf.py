@@ -248,14 +248,26 @@ class OCRSearchablePDF:
         protation = page.rotation
         
         # 遍历所有文本块
+        logger.debug(f"开始添加OCR文本层，共 {len(text_blocks)} 个文本块")
+        valid_text_count = 0
         for block in text_blocks:
             text = block.get("text", "")
             # 兼容不同的OCR插件格式：box或bbox
             box = block.get("box", block.get("bbox", []))
-            
+                    
+            # 更严格的过滤条件，确保只有有效文本才会被添加
             if not text or len(box) != 4:
                 continue
-                
+                    
+            # 过滤掉纯空白字符
+            stripped_text = text.strip()
+            if not stripped_text:
+                continue
+                    
+                    
+            valid_text_count += 1
+            logger.debug(f"处理第 {valid_text_count} 个有效文本块: '{stripped_text}'")
+                    
             # 根据缩放比例调整坐标
             scaled_box = []
             for point in box:
@@ -300,10 +312,32 @@ class OCRSearchablePDF:
                 rect = fitz.Rect(x0, y0, x2, y2)
                 page.draw_rect(rect, color=(1, 1, 0), fill=(1, 1, 0), width=0, fill_opacity=0.3, overlay=True)
             
-            # 插入点的旋转后坐标（文本垂直居中）
             # 计算文本基线位置，使其在框内垂直居中
             baseline_y = (y0 + y2) / 2 + fontsize / 2  # 垂直居中并考虑字体基线
-            point = fitz.Point(x0, baseline_y) * page.derotation_matrix
+            point = fitz.Point(x0, baseline_y)
+            
+            # 如果页面有旋转，需要调整坐标以补偿旋转
+            if protation != 0:
+                # 计算旋转中心点（页面中心）
+                center_x = page.rect.width / 2
+                center_y = page.rect.height / 2
+                
+                # 将点转换到以页面中心为原点的坐标系
+                rel_x = point.x - center_x
+                rel_y = point.y - center_y
+                
+                # 根据旋转角度调整坐标
+                import math
+                rad = math.radians(-protation)  # 负号是因为我们需要反向旋转
+                cos_val = math.cos(rad)
+                sin_val = math.sin(rad)
+                
+                # 应用旋转变换
+                new_rel_x = rel_x * cos_val - rel_y * sin_val
+                new_rel_y = rel_x * sin_val + rel_y * cos_val
+                
+                # 转换回原始坐标系
+                point = fitz.Point(new_rel_x + center_x, new_rel_y + center_y)
             
             # 检查坐标是否在页面范围内
             page_rect = page.rect
@@ -324,7 +358,6 @@ class OCRSearchablePDF:
                         point,
                         text,
                         fontsize=fontsize,
-                        rotate=protation,  # 文本角度设定
                         fontname="UniversalFont",  # 使用通用字体
                         color=(0, 0, 0),  # 黑色文本
                         fill_opacity=0.7,  # 半透明填充
@@ -336,7 +369,6 @@ class OCRSearchablePDF:
                         point,
                         text,
                         fontsize=fontsize,
-                        rotate=protation,  # 文本角度设定
                         fontname="UniversalFont",  # 使用通用字体
                         fill_opacity=0,  # 透明度为0，完全透明
                         stroke_opacity=0  # 描边透明度为0
@@ -350,7 +382,6 @@ class OCRSearchablePDF:
                             point,
                             text,
                             fontsize=max(fontsize/2, 3),
-                            rotate=protation,
                             fontname="UniversalFont",  # 使用通用字体
                             color=(0, 0, 0),
                             fill_opacity=0.7,
@@ -361,7 +392,6 @@ class OCRSearchablePDF:
                             point,
                             text,
                             fontsize=max(fontsize/2, 3),
-                            rotate=protation,
                             fontname="UniversalFont",  # 使用通用字体
                             fill_opacity=0,
                             stroke_opacity=0

@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QCheckBox,
                              QPushButton, QGroupBox, QMessageBox, QLineEdit,
                              QLabel, QWidget, QFrame)
 from PyQt5.QtCore import Qt
+import fitz
 from app.utils.logger import get_logger
 
 logger = get_logger('search_manager')
@@ -63,7 +64,7 @@ class SearchPanel(QWidget):
         nav_layout.addStretch()  # 添加弹簧，将搜索按钮推到最右侧
 
         self.search_btn = QPushButton("🔍 搜索")
-        self.search_btn.clicked.connect(self.search_manager.search_next_match)
+        self.search_btn.clicked.connect(self.search_manager.search_new_query)
         nav_layout.addWidget(self.search_btn)
 
         layout.addLayout(nav_layout)
@@ -139,14 +140,47 @@ class SearchManager:
         else:
             # 如果搜索面板不存在，尝试从父窗口获取（兼容旧代码）
             search_text = self.parent.search_lineedit.text().strip() if hasattr(self.parent, 'search_lineedit') else ""
-
+            
+        # 添加调试日志，确认获取的搜索文本
+        logger.debug(f"开始搜索，获取的搜索文本: '{search_text}'")
+    
         if not search_text:
+            logger.debug("搜索文本为空，提示用户输入关键词")
             QMessageBox.information(self.parent, "搜索", "请输入要搜索的关键词")
             return
 
         if not self.parent.pdf_processor.fitz_document:
             QMessageBox.information(self.parent, "搜索", "请先打开PDF文件")
             return
+
+        # 检查是否存在OCR可搜索PDF处理器，如果是，则使用其文档
+        # 不在搜索后自动切换回原始文档，保持当前文档状态
+        current_doc_path = getattr(self.parent.pdf_processor, 'current_file', None)
+        
+        if hasattr(self.parent, 'ocr_searchable_handler') and self.parent.ocr_searchable_handler:
+            # 如果启用了OCR可搜索PDF功能，确保使用正确的文档
+            try:
+                # 获取当前应该使用的文档路径
+                searchable_doc_path = self.parent.ocr_searchable_handler.get_current_document_path()
+                if searchable_doc_path:
+                    # 确保当前文档是正确的OCR可搜索PDF
+                    current_doc_is_searchable = self.parent.ocr_searchable_handler.is_using_searchable_pdf
+                    if current_doc_is_searchable:
+                        # 如果当前正在使用可搜索PDF，无需切换
+                        logger.debug(f"当前正在使用OCR可搜索PDF进行搜索: {searchable_doc_path}")
+                    else:
+                        # 如果当前不是可搜索PDF，暂时切换
+                        logger.debug(f"临时切换到OCR可搜索PDF进行搜索: {searchable_doc_path}")
+                        current_page = self.parent.pdf_processor.current_page
+                        current_zoom = getattr(self.parent.pdf_processor, 'zoom_factor', 1.0)
+                        
+                        # 关闭当前文档并打开可搜索文档
+                        self.parent.pdf_processor.fitz_document.close()
+                        self.parent.pdf_processor.fitz_document = fitz.open(searchable_doc_path)
+                        self.parent.pdf_processor.current_page = current_page
+                        setattr(self.parent.pdf_processor, 'zoom_factor', current_zoom)
+            except Exception as e:
+                logger.warning(f"切换到可搜索PDF文档失败，使用原始文档进行搜索: {e}")
 
         # 直接使用PDF原生搜索（包括OCR插入的文本）
         success, result = self.parent.pdf_processor.search_text(
@@ -175,10 +209,17 @@ class SearchManager:
             if self.search_panel:
                 self.search_panel.update_result_label("搜索失败")
             self.parent.show_message(f"搜索失败: {result}")
-            QMessageBox.information(self.parent, "搜索", result)
+            msg_box = QMessageBox(self.parent)
+            msg_box.setIcon(QMessageBox.Information)
+            msg_box.setWindowTitle("搜索")
+            msg_box.setText(result)
+            msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowStaysOnTopHint)
+            msg_box.exec_()
+            
+
     
     def search_next_match(self):
-        """搜索按钮：第一次执行搜索，之后跳到下一个匹配项"""
+        """搜索按钮：执行搜索或跳到下一个匹配项"""
         # 如果没有搜索结果，执行搜索
         if not self.search_results:
             self.search_text()
@@ -194,6 +235,10 @@ class SearchManager:
             self.parent.show_message(message)
             if self.search_panel:
                 self.search_panel.update_result_label(message)
+    
+    def search_new_query(self):
+        """重新执行搜索，不管之前是否有搜索结果"""
+        self.search_text()
 
     def search_next(self):
         """搜索下一个匹配项"""
