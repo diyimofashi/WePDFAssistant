@@ -531,7 +531,9 @@ class FileManager:
 
         total_pages = self.parent.pdf_processor.get_total_pages()
         self.parent.page_spinbox.setMaximum(total_pages)
-        self.parent.total_pages_label.setText(f" / {total_pages}")
+        # 更新工具栏的总页数标签（状态栏标签已移除）
+        if hasattr(self.parent, 'toolbar_total_pages_label'):
+            self.parent.toolbar_total_pages_label.setText(f"/ {total_pages}")
         self.parent._force_refresh_preview()
 
         if self.parent.show_thumbnails:

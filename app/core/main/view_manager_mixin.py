@@ -32,9 +32,8 @@ class ViewManagerMixin:
         else:
             # 如果视图控制器没有该方法，尝试其他方式
             logger.warning(f"视图控制器不支持设置缩放级别: {level}%")
-            # 通过状态栏显示缩放级别
-            if hasattr(self, 'zoom_label'):
-                self.zoom_label.setText(f"{level}%")
+            # 状态栏缩放显示已移除
+            pass
     
     def previous_page(self):
         return self.view_controller.previous_page()

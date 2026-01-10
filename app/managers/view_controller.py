@@ -64,9 +64,7 @@ class ViewController:
         if success:
             self.parent.update_preview()
         self.parent.show_message(f"缩放到 {level}%")
-        # 更新状态栏显示
-        if hasattr(self.parent, 'zoom_label'):
-            self.parent.zoom_label.setText(f"{level}%")
+        # 状态栏缩放显示已移除
     
     def previous_page(self):
         """上一页"""

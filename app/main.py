@@ -144,7 +144,6 @@ class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailMana
             success, message = self.pdf_processor.set_zoom(next_zoom)
             if success:
                 self.update_preview()
-                self.update_zoom_label()
             self.show_message(message)
     
     def zoom_out(self):
@@ -157,7 +156,6 @@ class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailMana
             success, message = self.pdf_processor.set_zoom(next_zoom)
             if success:
                 self.update_preview()
-                self.update_zoom_label()
             self.show_message(message)
         
     def _get_next_zoom_level(self, current_zoom, direction):
@@ -212,9 +210,9 @@ class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailMana
                 # 更新预览
                 self.update_preview()
                 
-                # 更新缩放标签显示
-                if hasattr(self, 'zoom_label'):
-                    self.zoom_label.setText(f"{zoom_value}%")
+                # 更新缩放标签显示（已移除）
+                # if hasattr(self, 'zoom_label'):
+                #     self.zoom_label.setText(f"{zoom_value}%")
                     
                 # 更新下拉列表显示，以防输入了无效值
                 self.zoom_combo.setCurrentText(f"{zoom_value}%")
@@ -230,19 +228,9 @@ class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailMana
             self.show_message(f"设置缩放比例失败: {str(e)}")
 
     def update_zoom_label(self):
-        """更新缩放显示"""
-        if hasattr(self, 'zoom_label') and hasattr(self, 'pdf_processor'):
-            zoom_percent = int(self.pdf_processor.get_zoom() * 100)
-            self.zoom_label.setText(f"{zoom_percent}%")
-            
-            # 同时更新缩放下拉列表的显示
-            if hasattr(self, 'zoom_combo') and self.zoom_combo:
-                # 尝试找到最接近的预定义缩放级别
-                current_zoom = self.pdf_processor.get_zoom()
-                closest_level = self._find_closest_zoom_level(current_zoom)
-                if closest_level is not None:
-                    percent_value = int(closest_level * 100)
-                    self.zoom_combo.setCurrentText(f"{percent_value}%")
+        """更新缩放显示 - 已移除缩放显示功能"""
+        # 此方法保留以兼容调用，但不执行任何操作
+        pass
     
     def _find_closest_zoom_level(self, current_zoom):
         """查找最接近的预定义缩放级别"""

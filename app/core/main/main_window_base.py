@@ -194,18 +194,6 @@ class MainWindowBase(QMainWindow):
         self.statusbar = self.statusBar()
         self.status_label = QLabel("就绪")
         self.statusbar.addWidget(self.status_label)
-        
-        # 添加页码信息
-        self.page_label = QLabel("")
-        self.statusbar.addPermanentWidget(self.page_label)
-        
-        # 添加总页数标签（兼容旧代码）
-        self.total_pages_label = QLabel("/ 0")
-        self.statusbar.addPermanentWidget(self.total_pages_label)
-        
-        # 添加缩放信息
-        self.zoom_label = QLabel("100%")
-        self.statusbar.addPermanentWidget(self.zoom_label)
     
     def create_thumbnail_area(self, main_layout):
         """创建缩略图区域"""
@@ -365,51 +353,19 @@ class MainWindowBase(QMainWindow):
         self.status_label.setText(f"📢 {modified_indicator}{message}")
     
     def update_page_label(self):
-        """更新页码显示"""
-        if hasattr(self, 'page_label') and hasattr(self, 'pdf_processor'):
-            try:
-                # 获取当前页面和总页数
-                current_page = getattr(self.pdf_processor, 'current_page', 0)
-                total_pages = self.pdf_processor.get_total_pages() if hasattr(self.pdf_processor, 'get_total_pages') else getattr(self.pdf_processor, 'total_pages', 0)
-                
-                if current_page >= 0 and total_pages > 0:
-                    # 检查是否为多图片文档
-                    if hasattr(self.pdf_processor, 'multi_image_paths') and self.pdf_processor.multi_image_paths:
-                        image_count = len(self.pdf_processor.multi_image_paths)
-                        if image_count > 1:
-                            self.page_label.setText(f"第 {current_page + 1} / {total_pages} 页 | {image_count} 张图片")
-                        else:
-                            self.page_label.setText(f"第 {current_page + 1} / {total_pages} 页")
-                    else:
-                        self.page_label.setText(f"第 {current_page + 1} / {total_pages} 页")
-                else:
-                    self.page_label.setText("")
-            except Exception as e:
-                from app.utils.logger import get_logger
-                logger = get_logger('main')
-                logger.error(f"更新页码显示失败: {e}")
-                self.page_label.setText("")
+        """更新页码显示 - 已移除页码显示功能"""
+        # 此方法保留以兼容调用，但不执行任何操作
+        pass
     
     def update_zoom_label(self):
-        """更新缩放显示"""
-        if hasattr(self, 'zoom_label') and hasattr(self, 'pdf_processor'):
-            zoom_percent = int(self.pdf_processor.get_zoom() * 100)
-            self.zoom_label.setText(f"{zoom_percent}%")
+        """更新缩放显示 - 已移除缩放显示功能"""
+        # 此方法保留以兼容调用，但不执行任何操作
+        pass
     
     def _on_page_changed(self):
         """页面变化时的处理"""
-        self.update_page_label()
         self.update_save_actions_state()
-        # 也更新总页数显示
-        if hasattr(self, 'total_pages_label') and self.pdf_processor:
-            try:
-                total_pages = self.pdf_processor.get_total_pages()
-                self.total_pages_label.setText(f"/ {total_pages}")
-            except Exception as e:
-                from app.utils.logger import get_logger
-                logger = get_logger('main')
-                logger.error(f"页面变化时更新总页数显示失败: {e}")
-                self.total_pages_label.setText("/ 0")
+        # 状态栏总页数显示已移除，仅更新工具栏总页数显示
         
         # 更新工具栏的总页码标签
         if hasattr(self, 'toolbar_total_pages_label') and self.pdf_processor:
@@ -436,8 +392,8 @@ class MainWindowBase(QMainWindow):
     
     def _on_page_rendered(self, page_num):
         """页面渲染完成处理"""
-        if page_num == self.pdf_processor.current_page:
-            self.update_page_label()
+        # 页面渲染完成处理，无需更新页码标签（已移除页码显示）
+        pass
     
     def _on_thumbnail_ready(self, page_num, thumbnail):
         """缩略图准备完成处理"""
@@ -507,10 +463,9 @@ class MainWindowBase(QMainWindow):
 
                 total_pages = self.pdf_processor.get_total_pages()
                 zoom_level = int(self.pdf_processor.get_zoom() * 100)
-                self.show_message(f"⚡ 虚拟滚动模式 | 第 {current_page} 页 / 共 {total_pages} 页 | 缩放: {zoom_level}%")
-                self.total_pages_label.setText(f"/ {total_pages}")
+                self.show_message(f"⚡ 虚拟滚动模式 | 共 {total_pages} 页 | 缩放: {zoom_level}%")
                 
-                # 同时更新工具栏的总页数标签
+                # 更新工具栏的总页数标签
                 if hasattr(self, 'toolbar_total_pages_label'):
                     self.toolbar_total_pages_label.setText(f"/ {total_pages}")
 

@@ -30,21 +30,16 @@ class PDFManagerMixin:
                 from app.config.settings import AppSettings
                 self.setWindowTitle(f"{AppSettings.APP_NAME} - {os.path.basename(self.pdf_processor.current_file)}")
             
-            # 更新页面和缩放信息
-            self.update_page_label()
-            self.update_zoom_label()
+            # 更新缩放信息（页面信息和缩放信息已移除，此调用保留兼容性）
+            # self.update_zoom_label() # 已注释掉实际调用
             
-            if hasattr(self, 'total_pages_label') and self.pdf_processor:
+            # 更新工具栏的总页数标签
+            if hasattr(self, 'toolbar_total_pages_label') and self.pdf_processor:
                 try:
                     total_pages = self.pdf_processor.get_total_pages()
-                    self.total_pages_label.setText(f"/ {total_pages}")
-                    
-                    # 同时更新工具栏的总页数标签
-                    if hasattr(self, 'toolbar_total_pages_label'):
-                        self.toolbar_total_pages_label.setText(f"/ {total_pages}")
+                    self.toolbar_total_pages_label.setText(f"/ {total_pages}")
                 except Exception as e:
-                    logger.error(f"更新总页数显示失败: {e}")
-                    self.total_pages_label.setText("/ 0")
+                    logger.error(f"更新工具栏总页数显示失败: {e}")
                     if hasattr(self, 'toolbar_total_pages_label'):
                         self.toolbar_total_pages_label.setText("/ 0")
             
@@ -337,7 +332,6 @@ class PDFManagerMixin:
             
             total_pages = self.pdf_processor.get_total_pages()
             self.page_spinbox.setMaximum(total_pages)
-            self.total_pages_label.setText(f"/ {total_pages}")
             # 更新工具栏的总页码标签
             if hasattr(self, 'toolbar_total_pages_label'):
                 self.toolbar_total_pages_label.setText(f"/ {total_pages}")
