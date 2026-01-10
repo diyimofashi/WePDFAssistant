@@ -29,7 +29,7 @@ class SearchPanel(QWidget):
         input_layout.setSpacing(5)
         input_layout.addWidget(QLabel("🔍 搜索:"))
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("输入关键词...")
+        self.search_input.setPlaceholderText("请输入要搜索的关键词")
         self.search_input.returnPressed.connect(self.search_manager.search_text)
         input_layout.addWidget(self.search_input, 1)  # stretch=1，占据更多空间
         layout.addLayout(input_layout)
@@ -75,13 +75,6 @@ class SearchPanel(QWidget):
         self.result_label.setStyleSheet("color: gray; font-size: 12px;")
         layout.addWidget(self.result_label)
 
-        # 分隔线
-        line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(line)
-
-        layout.addStretch()
         self.setLayout(layout)
 
     def _on_options_changed(self):
@@ -116,7 +109,7 @@ class SearchManager:
             self.search_panel = SearchPanel(self)
             self.search_panel.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
             self.search_panel.setWindowTitle("搜索")
-            self.search_panel.setFixedSize(400, 320)  # 增加宽度到400
+            self.search_panel.setFixedWidth(400)  # 设置固定宽度，高度自适应
 
         self.search_panel.show()
         self.search_panel.activateWindow()
@@ -146,11 +139,21 @@ class SearchManager:
     
         if not search_text:
             logger.debug("搜索文本为空，提示用户输入关键词")
-            QMessageBox.information(self.parent, "搜索", "请输入要搜索的关键词")
+            msg_box = QMessageBox(self.parent)
+            msg_box.setIcon(QMessageBox.Information)
+            msg_box.setWindowTitle("搜索")
+            msg_box.setText("请输入要搜索的关键词")
+            msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowStaysOnTopHint)
+            msg_box.exec_()
             return
 
         if not self.parent.pdf_processor.fitz_document:
-            QMessageBox.information(self.parent, "搜索", "请先打开PDF文件")
+            msg_box = QMessageBox(self.parent)
+            msg_box.setIcon(QMessageBox.Information)
+            msg_box.setWindowTitle("搜索")
+            msg_box.setText("请先打开PDF文件")
+            msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowStaysOnTopHint)
+            msg_box.exec_()
             return
 
         # 检查是否存在OCR可搜索PDF处理器，如果是，则使用其文档
@@ -243,7 +246,12 @@ class SearchManager:
     def search_next(self):
         """搜索下一个匹配项"""
         if not self.search_results:
-            QMessageBox.information(self.parent, "搜索", "请先执行搜索")
+            msg_box = QMessageBox(self.parent)
+            msg_box.setIcon(QMessageBox.Information)
+            msg_box.setWindowTitle("搜索")
+            msg_box.setText("请先执行搜索")
+            msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowStaysOnTopHint)
+            msg_box.exec_()
             return
 
         if self.current_search_index < len(self.search_results) - 1:
@@ -264,7 +272,12 @@ class SearchManager:
     def search_previous(self):
         """搜索上一个匹配项"""
         if not self.search_results:
-            QMessageBox.information(self.parent, "搜索", "请先执行搜索")
+            msg_box = QMessageBox(self.parent)
+            msg_box.setIcon(QMessageBox.Information)
+            msg_box.setWindowTitle("搜索")
+            msg_box.setText("请先执行搜索")
+            msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowStaysOnTopHint)
+            msg_box.exec_()
             return
 
         if self.current_search_index > 0:
