@@ -509,6 +509,10 @@ class MainWindowBase(QMainWindow):
                 zoom_level = int(self.pdf_processor.get_zoom() * 100)
                 self.show_message(f"⚡ 虚拟滚动模式 | 第 {current_page} 页 / 共 {total_pages} 页 | 缩放: {zoom_level}%")
                 self.total_pages_label.setText(f"/ {total_pages}")
+                
+                # 同时更新工具栏的总页数标签
+                if hasattr(self, 'toolbar_total_pages_label'):
+                    self.toolbar_total_pages_label.setText(f"/ {total_pages}")
 
             self.view_controller.update_thumbnail_selection(current_page)
     

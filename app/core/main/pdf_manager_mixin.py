@@ -38,9 +38,15 @@ class PDFManagerMixin:
                 try:
                     total_pages = self.pdf_processor.get_total_pages()
                     self.total_pages_label.setText(f"/ {total_pages}")
+                    
+                    # 同时更新工具栏的总页数标签
+                    if hasattr(self, 'toolbar_total_pages_label'):
+                        self.toolbar_total_pages_label.setText(f"/ {total_pages}")
                 except Exception as e:
                     logger.error(f"更新总页数显示失败: {e}")
                     self.total_pages_label.setText("/ 0")
+                    if hasattr(self, 'toolbar_total_pages_label'):
+                        self.toolbar_total_pages_label.setText("/ 0")
             
                 
             # 更新虚拟滚动区域内容（已经包含了滚动到第一页和渲染的调用）
@@ -332,9 +338,6 @@ class PDFManagerMixin:
             total_pages = self.pdf_processor.get_total_pages()
             self.page_spinbox.setMaximum(total_pages)
             self.total_pages_label.setText(f"/ {total_pages}")
-            # 更新工具栏的总页码标签
-            if hasattr(self, 'toolbar_total_pages_label'):
-                self.toolbar_total_pages_label.setText(f"/ {total_pages}")
             # 更新工具栏的总页码标签
             if hasattr(self, 'toolbar_total_pages_label'):
                 self.toolbar_total_pages_label.setText(f"/ {total_pages}")
