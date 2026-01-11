@@ -783,26 +783,18 @@ class VirtualScrollArea(QScrollArea):
         if not self.page_positions:
             return 1
         
-        # 找到第一个起始位置大于当前滚动位置的页面
-        current_page = 1  # 默认第一页
-        for i, pos in enumerate(self.page_positions):
-            if scroll_pos >= pos:
-                # 检查是否在当前页面范围内（考虑页面高度）
-                page_height = self.page_heights[i] if i < len(self.page_heights) else 1100
-                page_end_pos = pos + page_height
-                
-                if scroll_pos < page_end_pos:
-                    # 当前滚动位置在第i页范围内
-                    current_page = i + 1  # 转换为1基索引
-                    break
-                else:
-                    # 当前滚动位置在第i页之后，继续检查下一页
-                    current_page = i + 1
-            else:
-                # 找到了第一个起始位置大于滚动位置的页面，说明当前在上一页
-                break
-                
-        return current_page
+        # 遍历页面位置，找到当前滚动位置所在的页面
+        for i in range(len(self.page_positions) - 1, -1, -1):
+            page_start_pos = self.page_positions[i]
+            page_height = self.page_heights[i] if i < len(self.page_heights) else 1100
+            page_end_pos = page_start_pos + page_height
+            
+            # 检查滚动位置是否在当前页面范围内
+            if page_start_pos <= scroll_pos < page_end_pos:
+                return i + 1  # 返回1基索引
+        
+        # 如果没有找到匹配的页面（例如滚动到底部），返回最后一页
+        return len(self.page_positions)
         
     def resizeEvent(self, event):
         """窗口大小变化事件"""

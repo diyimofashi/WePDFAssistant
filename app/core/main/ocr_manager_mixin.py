@@ -66,9 +66,9 @@ class OCRManagerMixin:
     def perform_ocr_on_current_page(self):
         """对当前页面执行OCR识别"""
         try:
-            # 检查是否有打开的PDF文档
-            if not self.pdf_processor.pdf_document:
-                QMessageBox.warning(self, "警告", "请先打开PDF文件")
+            # 检查是否有打开的文档（PDF或图片）
+            if not self.pdf_processor.fitz_document:
+                QMessageBox.warning(self, "警告", "请先打开PDF文件或图片文件")
                 return
             
             # 获取当前页面
@@ -163,6 +163,7 @@ class OCRManagerMixin:
                 # 处理OCR结果
                 if ocr_result.is_success():
                     # 创建临时可搜索PDF以支持搜索功能
+                    # 在OCR完成后确保回到原来的页面
                     self._create_ocr_searchable_pdf_for_current_page(current_page, ocr_result)
                     # 不再显示OCR结果对话框
                 else:
@@ -387,8 +388,12 @@ class OCRManagerMixin:
                 self.update_preview()
                 
                 # 确保回到原页面
+                # 在处理导入图片后，需要确保页面索引仍然有效
+                total_pages = self.pdf_processor.get_total_pages()
+                target_page = min(page_num, total_pages - 1) if total_pages > 0 else page_num
+                
                 if hasattr(self, 'virtual_scroll'):
-                    self.virtual_scroll.scroll_to_page(page_num)
+                    self.virtual_scroll.scroll_to_page(target_page)
 
         except Exception as e:
             logger.error(f"处理第 {page_num + 1} 页OCR结果时出错: {e}")
@@ -413,8 +418,12 @@ class OCRManagerMixin:
                 self.update_preview()
                     
                 # 确保回到原页面
+                # 在处理导入图片后，需要确保页面索引仍然有效
+                total_pages = self.pdf_processor.get_total_pages()
+                target_page = min(page_num, total_pages - 1) if total_pages > 0 else page_num
+                
                 if hasattr(self, 'virtual_scroll'):
-                    self.virtual_scroll.scroll_to_page(page_num)
+                    self.virtual_scroll.scroll_to_page(target_page)
     
         except Exception as e:
             logger.error(f"处理第 {page_num + 1} 页OCR结果时出错: {e}")
@@ -630,10 +639,14 @@ class OCRManagerMixin:
             self.update_preview()
             
             # OCR完成后确保回到原页面
-            if hasattr(self, 'virtual_scroll'):
-                self.virtual_scroll.scroll_to_page(page_num)
+            # 在处理导入图片后，需要确保页面索引仍然有效
+            total_pages = self.pdf_processor.get_total_pages()
+            target_page = min(page_num, total_pages - 1) if total_pages > 0 else page_num
             
-            self.show_message(f"✅ 第{page_num+1}页OCR识别完成，已添加到可搜索PDF")
+            if hasattr(self, 'virtual_scroll'):
+                self.virtual_scroll.scroll_to_page(target_page)
+            
+            self.show_message(f"✅ 第{target_page+1}页OCR识别完成，已添加到可搜索PDF")
             
         except Exception as e:
             logger.error(f"创建OCR可搜索PDF时出错: {e}")
