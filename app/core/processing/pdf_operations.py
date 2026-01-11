@@ -67,7 +67,8 @@ class PDFOperations:
                 # 首先尝试直接保存（适用于普通PDF文档）
                 if not is_from_image and not is_new_document:
                     try:
-                        self.fitz_document.save(temp_path, incremental=False)
+                        # 使用平衡参数保存PDF文档，控制文件大小
+                        self.fitz_document.save(temp_path, incremental=False, deflate=True, deflate_images=True, deflate_fonts=True, garbage=1, clean=True)
                         save_success = True
                         logger.debug("直接保存PDF文档成功")
                     except Exception as save_error:
@@ -83,24 +84,82 @@ class PDFOperations:
                         # 逐页复制内容
                         for page_num in range(len(self.fitz_document)):
                             page = self.fitz_document[page_num]
-
+                            
                             # 获取页面尺寸并创建新页面
                             page_rect = page.rect
                             new_page = new_doc.new_page(width=page_rect.width, height=page_rect.height)
-
+                            
                             # 根据文档类型采用适当的复制方法
                             if is_from_image or is_new_document:
-                                # 对于图片文档，使用像素数据复制
-                                pix = page.get_pixmap()
-                                new_page.insert_image(new_page.rect, pixmap=pix)
+                                # 对于图片文档，尝试多种方法保留原始图片质量
+                                # 检查是否可以从原始文件直接读取图片数据
+                                if self.current_file and os.path.exists(self.current_file):
+                                    file_ext = os.path.splitext(self.current_file)[1].lower()
+                                    if file_ext in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico']:
+                                        # 如果原始文件存在且是图片格式，直接嵌入图片
+                                        try:
+                                            new_page.insert_image(new_page.rect, filename=self.current_file)
+                                            logger.debug(f"成功直接嵌入原始图片文件: {self.current_file}")
+                                        except Exception as e:
+                                            logger.warning(f"直接嵌入原始图片失败: {e}, 尝试其他方法")
+                                            # 如果直接嵌入失败，尝试获取页面图片信息
+                                            img_list = page.get_images()
+                                            if img_list:
+                                                # 如果页面包含图片，直接使用原始图片数据
+                                                xref = img_list[0][0]  # 第一个图片的xref
+                                                pix = fitz.Pixmap(self.fitz_document, xref)
+                                                new_page.insert_image(new_page.rect, pixmap=pix)
+                                                logger.debug("成功嵌入原始图片数据")
+                                            else:
+                                                # 如果没有找到现有图片，则使用像素数据复制
+                                                pix = page.get_pixmap(alpha=False)
+                                                new_page.insert_image(new_page.rect, pixmap=pix)
+                                                logger.debug("成功嵌入像素数据")
+                                    else:
+                                        # 如果不是图片格式，尝试常规方法
+                                        img_list = page.get_images()
+                                        if img_list:
+                                            # 如果页面包含图片，直接使用原始图片数据
+                                            xref = img_list[0][0]  # 第一个图片的xref
+                                            pix = fitz.Pixmap(self.fitz_document, xref)
+                                            new_page.insert_image(new_page.rect, pixmap=pix)
+                                            logger.debug("成功嵌入原始图片数据")
+                                        else:
+                                            # 如果没有找到现有图片，则使用像素数据复制
+                                            pix = page.get_pixmap(alpha=False)
+                                            new_page.insert_image(new_page.rect, pixmap=pix)
+                                            logger.debug("成功嵌入像素数据")
+                                else:
+                                    # 如果原始文件不存在，尝试常规方法
+                                    img_list = page.get_images()
+                                    if img_list:
+                                        # 如果页面包含图片，直接使用原始图片数据
+                                        xref = img_list[0][0]  # 第一个图片的xref
+                                        pix = fitz.Pixmap(self.fitz_document, xref)
+                                        new_page.insert_image(new_page.rect, pixmap=pix)
+                                        logger.debug("成功嵌入原始图片数据")
+                                    else:
+                                        # 如果没有找到现有图片，则使用像素数据复制
+                                        pix = page.get_pixmap(alpha=False)
+                                        new_page.insert_image(new_page.rect, pixmap=pix)
+                                        logger.debug("成功嵌入像素数据")
                             else:
-                                # 对于普通PDF文档，使用show_pdf_page方法
+                                # 对于普通PDF文档，优先使用show_pdf_page方法保持原始内容
                                 try:
                                     new_page.show_pdf_page(new_page.rect, self.fitz_document, page_num)
                                 except ValueError:
-                                    # 如果show_pdf_page失败，回退到像素复制
-                                    pix = page.get_pixmap()
-                                    new_page.insert_image(new_page.rect, pixmap=pix)
+                                    # 如果show_pdf_page失败，尝试直接嵌入原始图片
+                                    img_list = page.get_images()
+                                    if img_list:
+                                        # 如果页面包含图片，直接使用原始图片数据
+                                        xref = img_list[0][0]  # 第一个图片的xref
+                                        pix = fitz.Pixmap(self.fitz_document, xref)
+                                        new_page.insert_image(new_page.rect, pixmap=pix)
+                                    else:
+                                        # 否则回退到像素复制
+                                        mat = fitz.Matrix(1.5, 1.5)  # 1.5倍放大以平衡清晰度和文件大小
+                                        pix = page.get_pixmap(matrix=mat, alpha=False)
+                                        new_page.insert_image(new_page.rect, pixmap=pix)
                         
                         # 保存新创建的标准PDF文档
                         new_doc.save(temp_path)
@@ -206,8 +265,8 @@ class PDFOperations:
         try:
             # 判断是否保存到原始文件
             is_saving_to_original = (self.current_file and
-                                    os.path.abspath(output_path) == os.path.abspath(self.current_file))
-    
+                                os.path.abspath(output_path) == os.path.abspath(self.current_file))
+
             # 检查当前文档是否是从图片文件打开的
             # 通过检查文件扩展名来判断
             is_from_image = False
@@ -216,7 +275,7 @@ class PDFOperations:
                 file_ext = os.path.splitext(self.current_file)[1].lower()
                 if file_ext in image_extensions:
                     is_from_image = True
-                
+                    
             # 检查是否是新建的多图片文档
             is_new_document = hasattr(self, 'is_new_document') and getattr(self, 'is_new_document', False)
                 
@@ -226,16 +285,17 @@ class PDFOperations:
             # 先将PyMuPDF文档保存到临时文件
             temp_fd, temp_path = tempfile.mkstemp(suffix='.pdf', prefix='pypdf_encrypted_')
             os.close(temp_fd)
-    
+
             try:
                 # 用PyMuPDF保存到临时文件
                 # 如果是从图片打开的文档或特殊格式，需要特殊处理
                 save_success = False
-                                
+                    
                 # 首先尝试直接保存（适用于普通PDF文档）
                 if not is_from_image and not is_new_document:
                     try:
-                        self.fitz_document.save(temp_path, incremental=False)
+                        # 使用平衡参数保存PDF文档，控制文件大小
+                        self.fitz_document.save(temp_path, incremental=False, deflate=True, deflate_images=True, deflate_fonts=True, garbage=1, clean=True)
                         save_success = True
                         logger.debug("直接保存PDF文档成功")
                     except Exception as save_error:
@@ -251,24 +311,82 @@ class PDFOperations:
                         # 逐页复制内容
                         for page_num in range(len(self.fitz_document)):
                             page = self.fitz_document[page_num]
-                                            
+                                                    
                             # 获取页面尺寸并创建新页面
                             page_rect = page.rect
                             new_page = new_doc.new_page(width=page_rect.width, height=page_rect.height)
-                                            
+                                                    
                             # 根据文档类型采用适当的复制方法
                             if is_from_image or is_new_document:
-                                # 对于图片文档，使用像素数据复制
-                                pix = page.get_pixmap()
-                                new_page.insert_image(new_page.rect, pixmap=pix)
+                                # 对于图片文档，尝试多种方法保留原始图片质量
+                                # 检查是否可以从原始文件直接读取图片数据
+                                if self.current_file and os.path.exists(self.current_file):
+                                    file_ext = os.path.splitext(self.current_file)[1].lower()
+                                    if file_ext in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico']:
+                                        # 如果原始文件存在且是图片格式，直接嵌入图片
+                                        try:
+                                            new_page.insert_image(new_page.rect, filename=self.current_file)
+                                            logger.debug(f"成功直接嵌入原始图片文件: {self.current_file}")
+                                        except Exception as e:
+                                            logger.warning(f"直接嵌入原始图片失败: {e}, 尝试其他方法")
+                                            # 如果直接嵌入失败，尝试获取页面图片信息
+                                            img_list = page.get_images()
+                                            if img_list:
+                                                # 如果页面包含图片，直接使用原始图片数据
+                                                xref = img_list[0][0]  # 第一个图片的xref
+                                                pix = fitz.Pixmap(self.fitz_document, xref)
+                                                new_page.insert_image(new_page.rect, pixmap=pix)
+                                                logger.debug("成功嵌入原始图片数据")
+                                            else:
+                                                # 如果没有找到现有图片，则使用像素数据复制
+                                                pix = page.get_pixmap(alpha=False)
+                                                new_page.insert_image(new_page.rect, pixmap=pix)
+                                                logger.debug("成功嵌入像素数据")
+                                    else:
+                                        # 如果不是图片格式，尝试常规方法
+                                        img_list = page.get_images()
+                                        if img_list:
+                                            # 如果页面包含图片，直接使用原始图片数据
+                                            xref = img_list[0][0]  # 第一个图片的xref
+                                            pix = fitz.Pixmap(self.fitz_document, xref)
+                                            new_page.insert_image(new_page.rect, pixmap=pix)
+                                            logger.debug("成功嵌入原始图片数据")
+                                        else:
+                                            # 如果没有找到现有图片，则使用像素数据复制
+                                            pix = page.get_pixmap(alpha=False)
+                                            new_page.insert_image(new_page.rect, pixmap=pix)
+                                            logger.debug("成功嵌入像素数据")
+                                else:
+                                    # 如果原始文件不存在，尝试常规方法
+                                    img_list = page.get_images()
+                                    if img_list:
+                                        # 如果页面包含图片，直接使用原始图片数据
+                                        xref = img_list[0][0]  # 第一个图片的xref
+                                        pix = fitz.Pixmap(self.fitz_document, xref)
+                                        new_page.insert_image(new_page.rect, pixmap=pix)
+                                        logger.debug("成功嵌入原始图片数据")
+                                    else:
+                                        # 如果没有找到现有图片，则使用像素数据复制
+                                        pix = page.get_pixmap(alpha=False)
+                                        new_page.insert_image(new_page.rect, pixmap=pix)
+                                        logger.debug("成功嵌入像素数据")
                             else:
-                                # 对于普通PDF文档，使用show_pdf_page方法
+                                # 对于普通PDF文档，优先使用show_pdf_page方法保持原始内容
                                 try:
                                     new_page.show_pdf_page(new_page.rect, self.fitz_document, page_num)
                                 except ValueError:
-                                    # 如果show_pdf_page失败，回退到像素复制
-                                    pix = page.get_pixmap()
-                                    new_page.insert_image(new_page.rect, pixmap=pix)
+                                    # 如果show_pdf_page失败，尝试直接嵌入原始图片
+                                    img_list = page.get_images()
+                                    if img_list:
+                                        # 如果页面包含图片，直接使用原始图片数据
+                                        xref = img_list[0][0]  # 第一个图片的xref
+                                        pix = fitz.Pixmap(self.fitz_document, xref)
+                                        new_page.insert_image(new_page.rect, pixmap=pix)
+                                    else:
+                                        # 否则回退到像素复制
+                                        mat = fitz.Matrix(1.5, 1.5)  # 1.5倍放大以平衡清晰度和文件大小
+                                        pix = page.get_pixmap(matrix=mat, alpha=False)
+                                        new_page.insert_image(new_page.rect, pixmap=pix)
                                         
                         # 保存新创建的标准PDF文档
                         new_doc.save(temp_path)
