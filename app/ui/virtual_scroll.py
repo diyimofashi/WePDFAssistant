@@ -850,7 +850,17 @@ class VirtualScrollArea(QScrollArea):
 
         # 获取页面的实际几何位置
         page_geometry = page_label.geometry()
-        logger.debug(f"[enable_screenshot_ocr_mode] 页面几何: {page_geometry}")
+        logger.debug(f"[enable_screenshot_ocr_mode] 页面标签几何（相对于父容器）: {page_geometry}")
+
+        # 获取页面标签在视口中的位置（使用 mapTo 从页面标签的(0,0)映射到视口）
+        page_viewport_pos = page_label.mapTo(self.viewport(), QPoint(0, 0))
+        page_geometry_in_viewport = QRect(
+            page_viewport_pos.x(),
+            page_viewport_pos.y(),
+            page_geometry.width(),
+            page_geometry.height()
+        )
+        logger.debug(f"[enable_screenshot_ocr_mode] 页面标签在视口中的位置: {page_geometry_in_viewport}")
 
         # 创建截图选区组件，覆盖整个虚拟滚动区域
         from .screenshot_ocr_widget import ScreenshotOCRWidget
@@ -869,7 +879,7 @@ class VirtualScrollArea(QScrollArea):
 
         # 存储页面标签位置和视口滚动偏移，用于坐标转换
         self.screenshot_widget.page_label = page_label
-        self.screenshot_widget.page_geometry = page_geometry
+        self.screenshot_widget.page_geometry = page_geometry_in_viewport  # 使用相对于视口的几何位置
         self.screenshot_widget.viewport_offset = (self.horizontalScrollBar().value(), self.verticalScrollBar().value())
 
         # 连接信号
@@ -933,19 +943,17 @@ class VirtualScrollArea(QScrollArea):
         # 调用主窗口的截图OCR处理
         if main_window and hasattr(main_window, 'perform_screenshot_ocr'):
             if page_label and page_geometry:
-                # 计算页面标签相对于视口的位置
-                scroll_offset_x, scroll_offset_y = viewport_offset
-
-                logger.debug(f"[_on_selection_finished] 页面几何: {page_geometry}, 视口偏移: {viewport_offset}")
+                logger.debug(f"[_on_selection_finished] 页面几何（相对于视口）: {page_geometry}")
+                logger.debug(f"[_on_selection_finished] 选区矩形（相对于视口）: {selection_rect}")
 
                 # 视口坐标 → 页面标签坐标
                 # 选区在视口中的位置
                 selection_x = selection_rect.x()
                 selection_y = selection_rect.y()
 
-                # 页面标签在虚拟容器中的位置（考虑滚动偏移）
-                page_y_in_viewport = page_geometry.y() - scroll_offset_y
-                page_x_in_viewport = page_geometry.x() - scroll_offset_x
+                # 页面标签在视口中的位置
+                page_x_in_viewport = page_geometry.x()
+                page_y_in_viewport = page_geometry.y()
 
                 # 计算选区相对于页面标签的坐标
                 page_relative_x = selection_x - page_x_in_viewport
@@ -960,12 +968,31 @@ class VirtualScrollArea(QScrollArea):
                 )
 
                 logger.debug(f"[_on_selection_finished] 转换后的页面坐标: {page_rect}")
+                logger.debug(f"[_on_selection_finished] 页面标签尺寸: {page_geometry.width()}x{page_geometry.height()}")
+                logger.debug(f"[_on_selection_finished] 选区范围: x={page_rect.x()}, y={page_rect.y()}, right={page_rect.right()}, bottom={page_rect.bottom()}")
 
                 # 检查选区是否在页面范围内
-                if page_rect.x() >= 0 and page_rect.y() >= 0 and \
-                   page_rect.right() <= page_geometry.width() and \
-                   page_rect.bottom() <= page_geometry.height():
-                    main_window.perform_screenshot_ocr(page_rect, page_index)
+                # 使用更宽松的检查：只要选区有交集即可，不要求完全在范围内
+                tolerance = 5  # 允许5像素的误差
+                page_width = page_geometry.width()
+                page_height = page_geometry.height()
+
+                # 检查选区是否与页面有重叠
+                has_overlap = not (page_rect.right() < -tolerance or
+                                 page_rect.bottom() < -tolerance or
+                                 page_rect.x() > page_width + tolerance or
+                                 page_rect.y() > page_height + tolerance)
+
+                if has_overlap:
+                    # 限制选区在页面范围内
+                    clamped_x = max(0, min(page_rect.x(), page_width))
+                    clamped_y = max(0, min(page_rect.y(), page_height))
+                    clamped_width = max(1, min(page_rect.width(), page_width - clamped_x))
+                    clamped_height = max(1, min(page_rect.height(), page_height - clamped_y))
+                    clamped_rect = QRect(clamped_x, clamped_y, clamped_width, clamped_height)
+
+                    logger.debug(f"[_on_selection_finished] 限制后的选区: {clamped_rect}")
+                    main_window.perform_screenshot_ocr(clamped_rect, page_index)
                 else:
                     logger.warning(f"[_on_selection_finished] 选区超出页面范围")
                     from PyQt5.QtWidgets import QMessageBox
