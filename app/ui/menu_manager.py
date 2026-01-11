@@ -50,7 +50,7 @@ class MenuManager(QObject):
         
         # 打开图片目录
         open_image_dir_action = QAction("📁 打开图片目录", self.parent)
-        open_image_dir_action.setShortcut("Ctrl+D")
+        open_image_dir_action.setShortcut("Ctrl+Shift+D")
         open_image_dir_action.triggered.connect(self.parent.open_image_directory)
         file_menu.addAction(open_image_dir_action)
 
@@ -80,11 +80,10 @@ class MenuManager(QObject):
 
         # 保存更改
         self.parent.save_changes_action = QAction("✅ 保存更改", self.parent)
-        self.parent.save_changes_action.setShortcut("Ctrl+Shift+S")
         self.parent.save_changes_action.triggered.connect(self.parent.save_changes)
         self.parent.save_changes_action.setEnabled(False)
         file_menu.addAction(self.parent.save_changes_action)
-        
+
         # 放弃更改
         self.parent.discard_changes_action = QAction("❌ 放弃更改", self.parent)
         self.parent.discard_changes_action.setShortcut("Ctrl+D")
@@ -270,20 +269,27 @@ class MenuManager(QObject):
         upload_current_action = QAction("📄 上传当前文档", self.parent)
         upload_current_action.triggered.connect(self.parent.upload_current_document)
         upload_menu.addAction(upload_current_action)
-        
+
         # 下载工具子菜单
         tools_menu.addSeparator()
         download_menu = tools_menu.addMenu("📥 下载工具")
-        
+
         # 下载设置
         download_settings_action = QAction("⚙️ 下载设置", self.parent)
         download_settings_action.triggered.connect(self.parent.show_download_settings)
         download_menu.addAction(download_settings_action)
-        
+
         # 下载远程文件
         download_remote_action = QAction("🌐 下载远程文件", self.parent)
         download_remote_action.triggered.connect(self.parent.open_remote_file)
         download_menu.addAction(download_remote_action)
+
+        # 快捷键设置
+        tools_menu.addSeparator()
+        shortcut_settings_action = QAction("⌨️ 快捷键设置", self.parent)
+        shortcut_settings_action.setShortcut("Ctrl+K")
+        shortcut_settings_action.triggered.connect(self.parent.show_shortcut_settings)
+        tools_menu.addAction(shortcut_settings_action)
         
         # 条码工具子菜单
         tools_menu.addSeparator()
@@ -320,7 +326,7 @@ class MenuManager(QObject):
         # 搜索
         search_action = QAction("🔍 搜索", self.parent)
         search_action.setShortcut("Ctrl+F")
-        search_action.triggered.connect(self.parent.show_search_options)
+        search_action.triggered.connect(self.parent.show_search_panel)
         other_menu.addAction(search_action)
         
         # 打印

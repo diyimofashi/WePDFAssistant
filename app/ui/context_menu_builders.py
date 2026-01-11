@@ -178,7 +178,6 @@ class ContextMenuBuilder:
         
         # 复制文本
         copy_action = QAction("复制文本", self.main_window)
-        copy_action.setShortcut("Ctrl+C")
         copy_action.triggered.connect(lambda: self._copy_text(selected_text))
         actions.append(copy_action)
         
@@ -353,22 +352,19 @@ class ContextMenuBuilder:
     def _create_file_actions(self):
         """创建文件操作动作"""
         actions = []
-        
+
         # 打开文件
         open_action = QAction("📂 打开文件", self.main_window)
-        open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self.main_window.open_file)
         actions.append(open_action)
-        
+
         # 保存文件
         save_action = QAction("💾 保存文件", self.main_window)
-        save_action.setShortcut("Ctrl+S")
         save_action.triggered.connect(self.main_window.save_file)
         actions.append(save_action)
-        
+
         # 另存为
         save_as_action = QAction("💾 另存为", self.main_window)
-        save_as_action.setShortcut("Ctrl+Shift+S")
         save_as_action.triggered.connect(self.main_window.save_as_file)
         actions.append(save_as_action)
         
@@ -414,7 +410,6 @@ class ContextMenuBuilder:
         
         # 搜索
         search_action = QAction("🔎 搜索", self.main_window)
-        search_action.setShortcut("Ctrl+F")
         search_action.triggered.connect(self.main_window.search_manager.show_search_dialog)
         actions.append(search_action)
         

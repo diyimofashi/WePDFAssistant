@@ -27,6 +27,7 @@ from app.config.ocr_plugin_config import ocr_config_manager
 from app.core.ocr.ocr_plugin_interface import OCRErrorCode
 from app.managers.upload_plugin_manager import UploadPluginManager
 from app.config.upload_plugin_config import upload_config_manager
+from app.managers.shortcut_manager import ShortcutManager
 
 logger = get_logger(__name__)
 
@@ -107,12 +108,15 @@ class MainWindowBase(QMainWindow):
         self.ocr_config_manager = ocr_config_manager
         # 自动加载所有OCR插件
         self.ocr_plugin_manager.load_all_plugins()
-        
+
         # 初始化上传插件管理器
         self.upload_plugin_manager = UploadPluginManager()
         self.upload_config_manager = upload_config_manager
         # 自动加载所有上传插件
         self.upload_plugin_manager.load_all_plugins()
+
+        # 初始化快捷键管理器
+        self.shortcut_manager = ShortcutManager(self)
 
         # 初始化LLM系统
         self._init_llm_system()

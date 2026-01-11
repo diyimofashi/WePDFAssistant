@@ -128,11 +128,13 @@ from app.core.main.upload_manager_mixin import UploadManagerMixin
 from app.core.main.download_manager_mixin import DownloadManagerMixin
 from app.core.main.operation_manager_mixin import OperationManagerMixin
 from app.core.main.llm_manager_mixin import LLMManagerMixin
+from app.core.main.shortcut_manager_mixin import ShortcutManagerMixin
 
 
 class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailManagerMixin,
                   SearchManagerMixin, OCRManagerMixin, UploadManagerMixin,
-                  DownloadManagerMixin, OperationManagerMixin, LLMManagerMixin):
+                  DownloadManagerMixin, OperationManagerMixin, LLMManagerMixin,
+                  ShortcutManagerMixin):
     """极灵PDF主窗口 - 重构版本"""
     def zoom_in(self):
         """放大：跳转到下一个更大的缩放级别"""

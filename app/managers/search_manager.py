@@ -1,8 +1,7 @@
 """搜索功能管理器模块"""
 
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QCheckBox,
-                             QPushButton, QGroupBox, QMessageBox, QLineEdit,
-                             QLabel, QWidget, QFrame)
+from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QMessageBox, QLineEdit,
+                             QLabel, QWidget, QFrame, QGroupBox, QCheckBox, QPushButton)
 from PyQt5.QtCore import Qt
 import fitz
 from app.utils.logger import get_logger
@@ -115,17 +114,6 @@ class SearchManager:
         self.search_panel.activateWindow()
         self.search_panel.search_input.setFocus()
 
-    def show_search_options(self):
-        """显示搜索选项对话框"""
-        dialog = SearchOptionsDialog(self.parent, self.search_case_sensitive, self.search_whole_word)
-        
-        if dialog.exec_() == QDialog.Accepted:
-            self.search_case_sensitive = dialog.case_checkbox.isChecked()
-            self.search_whole_word = dialog.whole_word_checkbox.isChecked()
-            
-            if self.last_search_text:
-                self.search_text()
-    
     def search_text(self):
         """搜索PDF中的文本（包括OCR插入的文本）"""
         if self.search_panel:
@@ -329,46 +317,3 @@ class SearchManager:
                 self.parent.pdf_processor.clear_render_cache()
             # 更新预览
             self.parent.update_preview()
-
-
-class SearchOptionsDialog(QDialog):
-    """搜索选项对话框"""
-    
-    def __init__(self, parent, case_sensitive, whole_word):
-        super().__init__(parent)
-        self.case_sensitive = case_sensitive
-        self.whole_word = whole_word
-        self.init_ui()
-        
-    def init_ui(self):
-        self.setWindowTitle("搜索选项")
-        self.setFixedSize(300, 200)
-        
-        layout = QVBoxLayout()
-        
-        options_group = QGroupBox("搜索选项")
-        options_layout = QVBoxLayout()
-        
-        self.case_checkbox = QCheckBox("区分大小写")
-        self.case_checkbox.setChecked(self.case_sensitive)
-        options_layout.addWidget(self.case_checkbox)
-        
-        self.whole_word_checkbox = QCheckBox("全词匹配")
-        self.whole_word_checkbox.setChecked(self.whole_word)
-        options_layout.addWidget(self.whole_word_checkbox)
-        
-        options_group.setLayout(options_layout)
-        layout.addWidget(options_group)
-        
-        button_layout = QHBoxLayout()
-        
-        ok_button = QPushButton("确定")
-        ok_button.clicked.connect(self.accept)
-        button_layout.addWidget(ok_button)
-        
-        cancel_button = QPushButton("取消")
-        cancel_button.clicked.connect(self.reject)
-        button_layout.addWidget(cancel_button)
-        
-        layout.addLayout(button_layout)
-        self.setLayout(layout)

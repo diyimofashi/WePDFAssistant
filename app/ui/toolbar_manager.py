@@ -53,21 +53,18 @@ class ToolbarManager(QObject):
         # 打开
         open_btn = QAction("📂 打开", self.parent)
         open_btn.setToolTip("打开PDF文件 (Ctrl+O)")
-        open_btn.setShortcut("Ctrl+O")
         open_btn.triggered.connect(self.parent.open_file)
         toolbar.addAction(open_btn)
         
         # 保存
         save_btn = QAction("💾 保存", self.parent)
         save_btn.setToolTip("保存PDF文件 (Ctrl+S)")
-        save_btn.setShortcut("Ctrl+S")
         save_btn.triggered.connect(self.parent.save_file)
         toolbar.addAction(save_btn)
         
         # 另存为
         save_as_btn = QAction("💾 另存为", self.parent)
         save_as_btn.setToolTip("另存为PDF文件 (Ctrl+Shift+S)")
-        save_as_btn.setShortcut("Ctrl+Shift+S")
         save_as_btn.triggered.connect(self.parent.save_as_file)
         toolbar.addAction(save_as_btn)
     
@@ -76,32 +73,28 @@ class ToolbarManager(QObject):
         # 撤销
         self.parent.undo_btn = QAction("↩️ 撤销", self.parent)
         self.parent.undo_btn.setToolTip("撤销上一步操作 (Ctrl+Z)")
-        self.parent.undo_btn.setShortcut("Ctrl+Z")
         self.parent.undo_btn.triggered.connect(self.parent.undo_operation)
         self.parent.undo_btn.setEnabled(False)
         toolbar.addAction(self.parent.undo_btn)
-        
+
         # 重做
         self.parent.redo_btn = QAction("↪️ 重做", self.parent)
         self.parent.redo_btn.setToolTip("重做上一步操作 (Ctrl+Y)")
-        self.parent.redo_btn.setShortcut("Ctrl+Y")
         self.parent.redo_btn.triggered.connect(self.parent.redo_operation)
         self.parent.redo_btn.setEnabled(False)
         toolbar.addAction(self.parent.redo_btn)
-    
+
     def _add_view_actions(self, toolbar):
         """添加视图控制按钮"""
         # 放大
         zoom_in_btn = QAction("➕ 放大", self.parent)
         zoom_in_btn.setToolTip("放大页面 (Ctrl++)")
-        zoom_in_btn.setShortcut("Ctrl++")
         zoom_in_btn.triggered.connect(self.parent.zoom_in)
         toolbar.addAction(zoom_in_btn)
         
         # 缩小
         zoom_out_btn = QAction("➖ 缩小", self.parent)
         zoom_out_btn.setToolTip("缩小页面 (Ctrl+-)")
-        zoom_out_btn.setShortcut("Ctrl+-")
         zoom_out_btn.triggered.connect(self.parent.zoom_out)
         toolbar.addAction(zoom_out_btn)
         
@@ -169,7 +162,6 @@ class ToolbarManager(QObject):
         # 搜索按钮（打开搜索面板）
         search_btn = QAction("🔍 搜索", self.parent)
         search_btn.setToolTip("搜索文本 (Ctrl+F)")
-        search_btn.setShortcut("Ctrl+F")
         search_btn.triggered.connect(self.parent.show_search_panel)
         toolbar.addAction(search_btn)
     
@@ -191,7 +183,6 @@ class ToolbarManager(QObject):
 
         # 截图OCR
         screenshot_ocr_action = QAction("📷 截图OCR (Alt+S)", self.parent)
-        screenshot_ocr_action.setShortcut("Alt+S")
         screenshot_ocr_action.triggered.connect(self.parent.start_screenshot_ocr_mode)
         ocr_menu.addAction(screenshot_ocr_action)
 

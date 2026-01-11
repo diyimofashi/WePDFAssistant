@@ -6,9 +6,6 @@ class SearchManagerMixin:
     def show_search_panel(self):
         return self.search_manager.show_search_panel()
 
-    def show_search_options(self):
-        return self.search_manager.show_search_options()
-
     def search_text(self):
         return self.search_manager.search_text()
 
