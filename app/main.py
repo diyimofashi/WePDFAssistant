@@ -146,6 +146,11 @@ class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailMana
             success, message = self.pdf_processor.set_zoom(next_zoom)
             if success:
                 self.update_preview()
+                # 更新缩放比例下拉列表
+                zoom_percentage = int(next_zoom * 100)
+                zoom_text = f"{zoom_percentage}%"
+                if hasattr(self, 'zoom_combo'):
+                    self.zoom_combo.setCurrentText(zoom_text)
             self.show_message(message)
     
     def zoom_out(self):
@@ -158,6 +163,11 @@ class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailMana
             success, message = self.pdf_processor.set_zoom(next_zoom)
             if success:
                 self.update_preview()
+                # 更新缩放比例下拉列表
+                zoom_percentage = int(next_zoom * 100)
+                zoom_text = f"{zoom_percentage}%"
+                if hasattr(self, 'zoom_combo'):
+                    self.zoom_combo.setCurrentText(zoom_text)
             self.show_message(message)
         
     def _get_next_zoom_level(self, current_zoom, direction):
