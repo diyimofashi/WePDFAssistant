@@ -759,3 +759,210 @@ class OCRManagerMixin:
             logger.error(f"禁用OCR可搜索PDF功能时出错: {e}")
             logger.error(traceback.format_exc())
             QMessageBox.critical(self, "错误", f"禁用OCR可搜索功能失败: {str(e)}")
+
+    def start_screenshot_ocr_mode(self):
+        """开始截图OCR模式"""
+        try:
+            # 检查是否有打开的文档
+            if not self.pdf_processor.fitz_document:
+                QMessageBox.warning(self, "警告", "请先打开PDF文件")
+                return
+
+            # 检查是否有配置OCR插件
+            current_plugin_name = self.ocr_config_manager.get_current_plugin()
+            if not current_plugin_name:
+                QMessageBox.warning(self, "警告", "请先在OCR设置中选择一个OCR插件")
+                return
+
+            # 检查插件是否已加载
+            if current_plugin_name not in self.ocr_plugin_manager.plugins:
+                QMessageBox.critical(self, "错误", f"OCR插件 '{current_plugin_name}' 未加载")
+                return
+
+            # 检查虚拟滚动区域是否存在
+            if not hasattr(self, 'virtual_scroll_area') or not self.virtual_scroll_area:
+                QMessageBox.critical(self, "错误", "虚拟滚动区域未初始化")
+                return
+
+            # 检查当前是否有可见页面
+            current_page = self.pdf_processor.current_page
+            if current_page < 0:
+                QMessageBox.warning(self, "警告", "当前没有可用的页面")
+                return
+
+            logger.debug(f"[start_screenshot_ocr_mode] 开始截图OCR模式，当前页: {current_page}")
+
+            # 调用虚拟滚动区域的截图OCR模式
+            self.virtual_scroll_area.enable_screenshot_ocr_mode(current_page, self)
+
+            self.show_message("截图OCR模式已激活，请在页面上拖拽选择识别区域（按ESC取消）")
+
+        except Exception as e:
+            logger.error(f"启动截图OCR模式时出错: {e}")
+            logger.error(traceback.format_exc())
+            QMessageBox.critical(self, "错误", f"启动截图OCR模式失败: {str(e)}")
+
+    def perform_screenshot_ocr(self, selection_rect, page_index):
+        """
+        执行截图OCR识别
+
+        Args:
+            selection_rect: 选区矩形（相对于页面的坐标）
+            page_index: 页面索引
+        """
+        try:
+            logger.debug(f"[perform_screenshot_ocr] 开始截图OCR，页面: {page_index}, 选区: {selection_rect}")
+
+            # 检查是否有打开的文档
+            if not self.pdf_processor.fitz_document:
+                QMessageBox.warning(self, "警告", "文档未打开")
+                return
+
+            # 检查页面索引是否有效
+            if page_index < 0 or page_index >= self.pdf_processor.get_total_pages():
+                QMessageBox.warning(self, "警告", f"页面索引无效: {page_index}")
+                return
+
+            # 获取当前使用的OCR插件
+            current_plugin_name = self.ocr_config_manager.get_current_plugin()
+            if not current_plugin_name:
+                QMessageBox.warning(self, "警告", "请先在OCR设置中选择一个OCR插件")
+                return
+
+            # 获取插件实例
+            plugin = self.ocr_plugin_manager.plugins.get(current_plugin_name)
+            if not plugin:
+                QMessageBox.critical(self, "错误", f"OCR插件 '{current_plugin_name}' 未加载")
+                return
+
+            # 初始化插件（如果尚未初始化）
+            if not plugin.is_initialized:
+                plugin_config = self.ocr_config_manager.get_plugin_config(current_plugin_name)
+                init_result = self.ocr_plugin_manager.initialize_plugin(current_plugin_name, plugin_config)
+                if not init_result.is_success():
+                    QMessageBox.critical(self, "OCR初始化失败", f"插件初始化失败: {init_result.message}")
+                    return
+
+            # 获取选区图像数据
+            image_data = self._get_selection_image_data(page_index, selection_rect)
+            if not image_data:
+                QMessageBox.critical(self, "错误", "无法获取选区图像数据")
+                return
+
+            # 在状态栏显示加载信息
+            self.show_message("正在进行OCR识别...")
+            QApplication.processEvents()
+
+            try:
+                # 尝试不同的OCR识别方法
+                # 方法1: 直接使用字节数据
+                ocr_result = plugin.recognize_from_bytes(image_data)
+
+                # 如果方法1失败，尝试方法2: 转换为Base64字符串
+                if not ocr_result.is_success():
+                    image_base64 = b64encode(image_data).decode('utf-8')
+                    if image_base64.startswith('data:image'):
+                        image_base64 = image_base64.split(',')[1] if ',' in image_base64 else image_base64
+                    ocr_result = plugin.recognize_from_base64(image_base64)
+
+                # 如果方法2也失败，尝试方法3: 保存为临时文件
+                if not ocr_result.is_success():
+                    temp_dir = os.path.realpath(tempfile.gettempdir())
+                    temp_filename = f"screenshot_ocr_{uuid.uuid4().hex}.png"
+                    tmp_file_path = os.path.join(temp_dir, temp_filename)
+
+                    try:
+                        with open(tmp_file_path, 'wb') as tmp_file:
+                            tmp_file.write(image_data)
+
+                        if os.path.exists(tmp_file_path):
+                            ocr_result = plugin.recognize_from_file(tmp_file_path)
+                        else:
+                            logger.error(f"临时文件创建失败: {tmp_file_path}")
+                            ocr_result = OCRResult(
+                                code=OCRErrorCode.FILE_NOT_FOUND,
+                                message=f"临时文件创建失败: {tmp_file_path}",
+                                plugin_name=plugin.plugin_name
+                            )
+                    except Exception as file_error:
+                        logger.error(f"创建或写入临时文件时出错: {file_error}")
+                        ocr_result = OCRResult(
+                            code=OCRErrorCode.UNKNOWN_ERROR,
+                            message=f"创建临时文件失败: {str(file_error)}",
+                            plugin_name=plugin.plugin_name
+                        )
+                    finally:
+                        try:
+                            if os.path.exists(tmp_file_path):
+                                os.unlink(tmp_file_path)
+                        except Exception as cleanup_error:
+                            logger.warning(f"清理临时文件时出错: {cleanup_error}")
+
+                # 显示OCR结果
+                from app.ui.screenshot_result_dialog import ScreenshotOCRResultDialog
+                dialog = ScreenshotOCRResultDialog(ocr_result, self)
+                dialog.exec_()
+
+                if ocr_result.is_success():
+                    self.show_message("✅ OCR识别完成")
+                else:
+                    self.show_message(f"⚠️ OCR识别失败: {ocr_result.message}")
+
+            finally:
+                self.show_message("")
+
+        except Exception as e:
+            logger.error(f"执行截图OCR时出错: {e}")
+            logger.error(traceback.format_exc())
+            QMessageBox.critical(self, "错误", f"执行截图OCR时发生异常: {str(e)}")
+
+    def _get_selection_image_data(self, page_index, selection_rect):
+        """
+        获取选区图像数据
+
+        Args:
+            page_index: 页面索引
+            selection_rect: 选区矩形（相对于页面的坐标）
+
+        Returns:
+            bytes: 图像数据（PNG格式）
+        """
+        try:
+            if not self.pdf_processor.fitz_document:
+                logger.error("PDF文档未打开")
+                return None
+
+            # 检查页面索引
+            if page_index < 0 or page_index >= len(self.pdf_processor.fitz_document):
+                logger.error(f"页面索引超出范围: {page_index}")
+                return None
+
+            # 获取页面
+            page = self.pdf_processor.fitz_document[page_index]
+
+            # 计算PDF文档中的实际坐标（需要除以缩放因子）
+            zoom_factor = self.pdf_processor.zoom_factor
+            pdf_rect = fitz.Rect(
+                selection_rect.x() / zoom_factor,
+                selection_rect.y() / zoom_factor,
+                selection_rect.right() / zoom_factor,
+                selection_rect.bottom() / zoom_factor
+            )
+
+            logger.debug(f"[_get_selection_image_data] 页面: {page_index}, 选区: {selection_rect}, PDF坐标: {pdf_rect}, 缩放: {zoom_factor}")
+
+            # 使用与显示相同的缩放比例渲染选区
+            mat = fitz.Matrix(zoom_factor, zoom_factor)
+            pix = page.get_pixmap(clip=pdf_rect, matrix=mat, alpha=False)
+
+            # 转换为PNG格式
+            img_data = pix.tobytes("png")
+
+            logger.debug(f"[_get_selection_image_data] 成功获取图像数据，大小: {len(img_data)} 字节")
+
+            return img_data
+
+        except Exception as e:
+            logger.error(f"获取选区图像数据时出错: {e}")
+            logger.error(traceback.format_exc())
+            return None

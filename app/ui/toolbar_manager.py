@@ -183,27 +183,33 @@ class ToolbarManager(QObject):
         
         # OCR工具 - 使用下拉按钮
         ocr_menu = QMenu("🔍 OCR工具", self.parent)
-        
+
         # OCR设置
         ocr_settings_action = QAction("⚙️ OCR设置", self.parent)
         ocr_settings_action.triggered.connect(self.parent.show_ocr_settings)
         ocr_menu.addAction(ocr_settings_action)
-        
+
+        # 截图OCR
+        screenshot_ocr_action = QAction("📷 截图OCR (Alt+S)", self.parent)
+        screenshot_ocr_action.setShortcut("Alt+S")
+        screenshot_ocr_action.triggered.connect(self.parent.start_screenshot_ocr_mode)
+        ocr_menu.addAction(screenshot_ocr_action)
+
         # 对当前页执行OCR
         perform_ocr_action = QAction("🔤 对当前页执行OCR", self.parent)
         perform_ocr_action.triggered.connect(self.parent.perform_ocr_on_current_page)
         ocr_menu.addAction(perform_ocr_action)
-        
+
         # 对全部页面执行OCR
         perform_all_pages_ocr_action = QAction("📚 对全部页面执行OCR", self.parent)
         perform_all_pages_ocr_action.triggered.connect(self.parent.perform_ocr_on_all_pages)
         ocr_menu.addAction(perform_all_pages_ocr_action)
-        
+
         # 创建可搜索PDF
         create_searchable_action = QAction("📄 创建可搜索PDF", self.parent)
         create_searchable_action.triggered.connect(self.parent.create_searchable_pdf)
         ocr_menu.addAction(create_searchable_action)
-        
+
         # 创建下拉按钮
         ocr_dropdown_btn = QAction("🔍 OCR工具", self.parent)
         ocr_dropdown_btn.setMenu(ocr_menu)

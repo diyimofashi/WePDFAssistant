@@ -228,6 +228,12 @@ class MenuManager(QObject):
         ocr_settings_action.triggered.connect(self.parent.show_ocr_settings)
         ocr_menu.addAction(ocr_settings_action)
 
+        # 截图OCR
+        screenshot_ocr_action = QAction("📷 截图OCR", self.parent)
+        screenshot_ocr_action.setShortcut("Alt+S")
+        screenshot_ocr_action.triggered.connect(self.parent.start_screenshot_ocr_mode)
+        ocr_menu.addAction(screenshot_ocr_action)
+
         # 对当前页执行OCR
         perform_ocr_action = QAction("🔤 对当前页执行OCR", self.parent)
         perform_ocr_action.triggered.connect(self.parent.perform_ocr_on_current_page)

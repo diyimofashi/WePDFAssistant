@@ -250,6 +250,7 @@ class MainWindowBase(QMainWindow):
     def create_pdf_display_area(self, main_layout):
         """创建PDF显示区域"""
         self.virtual_scroll = VirtualScrollArea(self)
+        self.virtual_scroll_area = self.virtual_scroll  # 同时创建别名
         self.virtual_scroll.page_visible.connect(self._on_page_visible)
         self.virtual_scroll.page_hidden.connect(self._on_page_hidden)
         self.virtual_scroll.page_changed.connect(self.on_virtual_scroll_page_changed)

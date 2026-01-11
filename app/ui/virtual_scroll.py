@@ -14,60 +14,66 @@ from app.utils.logger import get_logger
 logger = get_logger('virtual_scroll')
 
 from PyQt5.QtWidgets import QScrollArea, QWidget, QVBoxLayout, QLabel, QHBoxLayout
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QPoint
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QPoint, QRect
 from PyQt5.QtGui import QContextMenuEvent
 from .ocr_page_label import OCRPageLabel
 
 
 class VirtualScrollArea(QScrollArea):
     """虚拟滚动区域 - 只渲染可视区域的页面"""
-    
+
     # 信号定义
     page_visible = pyqtSignal(int)  # 页面变为可见
     page_hidden = pyqtSignal(int)  # 页面变为隐藏
     page_changed = pyqtSignal(int)  # 页面变更信号
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.pages_data = []  # 页面数据列表
         self.visible_pages = set()  # 当前可见的页面
         self.rendered_pages = {}  # 已渲染的页面缓存
         self.placeholder_pages = {}  # 占位符页面
-        
+
         # 虚拟滚动参数
         self.viewport_height = 0
         self.total_height = 0
         self.page_heights = []  # 每页的高度
         self.page_positions = []  # 每页的起始位置
-        
+
         # 性能优化参数
         self.buffer_size = 1  # 可见区域上下各预渲染的页数
         self.render_delay = 200  # 增加渲染延迟到200ms
-        
+
         # 延迟渲染定时器
         self.render_timer = QTimer()
         self.render_timer.setSingleShot(True)
         self.render_timer.timeout.connect(self._delayed_render)
-        
+
+        # 截图OCR模式相关
+        self.screenshot_mode = False  # 是否在截图OCR模式
+        self.screenshot_widget = None  # 截图选区组件
+        self.screenshot_page_index = -1  # 当前截图的页面索引
+        self.main_window = None  # 主窗口引用（用于回调）
+
         # 初始化UI
         self.init_ui()
-        
+
     def init_ui(self):
         """初始化UI"""
         # 设置滚动区域属性
         self.setWidgetResizable(True)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        
+
         # 创建虚拟容器
         self.virtual_widget = QWidget()
         self.virtual_widget_layout = QVBoxLayout(self.virtual_widget)
         self.virtual_widget_layout.setSpacing(0)
         self.virtual_widget_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # 设置虚拟容器
         self.setWidget(self.virtual_widget)
-        
+
         # 连接滚动事件
         self.verticalScrollBar().valueChanged.connect(self._on_scroll_changed)
         
@@ -799,7 +805,191 @@ class VirtualScrollArea(QScrollArea):
     def resizeEvent(self, event):
         """窗口大小变化事件"""
         super().resizeEvent(event)
-        
+
+        # 如果在截图模式，退出截图模式
+        if self.screenshot_mode:
+            self.disable_screenshot_ocr_mode()
+
         # 重新计算布局并延迟渲染
         self._calculate_layout()
         self.render_timer.start(self.render_delay)
+
+    def enable_screenshot_ocr_mode(self, page_index, main_window):
+        """
+        启用截图OCR模式
+
+        Args:
+            page_index: 当前页面索引
+            main_window: 主窗口引用
+        """
+        logger.debug(f"[enable_screenshot_ocr_mode] 启用截图OCR模式，页面: {page_index}")
+
+        self.screenshot_mode = True
+        self.screenshot_page_index = page_index
+        self.main_window = main_window
+
+        # 检查目标页面是否已渲染
+        if page_index not in self.rendered_pages:
+            logger.warning(f"[enable_screenshot_ocr_mode] 页面 {page_index} 未渲染，无法启用截图模式")
+            self.disable_screenshot_ocr_mode()
+            return
+
+        # 获取页面容器
+        page_container = self._get_page_container(page_index)
+        if not page_container:
+            logger.warning(f"[enable_screenshot_ocr_mode] 无法获取页面 {page_index} 的容器")
+            self.disable_screenshot_ocr_mode()
+            return
+
+        # 获取页面标签
+        page_label = self.rendered_pages.get(page_index)
+        if not page_label:
+            logger.warning(f"[enable_screenshot_ocr_mode] 无法获取页面 {page_index} 的标签")
+            self.disable_screenshot_ocr_mode()
+            return
+
+        # 获取页面的实际几何位置
+        page_geometry = page_label.geometry()
+        logger.debug(f"[enable_screenshot_ocr_mode] 页面几何: {page_geometry}")
+
+        # 创建截图选区组件，覆盖整个虚拟滚动区域
+        from .screenshot_ocr_widget import ScreenshotOCRWidget
+        self.screenshot_widget = ScreenshotOCRWidget(self.viewport())
+
+        # 设置选区组件覆盖整个视口（虚拟滚动区域的可见区域）
+        viewport_geometry = self.viewport().geometry()
+        self.screenshot_widget.setGeometry(viewport_geometry)
+
+        # 将选区组件添加到视口中
+        from PyQt5.QtWidgets import QVBoxLayout
+        layout = QVBoxLayout(self.viewport())
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self.screenshot_widget)
+
+        # 存储页面标签位置和视口滚动偏移，用于坐标转换
+        self.screenshot_widget.page_label = page_label
+        self.screenshot_widget.page_geometry = page_geometry
+        self.screenshot_widget.viewport_offset = (self.horizontalScrollBar().value(), self.verticalScrollBar().value())
+
+        # 连接信号
+        self.screenshot_widget.selection_finished.connect(self._on_selection_finished)
+        self.screenshot_widget.selection_canceled.connect(self.disable_screenshot_ocr_mode)
+
+        # 显示选区组件
+        self.screenshot_widget.show()
+        self.screenshot_widget.raise_()
+        self.screenshot_widget.start_selection(page_index, page_label)
+
+        # 设置焦点到选区组件以接收键盘事件
+        self.screenshot_widget.setFocus()
+
+        logger.debug("[enable_screenshot_ocr_mode] 截图OCR模式已激活")
+
+    def disable_screenshot_ocr_mode(self):
+        """禁用截图OCR模式"""
+        logger.debug("[disable_screenshot_ocr_mode] 禁用截图OCR模式")
+
+        self.screenshot_mode = False
+        self.screenshot_page_index = -1
+        self.main_window = None
+
+        # 清理截图组件
+        if self.screenshot_widget:
+            # 从布局中移除
+            if self.screenshot_widget.parent():
+                layout = self.screenshot_widget.parent().layout()
+                if layout:
+                    layout.removeWidget(self.screenshot_widget)
+
+            self.screenshot_widget.deleteLater()
+            self.screenshot_widget = None
+
+    def _on_selection_finished(self, selection_rect):
+        """
+        选区完成回调
+
+        Args:
+            selection_rect: 选区矩形（相对于视口的坐标）
+        """
+        logger.debug(f"[_on_selection_finished] 选区完成（视口坐标）: {selection_rect}")
+
+        # 退出截图模式前，保存必要信息
+        page_index = self.screenshot_page_index
+        main_window = self.main_window
+
+        # 在删除截图组件前，先提取需要的信息
+        page_label = None
+        page_geometry = None
+        viewport_offset = (0, 0)
+        if self.screenshot_widget:
+            page_label = getattr(self.screenshot_widget, 'page_label', None)
+            page_geometry = getattr(self.screenshot_widget, 'page_geometry', None)
+            viewport_offset = getattr(self.screenshot_widget, 'viewport_offset', (0, 0))
+
+        # 退出截图模式
+        self.disable_screenshot_ocr_mode()
+
+        # 调用主窗口的截图OCR处理
+        if main_window and hasattr(main_window, 'perform_screenshot_ocr'):
+            if page_label and page_geometry:
+                # 计算页面标签相对于视口的位置
+                scroll_offset_x, scroll_offset_y = viewport_offset
+
+                logger.debug(f"[_on_selection_finished] 页面几何: {page_geometry}, 视口偏移: {viewport_offset}")
+
+                # 视口坐标 → 页面标签坐标
+                # 选区在视口中的位置
+                selection_x = selection_rect.x()
+                selection_y = selection_rect.y()
+
+                # 页面标签在虚拟容器中的位置（考虑滚动偏移）
+                page_y_in_viewport = page_geometry.y() - scroll_offset_y
+                page_x_in_viewport = page_geometry.x() - scroll_offset_x
+
+                # 计算选区相对于页面标签的坐标
+                page_relative_x = selection_x - page_x_in_viewport
+                page_relative_y = selection_y - page_y_in_viewport
+
+                # 创建相对于页面标签的矩形
+                page_rect = QRect(
+                    page_relative_x,
+                    page_relative_y,
+                    selection_rect.width(),
+                    selection_rect.height()
+                )
+
+                logger.debug(f"[_on_selection_finished] 转换后的页面坐标: {page_rect}")
+
+                # 检查选区是否在页面范围内
+                if page_rect.x() >= 0 and page_rect.y() >= 0 and \
+                   page_rect.right() <= page_geometry.width() and \
+                   page_rect.bottom() <= page_geometry.height():
+                    main_window.perform_screenshot_ocr(page_rect, page_index)
+                else:
+                    logger.warning(f"[_on_selection_finished] 选区超出页面范围")
+                    from PyQt5.QtWidgets import QMessageBox
+                    QMessageBox.warning(None, "提示", "选区超出页面范围，请重新选择")
+            else:
+                logger.warning("[_on_selection_finished] 无法获取页面标签或几何信息")
+        else:
+            logger.warning("[_on_selection_finished] 主窗口引用无效或没有截图OCR处理方法")
+
+    def _get_page_container(self, page_index):
+        """
+        获取指定页面的容器
+
+        Args:
+            page_index: 页面索引
+
+        Returns:
+            QWidget: 页面容器，如果找不到返回None
+        """
+        # 遍历虚拟容器的子控件
+        for i in range(self.virtual_widget_layout.count()):
+            item = self.virtual_widget_layout.itemAt(i)
+            if item:
+                widget = item.widget()
+                if widget and widget.property('page_index') == page_index:
+                    return widget
+        return None
