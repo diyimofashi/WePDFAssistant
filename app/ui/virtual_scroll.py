@@ -1020,3 +1020,32 @@ class VirtualScrollArea(QScrollArea):
                 if widget and widget.property('page_index') == page_index:
                     return widget
         return None
+
+    def wheelEvent(self, event):
+        """处理鼠标滚轮事件，支持Ctrl+滚轮缩放"""
+        from PyQt5.QtCore import Qt
+        
+        # 检查是否按下了Ctrl键
+        if event.modifiers() & Qt.ControlModifier:
+            # 获取滚轮旋转的方向
+            delta = event.angleDelta().y()
+            
+            # 查找父窗口中的主窗口引用以调用缩放功能
+            parent = self.parent()
+            while parent:
+                # 查找具有缩放功能的父窗口
+                if hasattr(parent, 'pdf_processor') and hasattr(parent, 'update_preview'):
+                    if delta > 0:
+                        # 向上滚动，放大
+                        if hasattr(parent, 'zoom_in'):
+                            parent.zoom_in()
+                    else:
+                        # 向下滚动，缩小
+                        if hasattr(parent, 'zoom_out'):
+                            parent.zoom_out()
+                    event.accept()  # 接受事件，防止继续传播
+                    return
+                parent = parent.parent()
+        
+        # 如果没有按下Ctrl键，执行默认的滚轮事件处理
+        super().wheelEvent(event)
