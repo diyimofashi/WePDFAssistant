@@ -515,22 +515,113 @@ class ContextMenuBuilder:
             self.main_window.show_message("❌ 未打开PDF文档")
     
     def _extract_page_text(self, page_num):
-        """提取页面文本"""
+        """提取页面文本（使用OCR识别整页）"""
         if hasattr(self.main_window, 'pdf_processor') and self.main_window.pdf_processor.fitz_document:
             try:
+                # 获取当前使用的OCR插件
+                current_plugin_name = self.main_window.ocr_config_manager.get_current_plugin()
+                if not current_plugin_name:
+                    self.main_window.show_message("❌ 请先在OCR设置中选择一个OCR插件")
+                    return
+
+                # 获取插件实例
+                plugin = self.main_window.ocr_plugin_manager.plugins.get(current_plugin_name)
+                if not plugin:
+                    self.main_window.show_message(f"❌ OCR插件 '{current_plugin_name}' 未加载")
+                    return
+
+                # 初始化插件（如果尚未初始化）
+                if not plugin.is_initialized:
+                    plugin_config = self.main_window.ocr_config_manager.get_plugin_config(current_plugin_name)
+                    init_result = self.main_window.ocr_plugin_manager.initialize_plugin(current_plugin_name, plugin_config)
+                    if not init_result.is_success():
+                        self.main_window.show_message(f"❌ OCR插件初始化失败: {init_result.message}")
+                        return
+
+                # 获取整个页面的图像数据
+                import fitz
                 page = self.main_window.pdf_processor.fitz_document.load_page(page_num)
-                text = page.get_text()
-                if text.strip():
-                    from PyQt5.QtWidgets import QApplication
-                    clipboard = QApplication.clipboard()
-                    clipboard.setText(text)
-                    self.main_window.show_message(f"✅ 第{page_num + 1}页文本已复制到剪贴板")
-                    logger.debug(f"提取页面{page_num}文本成功")
-                else:
-                    self.main_window.show_message("ℹ️ 该页面没有可提取的文本")
-                    logger.debug(f"页面{page_num}没有可提取的文本")
+                zoom_factor = self.main_window.pdf_processor.zoom_factor
+
+                # 渲染整个页面为图像
+                pix = page.get_pixmap(matrix=fitz.Matrix(zoom_factor, zoom_factor))
+                image_data = pix.tobytes("png")
+
+                # 在状态栏显示加载信息
+                self.main_window.show_message("正在进行OCR识别...")
+                from PyQt5.QtWidgets import QApplication
+                QApplication.processEvents()
+
+                try:
+                    # 尝试不同的OCR识别方法
+                    from app.core.ocr.ocr_plugin_interface import OCRResult
+                    from app.core.ocr.ocr_plugin_interface import OCRErrorCode
+                    from base64 import b64encode
+                    import tempfile
+                    import uuid
+                    import os
+
+                    # 方法1: 直接使用字节数据
+                    ocr_result = plugin.recognize_from_bytes(image_data)
+
+                    # 如果方法1失败，尝试方法2: 转换为Base64字符串
+                    if not ocr_result.is_success():
+                        image_base64 = b64encode(image_data).decode('utf-8')
+                        if image_base64.startswith('data:image'):
+                            image_base64 = image_base64.split(',')[1] if ',' in image_base64 else image_base64
+                        ocr_result = plugin.recognize_from_base64(image_base64)
+
+                    # 如果方法2也失败，尝试方法3: 保存为临时文件
+                    if not ocr_result.is_success():
+                        temp_dir = os.path.realpath(tempfile.gettempdir())
+                        temp_filename = f"page_ocr_{uuid.uuid4().hex}.png"
+                        tmp_file_path = os.path.join(temp_dir, temp_filename)
+
+                        try:
+                            with open(tmp_file_path, 'wb') as tmp_file:
+                                tmp_file.write(image_data)
+
+                            if os.path.exists(tmp_file_path):
+                                ocr_result = plugin.recognize_from_file(tmp_file_path)
+                            else:
+                                logger.error(f"临时文件创建失败: {tmp_file_path}")
+                                ocr_result = OCRResult(
+                                    code=OCRErrorCode.FILE_NOT_FOUND,
+                                    message=f"临时文件创建失败: {tmp_file_path}",
+                                    plugin_name=plugin.plugin_name
+                                )
+                        except Exception as file_error:
+                            logger.error(f"创建或写入临时文件时出错: {file_error}")
+                            ocr_result = OCRResult(
+                                code=OCRErrorCode.UNKNOWN_ERROR,
+                                message=f"创建临时文件失败: {str(file_error)}",
+                                plugin_name=plugin.plugin_name
+                            )
+                        finally:
+                            try:
+                                if os.path.exists(tmp_file_path):
+                                    os.unlink(tmp_file_path)
+                            except Exception as cleanup_error:
+                                logger.warning(f"清理临时文件时出错: {cleanup_error}")
+
+                    # 显示OCR结果
+                    from app.ui.screenshot_result_dialog import ScreenshotOCRResultDialog
+                    dialog = ScreenshotOCRResultDialog(ocr_result, self.main_window)
+                    dialog.setWindowTitle(f"第{page_num + 1}页 - OCR识别结果")
+                    dialog.exec_()
+
+                    if ocr_result.is_success():
+                        self.main_window.show_message("✅ OCR识别完成")
+                    else:
+                        self.main_window.show_message(f"⚠️ OCR识别失败: {ocr_result.message}")
+
+                finally:
+                    self.main_window.show_message("")
+
             except Exception as e:
                 logger.error(f"提取页面{page_num}文本失败: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 self.main_window.show_message(f"❌ 提取文本失败: {str(e)}")
         else:
             self.main_window.show_message("❌ 未打开PDF文档")
