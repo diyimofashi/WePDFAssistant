@@ -281,6 +281,9 @@ class FileManager:
         success, message = self.parent.pdf_processor.save_pdf(file_path)
         if success:
             self.parent.show_message("✅ 文件已保存")
+            
+            # 重新加载新保存的文件，确保文档状态更新
+            self.parent.pdf_processor.open_pdf(file_path, async_mode=True)
         else:
             QMessageBox.critical(self.parent, "保存失败", message)
 
@@ -308,7 +311,19 @@ class FileManager:
             QMessageBox.warning(self.parent, "提示", "密码不能为空")
             return
 
-        success, message = self.parent.pdf_processor.encrypt_pdf(password, actual_output_path)
+        # 如果是直接加密保存（覆盖原文件），并且原文件是图片格式，需要确保保存为PDF格式
+        final_output_path = actual_output_path
+        if self.parent.pdf_processor.current_file:
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+            orig_file_ext = os.path.splitext(self.parent.pdf_processor.current_file)[1].lower()
+            output_file_ext = os.path.splitext(actual_output_path)[1].lower()
+            
+            if orig_file_ext in image_extensions and output_file_ext != '.pdf':
+                # 如果原文件是图片格式，但输出路径不是PDF格式，需要修改输出路径
+                base_name = os.path.splitext(os.path.basename(actual_output_path))[0]
+                final_output_path = os.path.join(os.path.dirname(actual_output_path), base_name + '.pdf')
+
+        success, message = self.parent.pdf_processor.encrypt_pdf(password, final_output_path)
         if success:
             self.parent.show_message("✅ 文件已加密保存")
             # 重新加载文件以更新加密状态
@@ -321,10 +336,10 @@ class FileManager:
             
             if is_from_image:
                 # 如果原文件是图片，加密保存后变成了真正的PDF，需要更新current_file
-                self.parent.pdf_processor.current_file = actual_output_path
+                self.parent.pdf_processor.current_file = final_output_path
                 
             # 重新加载加密后的文件
-            self.parent.pdf_processor.open_pdf(actual_output_path, async_mode=True, password=password)
+            self.parent.pdf_processor.open_pdf(final_output_path, async_mode=True, password=password)
         else:
             QMessageBox.critical(self.parent, "加密保存失败", message)
     
@@ -380,6 +395,15 @@ class FileManager:
                 # 已有文件，使用原文件信息
                 current_dir = os.path.dirname(self.parent.pdf_processor.current_file)
                 current_filename = os.path.basename(self.parent.pdf_processor.current_file)
+                
+                # 检查当前文件是否是图片格式
+                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+                file_ext = os.path.splitext(current_filename)[1].lower()
+                
+                if file_ext in image_extensions:
+                    # 如果原文件是图片格式，确保输出为PDF格式
+                    base_name = os.path.splitext(current_filename)[0]
+                    current_filename = base_name + ".pdf"
         else:
             current_dir = AppSettings.get_last_save_dir()
             current_filename = "document.pdf"
@@ -400,6 +424,9 @@ class FileManager:
                 AppSettings.set_last_save_dir(file_path)
                 self.parent.show_message("✅ 文档保存成功")
                 self.parent.update_save_actions_state()
+                
+                # 重新加载新保存的文件，确保文档状态更新
+                self.parent.pdf_processor.open_pdf(file_path, async_mode=True)
             else:
                 QMessageBox.critical(self.parent, "保存失败", message)
 
