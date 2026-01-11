@@ -237,3 +237,47 @@ class PDFNavigation:
         self.zoom_factor = actual_zoom
         
         return True, f"已适应容器，缩放比例为{int(target_zoom_factor * 100)}%"
+    
+    def _calculate_image_zoom(self, image_path):
+        """根据图片尺寸计算合适的缩放比例，小图片放大，大图片缩小到适合阅读的尺寸"""
+        try:
+            # 使用PyMuPDF获取图片尺寸
+            doc = fitz.open(image_path)
+            page = doc[0]
+            page_rect = page.rect
+            page_width = page_rect.width
+            page_height = page_rect.height
+            doc.close()
+            
+            # 定义参考尺寸（A4纸大小约为595x842点）
+            ref_width = 595  # A4纸宽度
+            ref_height = 842  # A4纸高度
+            
+            # 定义合适的显示尺寸范围
+            min_display_width = 500   # 最小显示宽度
+            max_display_width = 1000  # 最大显示宽度
+            min_display_height = 500  # 最小显示高度
+            max_display_height = 1600 # 最大显示高度
+            
+            # 计算适合的缩放比例
+            width_ratio = min_display_width / page_width if page_width < min_display_width else \
+                          max_display_width / page_width if page_width > max_display_width else 1.0
+            height_ratio = min_display_height / page_height if page_height < min_display_height else \
+                           max_display_height / page_height if page_height > max_display_height else 1.0
+            
+            # 取较小的比例以确保图片完全适应推荐显示区域
+            target_ratio = min(width_ratio, height_ratio)
+            
+            # 限制缩放比例在合理范围内 (0.25 到 4.0)
+            target_ratio = max(0.25, min(4.0, target_ratio))
+            
+            # 应用缩放比例（注意：需要转换为基于base_zoom的值）
+            actual_zoom = target_ratio * self.base_zoom
+            self.zoom_factor = actual_zoom
+            
+            logger.debug(f"根据图片尺寸计算缩放比例: 原始尺寸({page_width}x{page_height}), 目标比例{target_ratio:.2f}, 实际缩放{actual_zoom:.2f}")
+            
+        except Exception as e:
+            logger.error(f"计算图片缩放比例时出错: {e}")
+            # 如果出错，使用默认缩放
+            self.zoom_factor = self.base_zoom

@@ -157,6 +157,9 @@ class PDFLoader:
             self.current_page = 0
             self.last_error = ""
             
+            # 计算适合的缩放比例
+            self._calculate_image_zoom(image_path)
+            
             return True, f"成功打开图片文件，共{self.total_pages}页"
             
         except Exception as e:
@@ -271,6 +274,9 @@ class PDFLoader:
                 else:
                     # 对于图片加载，使用当前时间作为开始时间
                     self.load_time = 0.0
+                
+                # 计算适合的缩放比例
+                self._calculate_image_zoom(image_info['filepath'])
                 
                 # 发送加载完成信号
                 self.loading_finished.emit(True, message)
@@ -481,6 +487,10 @@ class PDFLoader:
             # 计算文件总大小
             total_size = sum(os.path.getsize(path) for path in valid_paths if os.path.exists(path))
             
+            # 计算适合的缩放比例（针对第一张图片）
+            if valid_paths:
+                self._calculate_image_zoom(valid_paths[0])
+            
             return True, f"成功加载{len(valid_paths)}张图片，共{self.total_pages}页"
             
         except Exception as e:
@@ -611,6 +621,10 @@ class PDFLoader:
             # 设置多图片路径属性，用于状态栏显示
             self.multi_image_paths = image_files.copy()
             self.multi_image_source_dir = directory_path
+            
+            # 计算适合的缩放比例（针对第一张图片）
+            if image_files:
+                self._calculate_image_zoom(image_files[0])
             
             # 发送加载完成信号
             self.loading_finished.emit(True, f"成功加载 {len(image_files)} 张图片，合并为 {self.total_pages} 页")
