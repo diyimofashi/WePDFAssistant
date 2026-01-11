@@ -101,10 +101,10 @@ class OCRPageLabel(QWidget):
         # 更新所有文本块的样式
         for block in self.text_blocks:
             if enabled:
-                # 调试模式：黄色背景，透明度0.3
+                # 调试模式：灰色背景，透明度0.3
                 block.setStyleSheet("""
                     QTextEdit {
-                        background-color: rgba(255, 255, 0, 77);
+                        background-color: rgba(128, 128, 128, 30);
                         border: none;
                         color: rgba(0, 0, 0, 255);
                     }
@@ -278,10 +278,10 @@ class OCRPageLabel(QWidget):
 
             # 设置样式
             if self.debug_mode:
-                # 调试模式：黄色背景，透明度0.3 (0.3 * 255 ≈ 77)
+                # 调试模式：灰色背景，透明度0.3 (0.3 * 255 ≈ 77)
                 text_block.setStyleSheet("""
                     QTextEdit {
-                        background-color: rgba(255, 255, 0, 77);
+                        background-color: rgba(128, 128, 128, 30);
                         border: none;
                         color: rgba(0, 0, 0, 255);
                     }
