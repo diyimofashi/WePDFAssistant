@@ -42,7 +42,7 @@ class PDFOperations:
             # 通过检查文件扩展名来判断
             is_from_image = False
             if self.current_file:
-                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
                 file_ext = os.path.splitext(self.current_file)[1].lower()
                 if file_ext in image_extensions:
                     is_from_image = True
@@ -95,7 +95,7 @@ class PDFOperations:
                                 # 检查是否可以从原始文件直接读取图片数据
                                 if self.current_file and os.path.exists(self.current_file):
                                     file_ext = os.path.splitext(self.current_file)[1].lower()
-                                    if file_ext in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico']:
+                                    if file_ext in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico']:
                                         # 如果原始文件存在且是图片格式，直接嵌入图片
                                         try:
                                             new_page.insert_image(new_page.rect, filename=self.current_file)
@@ -271,7 +271,7 @@ class PDFOperations:
             # 通过检查文件扩展名来判断
             is_from_image = False
             if self.current_file:
-                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
                 file_ext = os.path.splitext(self.current_file)[1].lower()
                 if file_ext in image_extensions:
                     is_from_image = True
@@ -322,7 +322,7 @@ class PDFOperations:
                                 # 检查是否可以从原始文件直接读取图片数据
                                 if self.current_file and os.path.exists(self.current_file):
                                     file_ext = os.path.splitext(self.current_file)[1].lower()
-                                    if file_ext in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico']:
+                                    if file_ext in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico']:
                                         # 如果原始文件存在且是图片格式，直接嵌入图片
                                         try:
                                             new_page.insert_image(new_page.rect, filename=self.current_file)

@@ -22,11 +22,12 @@ class FileManager:
         # 添加图片文件格式支持，支持多选
         file_paths, _ = QFileDialog.getOpenFileNames(
             self.parent, "选择文件", last_dir, 
-            "所有支持的文件 (*.pdf *.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;PDF文件 (*.pdf);;图片文件 (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;所有文件 (*.*)")
+            "所有支持的文件 (*.pdf *.jpg *.jpeg *.png *.bmp *.gif *.tiff *.tif *.webp *.ico);;PDF文件 (*.pdf);;图片文件 (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;所有文件 (*.*)"
+        )
 
         if file_paths:
             # 如果选择了多个文件，优先处理图片
-            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
             image_files = []
             pdf_files = []
             
@@ -58,7 +59,8 @@ class FileManager:
         # 支持多选图片文件
         image_paths, _ = QFileDialog.getOpenFileNames(
             self.parent, "选择多张图片文件", last_dir, 
-            "图片文件 (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;JPEG图片 (*.jpg *.jpeg);;PNG图片 (*.png);;BMP图片 (*.bmp);;所有文件 (*.*)")
+            "图片文件 (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.tif *.webp *.ico);;JPEG图片 (*.jpg *.jpeg);;PNG图片 (*.png);;BMP图片 (*.bmp);;所有文件 (*.*)"
+        )
 
         if image_paths:
             # 按文件名排序，确保按选择顺序显示
@@ -112,7 +114,7 @@ class FileManager:
         
         if directory_path:
             # 获取目录下所有图片文件
-            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
             image_files = []
             
             try:
@@ -294,7 +296,7 @@ class FileManager:
         # 如果原文件是图片格式，需要确保输出为PDF格式
         actual_output_path = file_path
         if self.parent.pdf_processor.current_file:
-            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
             orig_file_ext = os.path.splitext(self.parent.pdf_processor.current_file)[1].lower()
             output_file_ext = os.path.splitext(file_path)[1].lower()
             
@@ -314,7 +316,7 @@ class FileManager:
         # 如果是直接加密保存（覆盖原文件），并且原文件是图片格式，需要确保保存为PDF格式
         final_output_path = actual_output_path
         if self.parent.pdf_processor.current_file:
-            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
             orig_file_ext = os.path.splitext(self.parent.pdf_processor.current_file)[1].lower()
             output_file_ext = os.path.splitext(actual_output_path)[1].lower()
             
@@ -330,7 +332,7 @@ class FileManager:
             # 检查原文件是否是图片格式，以便正确处理
             is_from_image = False
             if self.parent.pdf_processor.current_file:
-                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
                 file_ext = os.path.splitext(self.parent.pdf_processor.current_file)[1].lower()
                 is_from_image = file_ext in image_extensions
             
@@ -397,7 +399,7 @@ class FileManager:
                 current_filename = os.path.basename(self.parent.pdf_processor.current_file)
                 
                 # 检查当前文件是否是图片格式
-                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
                 file_ext = os.path.splitext(current_filename)[1].lower()
                 
                 if file_ext in image_extensions:
@@ -441,7 +443,7 @@ class FileManager:
             current_filename = os.path.basename(self.parent.pdf_processor.current_file)
             
             # 检查当前文件是否是图片格式
-            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
             file_ext = os.path.splitext(current_filename)[1].lower()
             
             if file_ext in image_extensions:
@@ -481,7 +483,7 @@ class FileManager:
             # 检查原文件是否是图片格式，以便正确处理
             is_from_image = False
             if self.parent.pdf_processor.current_file:
-                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
                 file_ext = os.path.splitext(self.parent.pdf_processor.current_file)[1].lower()
                 is_from_image = file_ext in image_extensions
             

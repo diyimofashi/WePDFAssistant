@@ -242,7 +242,7 @@ class BarcodePluginManagerDialog(QDialog):
             self, 
             "选择测试图片", 
             "", 
-            "图片文件 (*.jpg *.jpeg *.png *.bmp *.tiff *.gif);;所有文件 (*)"
+            "图片文件 (*.jpg *.jpeg *.png *.bmp *.tiff *.tif *.gif);;所有文件 (*)"
         )
         
         if not file_path:

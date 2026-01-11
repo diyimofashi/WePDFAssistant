@@ -106,7 +106,7 @@ class PDFLoader:
     def open_pdf(self, file_path, async_mode=True, password=None):
         """打开PDF文件或图片文件 - 支持异步和同步模式"""
         # 检查是否为图片文件
-        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
         file_ext = os.path.splitext(file_path)[1].lower()
         
         if file_ext in image_extensions:
@@ -563,7 +563,7 @@ class PDFLoader:
         """从目录打开所有图片并合并为PDF"""
         try:
             # 获取目录中的所有图片文件
-            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
             image_files = []
             
             for file_name in os.listdir(directory_path):

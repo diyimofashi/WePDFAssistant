@@ -180,7 +180,7 @@ class LLMPluginSecurity:
             return False
 
         # 检查文件扩展名
-        allowed_extensions = {'.pdf', '.txt', '.jpg', '.jpeg', '.png', '.bmp', '.tiff'}
+        allowed_extensions = {'.pdf', '.txt', '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
         _, ext = os.path.splitext(file_path.lower())
         return ext in allowed_extensions
 

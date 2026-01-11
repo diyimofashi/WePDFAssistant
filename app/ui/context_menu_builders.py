@@ -689,7 +689,7 @@ class ContextMenuBuilder:
             self.main_window,
             "选择要插入的图片",
             "",
-            "图片文件 (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp)"
+            "图片文件 (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.tif *.webp)"
         )
 
         logger.debug(f"用户选择的图片路径: {file_path}")
