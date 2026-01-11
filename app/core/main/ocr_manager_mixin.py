@@ -25,7 +25,7 @@ class OCRManagerMixin:
     """OCR管理混入类 - 处理OCR相关功能"""
 
     def toggle_ocr_debug_mode(self):
-        """切换OCR文本层调试模式"""
+        """切换OCR文本层高亮模式"""
         try:
             # 切换调试模式状态
             if not hasattr(self, '_ocr_debug_mode'):
@@ -45,7 +45,11 @@ class OCRManagerMixin:
 
             # 显示提示信息
             mode_text = "启用" if self._ocr_debug_mode else "禁用"
-            self.show_message(f"OCR文本层调试模式已{mode_text}")
+            self.show_message(f"OCR文本层高亮模式已{mode_text}")
+            
+            # 保存设置到配置文件
+            from app.config.settings import AppSettings
+            AppSettings.set_ocr_highlight_mode(self._ocr_debug_mode)
         except Exception as e:
             logger.error(f"切换OCR调试模式时出错: {e}")
     

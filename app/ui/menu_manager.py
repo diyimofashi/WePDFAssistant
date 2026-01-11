@@ -243,9 +243,9 @@ class MenuManager(QObject):
         searchable_pdf_action.triggered.connect(self.parent.create_searchable_pdf)
         ocr_menu.addAction(searchable_pdf_action)
 
-        # OCR文本层调试模式
+        # OCR文本层高亮模式
         ocr_menu.addSeparator()
-        self.parent.ocr_debug_mode_action = QAction("🔍 OCR文本层调试模式", self.parent)
+        self.parent.ocr_debug_mode_action = QAction("🔍 OCR文本层高亮模式", self.parent)
         self.parent.ocr_debug_mode_action.setCheckable(True)
         self.parent.ocr_debug_mode_action.setChecked(False)
         self.parent.ocr_debug_mode_action.triggered.connect(self.parent.toggle_ocr_debug_mode)

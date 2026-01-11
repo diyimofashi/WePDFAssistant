@@ -89,6 +89,9 @@ class MainWindowBase(QMainWindow):
         # 初始化UI
         self.init_ui()
         self.apply_styles()
+        
+        # 加载OCR高亮模式设置
+        self._load_ocr_highlight_mode_setting()
     
     def _init_managers(self):
         """初始化管理器"""
@@ -128,6 +131,27 @@ class MainWindowBase(QMainWindow):
         # 如果PDF处理器有缩放变化信号，连接它
         if hasattr(self.pdf_processor, 'zoom_changed'):
             self.pdf_processor.zoom_changed.connect(self._on_zoom_changed)
+    
+    def _load_ocr_highlight_mode_setting(self):
+        """加载OCR高亮模式设置"""
+        try:
+            from app.config.settings import AppSettings
+            ocr_highlight_enabled = AppSettings.get_ocr_highlight_mode()
+            
+            # 设置内部状态
+            self._ocr_debug_mode = ocr_highlight_enabled
+            
+            # 更新菜单项状态
+            if hasattr(self, 'ocr_debug_mode_action'):
+                self.ocr_debug_mode_action.setChecked(ocr_highlight_enabled)
+            
+            # 如果当前存在虚拟滚动区域，更新其高亮模式
+            if hasattr(self, 'virtual_scroll_area') and self.virtual_scroll_area:
+                self.virtual_scroll_area.set_all_pages_debug_mode(ocr_highlight_enabled)
+                
+            logger.debug(f"OCR高亮模式设置已加载: {ocr_highlight_enabled}")
+        except Exception as e:
+            logger.error(f"加载OCR高亮模式设置时出错: {e}")
     
     def init_ui(self):
         """初始化UI界面"""

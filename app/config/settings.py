@@ -104,3 +104,16 @@ class AppSettings:
             settings = cls._load_settings()
             settings['last_save_dir'] = os.path.dirname(file_path)
             cls._save_settings()
+    
+    @classmethod
+    def get_ocr_highlight_mode(cls):
+        """获取OCR文本层高亮模式状态"""
+        settings = cls._load_settings()
+        return settings.get('ocr_highlight_mode', False)
+    
+    @classmethod
+    def set_ocr_highlight_mode(cls, enabled):
+        """设置OCR文本层高亮模式状态"""
+        settings = cls._load_settings()
+        settings['ocr_highlight_mode'] = bool(enabled)
+        cls._save_settings()
