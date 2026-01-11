@@ -54,6 +54,13 @@ class MenuManager(QObject):
         open_image_dir_action.triggered.connect(self.parent.open_image_directory)
         file_menu.addAction(open_image_dir_action)
 
+        # 打开远程文件
+        remote_open_action = QAction("🌐 打开远程文件", self.parent)
+        remote_open_action.triggered.connect(self.parent.open_remote_file)
+        file_menu.addAction(remote_open_action)
+
+        file_menu.addSeparator()
+
         # 保存
         save_action = QAction("💾 保存", self.parent)
         save_action.setShortcut("Ctrl+S")
@@ -78,50 +85,12 @@ class MenuManager(QObject):
 
         file_menu.addSeparator()
 
-        # 保存更改
-        self.parent.save_changes_action = QAction("✅ 保存更改", self.parent)
-        self.parent.save_changes_action.triggered.connect(self.parent.save_changes)
-        self.parent.save_changes_action.setEnabled(False)
-        file_menu.addAction(self.parent.save_changes_action)
-
-        # 放弃更改
-        self.parent.discard_changes_action = QAction("❌ 放弃更改", self.parent)
-        self.parent.discard_changes_action.setShortcut("Ctrl+D")
-        self.parent.discard_changes_action.triggered.connect(self.parent.discard_changes)
-        self.parent.discard_changes_action.setEnabled(False)
-        file_menu.addAction(self.parent.discard_changes_action)
-        
-        file_menu.addSeparator()
-        
-        # 撤销
-        self.parent.undo_action = QAction("↩️ 撤销", self.parent)
-        self.parent.undo_action.setShortcut("Ctrl+Z")
-        self.parent.undo_action.triggered.connect(self.parent.undo_operation)
-        self.parent.undo_action.setEnabled(False)
-        file_menu.addAction(self.parent.undo_action)
-        
-        # 重做
-        self.parent.redo_action = QAction("↪️ 重做", self.parent)
-        self.parent.redo_action.setShortcut("Ctrl+Y")
-        self.parent.redo_action.triggered.connect(self.parent.redo_operation)
-        self.parent.redo_action.setEnabled(False)
-        file_menu.addAction(self.parent.redo_action)
-        
-        file_menu.addSeparator()
-        
         # 退出
         exit_action = QAction("🚪 退出", self.parent)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.parent.close)
         file_menu.addAction(exit_action)
         
-        file_menu.addSeparator()
-        
-        # 打开远程文件
-        remote_open_action = QAction("🌐 打开远程文件", self.parent)
-        remote_open_action.triggered.connect(self.parent.open_remote_file)
-        file_menu.addAction(remote_open_action)
-    
     def _create_view_menu(self, menubar):
         """创建视图菜单"""
         view_menu = menubar.addMenu("👀 视图")
