@@ -729,8 +729,9 @@ class PageEditor(QObject):
                 img_bytes.seek(0)
 
                 # 插入图片到页面的居中位置
+                # 直接使用文件路径插入图片，保持原始质量
                 img_rect = fitz.Rect(x_offset, y_offset, x_offset + img_width, y_offset + img_height)
-                new_page.insert_image(img_rect, stream=img_bytes.read())
+                new_page.insert_image(img_rect, filename=image_path)
 
             except Exception as e:
                 import traceback

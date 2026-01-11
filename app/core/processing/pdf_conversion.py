@@ -428,9 +428,14 @@ class PDFConversion:
                     if img.mode in ('RGBA', 'LA', 'P'):
                         img = img.convert('RGB')
                     
-                    # 将图片保存到内存中的字节流
+                    # 根据原始图片格式保存到内存中的字节流，保持原始质量
                     img_bytes_io = io.BytesIO()
-                    img.save(img_bytes_io, format='JPEG', quality=95)
+                    # 保持原始格式以避免质量损失
+                    original_format = img.format or 'PNG'
+                    if original_format.upper() in ['JPEG', 'JPG']:
+                        img.save(img_bytes_io, format=original_format, quality=100, optimize=True)
+                    else:
+                        img.save(img_bytes_io, format=original_format)
                     img_bytes = img_bytes_io.getvalue()
                 
                 # 重新计算尺寸（因为可能经过了转换）
