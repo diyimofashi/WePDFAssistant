@@ -83,6 +83,8 @@ class FileManager:
             
             if success:
                 logger.info("异步加载启动成功")
+                # 保存打开的目录
+                AppSettings.set_last_open_dir(image_paths[0])
             else:
                 logger.error(f"异步加载启动失败: {message}")
                 self.parent.hide_progress_dialog()
@@ -94,6 +96,8 @@ class FileManager:
             
             if success:
                 logger.info("多图片异步加载启动成功")
+                # 保存打开的目录
+                AppSettings.set_last_open_dir(image_paths[0])
             else:
                 logger.error(f"多图片异步加载启动失败: {message}")
                 self.parent.hide_progress_dialog()
