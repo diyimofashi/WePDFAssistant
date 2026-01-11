@@ -150,13 +150,14 @@ class PDFNavigation:
         page_dims = self.get_page_dimensions(self.current_page)
         if not page_dims:
             return False, "无法获取页面尺寸信息"
-            
-        # 如果没有提供容器宽度，则使用默认缩放
+        
+        # 获取页面宽度
+        page_width = page_dims['width']
+        
+        # 如果没有提供容器宽度，则使用默认宽度
         if container_width is None:
-            # 使用默认适应宽度的缩放
-            page_width = page_dims['width']
             # 假设容器宽度为800像素（实际应用中应该从UI组件获取）
-            container_width = 800
+            container_width = 600
             
         # 计算适应宽度的缩放比例
         # container_width = page_width * zoom_factor * base_zoom
@@ -181,11 +182,12 @@ class PDFNavigation:
         page_dims = self.get_page_dimensions(self.current_page)
         if not page_dims:
             return False, "无法获取页面尺寸信息"
-            
-        # 如果没有提供容器高度，则使用默认缩放
+        
+        # 获取页面高度
+        page_height = page_dims['height']
+        
+        # 如果没有提供容器高度，则使用默认高度
         if container_height is None:
-            # 使用默认适应高度的缩放
-            page_height = page_dims['height']
             # 假设容器高度为600像素（实际应用中应该从UI组件获取）
             container_height = 600
             
