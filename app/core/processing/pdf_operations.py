@@ -144,51 +144,119 @@ class PDFOperations:
         """加密PDF文件"""
         if not self.fitz_document:
             return False, "请先打开PDF文件"
-
+    
         try:
             # 判断是否保存到原始文件
             is_saving_to_original = (self.current_file and
                                     os.path.abspath(output_path) == os.path.abspath(self.current_file))
-
+    
+            # 检查当前文档是否是从图片文件打开的
+            # 通过检查文件扩展名来判断
+            is_from_image = False
+            if self.current_file:
+                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.ico'}
+                file_ext = os.path.splitext(self.current_file)[1].lower()
+                if file_ext in image_extensions:
+                    is_from_image = True
+                
+            # 检查是否是新建的多图片文档
+            is_new_document = hasattr(self, 'is_new_document') and getattr(self, 'is_new_document', False)
+                
             # 使用PyPDF2来处理加密
             from PyPDF2 import PdfWriter, PdfReader
-            
+                
             # 先将PyMuPDF文档保存到临时文件
             temp_fd, temp_path = tempfile.mkstemp(suffix='.pdf', prefix='pypdf_encrypted_')
             os.close(temp_fd)
-
+    
             try:
                 # 用PyMuPDF保存到临时文件
-                self.fitz_document.save(temp_path, incremental=False)
-                
+                # 如果是从图片打开的文档或特殊格式，需要特殊处理
+                save_success = False
+                                
+                # 首先尝试直接保存（适用于普通PDF文档）
+                if not is_from_image and not is_new_document:
+                    try:
+                        self.fitz_document.save(temp_path, incremental=False)
+                        save_success = True
+                        logger.debug("直接保存PDF文档成功")
+                    except Exception as save_error:
+                        logger.warning(f"直接保存PDF失败: {save_error}, 尝试通用方法")
+                        # 如果直接保存失败，使用通用方法
+                                        
+                # 如果是图片文档或直接保存失败，使用通用方法创建标准PDF
+                if not save_success:
+                    try:
+                        # 创建一个新的标准PDF文档
+                        new_doc = fitz.open()
+                                        
+                        # 逐页复制内容
+                        for page_num in range(len(self.fitz_document)):
+                            page = self.fitz_document[page_num]
+                                            
+                            # 获取页面尺寸并创建新页面
+                            page_rect = page.rect
+                            new_page = new_doc.new_page(width=page_rect.width, height=page_rect.height)
+                                            
+                            # 根据文档类型采用适当的复制方法
+                            if is_from_image or is_new_document:
+                                # 对于图片文档，使用像素数据复制
+                                pix = page.get_pixmap()
+                                new_page.insert_image(new_page.rect, pixmap=pix)
+                            else:
+                                # 对于普通PDF文档，使用show_pdf_page方法
+                                try:
+                                    new_page.show_pdf_page(new_page.rect, self.fitz_document, page_num)
+                                except ValueError:
+                                    # 如果show_pdf_page失败，回退到像素复制
+                                    pix = page.get_pixmap()
+                                    new_page.insert_image(new_page.rect, pixmap=pix)
+                                        
+                        # 保存新创建的标准PDF文档
+                        new_doc.save(temp_path)
+                        new_doc.close()
+                        save_success = True
+                        logger.debug(f"成功创建标准PDF文档，包含 {len(self.fitz_document)} 页")
+                                        
+                    except Exception as new_doc_error:
+                        logger.error(f"创建新PDF文档失败: {new_doc_error}")
+                        save_success = False
+                                        
+                if not save_success:
+                    raise RuntimeError("无法将文档保存为标准PDF格式")
+                    
                 # 使用PyPDF2读取临时文件并加密
                 with open(temp_path, 'rb') as temp_file:
                     pdf_reader = PdfReader(temp_file)
                     pdf_writer = PdfWriter()
-                    
+                        
                     # 复制所有页面
                     for page in pdf_reader.pages:
                         pdf_writer.add_page(page)
-                    
+                        
                     # 添加元数据（如果有的话）
                     if pdf_reader.metadata:
                         pdf_writer.add_metadata(pdf_reader.metadata)
-                    
+                        
                     # 加密PDF
                     pdf_writer.encrypt(password)
-                    
+                        
                     # 保存到目标路径
                     with open(output_path, 'wb') as output_file:
                         pdf_writer.write(output_file)
-                
+                    
                 logger.debug(f"已加密保存到文件: {output_path}")
-
+    
                 # 清理临时文件
                 if os.path.exists(temp_path):
                     os.unlink(temp_path)
-
+                    
+                # 加密操作会改变原始文档状态，需要通知上层组件重新加载文档
+                # 但不能在这里直接关闭当前文档，因为可能还有其他操作正在使用
+                # 我们只是完成加密文件的保存，让调用者知道操作已完成
+    
                 return True, "PDF加密成功"
-
+    
             except Exception as e:
                 # 清理临时文件
                 if os.path.exists(temp_path):
@@ -197,7 +265,7 @@ class PDFOperations:
                     except:
                         pass
                 raise e
-
+    
         except Exception as e:
             logger.error(f"加密PDF文件失败: {str(e)}")
             import traceback

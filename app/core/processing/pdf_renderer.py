@@ -344,6 +344,20 @@ class PDFRenderer:
             return None
 
         try:
+            # 检查文档是否仍然有效
+            if not self.fitz_document:
+                logger.warning("文档引用为空，无法渲染页面")
+                return None
+            
+            # 尝试访问文档属性来检查是否仍然有效
+            try:
+                _ = len(self.fitz_document)  # 尝试获取文档长度
+            except ValueError as e:
+                if "closed" in str(e).lower() or "encrypted" in str(e).lower():
+                    logger.warning(f"文档已关闭或加密，无法访问: {e}")
+                    return None
+                raise  # 重新抛出其他异常
+            
             # 获取页面
             page = self.fitz_document[page_num]
             logger.debug(f"获取页面对象成功: {page}")
