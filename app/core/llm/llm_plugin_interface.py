@@ -11,6 +11,7 @@ class LLMMessage:
     """LLM消息"""
     role: str  # "system", "user", "assistant"
     content: str
+    timestamp: Optional[str] = None  # ISO格式时间戳
     metadata: Optional[Dict[str, Any]] = None
 
 

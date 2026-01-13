@@ -4,7 +4,7 @@
 """
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QFrame, QComboBox,
-    QPushButton, QLabel, QSizePolicy, QProgressDialog
+    QPushButton, QLabel, QSizePolicy, QProgressDialog, QMenu, QAction
 )
 from PyQt5.QtCore import Qt, QMutex, QWaitCondition, pyqtSignal, QObject
 from typing import List, Dict, Optional, Any
@@ -16,6 +16,7 @@ from app.core.llm.llm_integration import LLMIntegration
 from app.config.llm_plugin_config import LLMPluginConfigManager
 from app.managers.llm_tool_manager import LLMToolManager
 from app.core.llm.tool_interactions.interaction_handler import ToolInteractionHandler
+from app.core.llm.session_manager import SessionManager, ChatSession
 from app.utils.logger import get_logger
 
 # 导入组件
@@ -42,6 +43,10 @@ class NewLLMChatWidget(QWidget):
         self._is_generating = False
         self._pending_actions: Dict[str, ActionBubble] = {}
 
+        # 会话管理
+        self._session_manager: SessionManager | None = None
+        self._current_session: ChatSession | None = None
+
         # 进度对话框相关
         self._progress_dialog = None
         self._tool_start_time = None
@@ -50,6 +55,7 @@ class NewLLMChatWidget(QWidget):
         self._get_llm_integration()
         self._load_tools()
         self._load_plugins()
+        self._init_session_manager()
 
     def _get_llm_integration(self):
         """获取主窗口的LLM集成实例"""
@@ -137,14 +143,59 @@ class NewLLMChatWidget(QWidget):
 
         toolbar_layout.addStretch()
 
+        # 新建会话按钮
+        new_chat_button = QPushButton("+")
+        new_chat_button.setMaximumWidth(40)
+        new_chat_button.setMinimumHeight(32)
+        new_chat_button.setToolTip("新建会话")
+        new_chat_button.setStyleSheet("""
+            QPushButton {
+                background: rgba(255,255,255, 0.2);
+                border: 1px solid rgba(255,255,255, 0.3);
+                border-radius: 4px;
+                color: white;
+                font-weight: bold;
+                font-size: 18px;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.3);
+            }
+        """)
+        new_chat_button.clicked.connect(self._create_new_session)
+        toolbar_layout.addWidget(new_chat_button)
+
+        # 会话选择器
+        self._session_combo = QComboBox()
+        self._session_combo.setMinimumWidth(200)
+        self._session_combo.setMinimumHeight(32)
+        self._session_combo.setStyleSheet("""
+            QComboBox {
+                background: white;
+                border: 1px solid #b39ddb;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 13px;
+            }
+            QComboBox::drop-down {
+                border: none;
+                padding-right: 20px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+            }
+        """)
+        self._session_combo.currentIndexChanged.connect(self._on_session_changed)
+        toolbar_layout.addWidget(self._session_combo)
+
         # 关闭按钮
         close_button = QPushButton("✕")
         close_button.setMaximumWidth(40)
+        close_button.setMinimumHeight(32)
         close_button.setToolTip("关闭对话")
         close_button.setStyleSheet("""
             QPushButton {
-                background: rgba(255, 255, 255, 0.2);
-                border: 1px solid rgba(255, 255, 255, 0.3);
+                background: rgba(255,255,255, 0.2);
+                border: 1px solid rgba(255,255,255, 0.3);
                 border-radius: 4px;
                 color: white;
                 font-weight: bold;
@@ -156,26 +207,6 @@ class NewLLMChatWidget(QWidget):
         """)
         close_button.clicked.connect(self._close_sidebar)
         toolbar_layout.addWidget(close_button)
-
-        # 新建会话按钮
-        new_chat_button = QPushButton("💬")
-        new_chat_button.setMaximumWidth(40)
-        new_chat_button.setToolTip("新建会话")
-        new_chat_button.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.2);
-                border: 1px solid rgba(255, 255, 255, 0.3);
-                border-radius: 4px;
-                color: white;
-                font-weight: bold;
-                font-size: 16px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.3);
-            }
-        """)
-        new_chat_button.clicked.connect(self._clear_chat)
-        toolbar_layout.addWidget(new_chat_button)
 
         layout.addWidget(toolbar)
 
@@ -322,6 +353,78 @@ class NewLLMChatWidget(QWidget):
         self._input_edit.textChanged.connect(self._on_input_changed)
         self._plugin_combo.currentTextChanged.connect(self._on_plugin_changed)
 
+    def _init_session_manager(self):
+        """初始化会话管理器"""
+        self._session_manager = SessionManager()
+
+        # 获取当前会话
+        current_session = self._session_manager.get_current_session()
+
+        # 如果没有会话,创建一个新会话
+        if not current_session:
+            current_session = self._session_manager.create_session("新对话", self._current_plugin)
+
+        self._current_session = current_session
+
+        # 加载会话历史
+        self._load_session_history(current_session)
+
+        # 刷新会话列表
+        self._refresh_session_list()
+
+        logger.info(f"Initialized session manager, current session: {current_session.session_id}")
+
+    def _load_session_history(self, session: ChatSession):
+        """加载会话历史到界面"""
+        # 清空当前消息
+        while self._message_layout.count():
+            child = self._message_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        self._messages = []
+
+        # 加载历史消息
+        for msg_data in session.messages:
+            msg = LLMMessage(
+                role=msg_data["role"],
+                content=msg_data["content"],
+                timestamp=msg_data.get("timestamp", "")
+            )
+            self._messages.append(msg)
+            self._add_message_bubble(msg.role, msg.content)
+
+        logger.info(f"Loaded {len(session.messages)} messages from session")
+
+    def _refresh_session_list(self):
+        """刷新会话列表"""
+        sessions = self._session_manager.get_all_sessions()
+
+        # 保存当前选择的会话
+        current_session_id = self._current_session.session_id if self._current_session else None
+
+        # 清空下拉框
+        self._session_combo.clear()
+
+        # 添加所有会话
+        for session in sessions:
+            # 显示格式: 标题 (时间)
+            from datetime import datetime
+            try:
+                updated_time = datetime.fromisoformat(session.updated_at)
+                time_str = updated_time.strftime("%m-%d %H:%M")
+            except:
+                time_str = session.updated_at[:16] if session.updated_at else ""
+
+            display_text = f"{session.title} ({time_str})"
+            self._session_combo.addItem(display_text, session.session_id)
+
+        # 恢复当前选择的会话
+        if current_session_id:
+            index = self._session_combo.findData(current_session_id)
+            if index >= 0:
+                self._session_combo.setCurrentIndex(index)
+
     def _on_input_changed(self):
         """输入改变时更新发送按钮状态"""
         text = self._input_edit.toPlainText().strip()
@@ -406,6 +509,11 @@ class NewLLMChatWidget(QWidget):
             result_msg += f"成功: {result.get('message', '操作完成')}\n"
         else:
             result_msg += f"失败: {result.get('error', '未知错误')}\n"
+
+        # 保存助手消息到会话
+        assistant_message = LLMMessage(role="assistant", content=result_msg)
+        self._save_current_message(assistant_message)
+
         self._add_message_bubble("assistant", result_msg)
 
         # 继续对话，让LLM基于操作结果继续执行工具
@@ -462,16 +570,31 @@ class NewLLMChatWidget(QWidget):
                             if success:
                                 open_msg = f"\n✅ 打开PDF\n"
                                 open_msg += f"成功: PDF已打开: {file_path}\n"
+
+                                # 保存助手消息到会话
+                                assistant_message = LLMMessage(role="assistant", content=open_msg)
+                                self._save_current_message(assistant_message)
+
                                 self._add_message_bubble("assistant", open_msg)
                             else:
                                 logger.error(f"Failed to open PDF: {message}")
                                 open_msg = f"\n❌ 打开PDF失败\n"
                                 open_msg += f"错误: {message}\n"
+
+                                # 保存错误消息到会话
+                                error_message = LLMMessage(role="assistant", content=open_msg)
+                                self._save_current_message(error_message)
+
                                 self._add_message_bubble("assistant", open_msg)
                         else:
                             logger.error("Main window does not have pdf_processor attribute")
                             open_msg = f"\n❌ 无法打开PDF\n"
                             open_msg += f"错误: 主窗口缺少pdf_processor属性\n"
+
+                            # 保存错误消息到会话
+                            error_message = LLMMessage(role="assistant", content=open_msg)
+                            self._save_current_message(error_message)
+
                             self._add_message_bubble("assistant", open_msg)
 
                         # 将操作结果添加到消息历史
@@ -483,6 +606,11 @@ class NewLLMChatWidget(QWidget):
                         logger.error(f"Error opening PDF: {e}", exc_info=True)
                         open_msg = f"\n❌ 打开PDF时出错\n"
                         open_msg += f"错误: {str(e)}\n"
+
+                        # 保存错误消息到会话
+                        error_message = LLMMessage(role="assistant", content=open_msg)
+                        self._save_current_message(error_message)
+
                         self._add_message_bubble("assistant", open_msg)
                 else:
                     logger.error("Main window not found")
@@ -546,7 +674,13 @@ class NewLLMChatWidget(QWidget):
 
         except Exception as e:
             logger.error(f"Error continuing after action {action_type}: {e}", exc_info=True)
-            self._add_message_bubble("assistant", f"\n❌ 继续执行失败: {str(e)}\n")
+            error_msg = f"\n❌ 继续执行失败: {str(e)}\n"
+
+            # 保存错误消息到会话
+            error_message = LLMMessage(role="assistant", content=error_msg)
+            self._save_current_message(error_message)
+
+            self._add_message_bubble("assistant", error_msg)
             self._start_generation()
 
     def _send_message(self):
@@ -563,9 +697,15 @@ class NewLLMChatWidget(QWidget):
         if self._is_generating:
             return
 
-        # 添加用户消息
+        # 创建用户消息
+        user_message = LLMMessage(role="user", content=user_text)
+
+        # 添加用户消息到界面
         self._add_message_bubble("user", user_text)
-        self._messages.append(LLMMessage(role="user", content=user_text))
+        self._messages.append(user_message)
+
+        # 保存消息到会话
+        self._save_current_message(user_message)
 
         # 清空输入框
         self._input_edit.clear()
@@ -621,7 +761,13 @@ class NewLLMChatWidget(QWidget):
 
             if is_error:
                 # 显示错误信息
-                self._add_message_bubble("assistant", f"❌ {error_msg}")
+                error_msg = f"❌ {error_msg}"
+
+                # 保存错误消息到会话
+                error_message = LLMMessage(role="assistant", content=error_msg)
+                self._save_current_message(error_message)
+
+                self._add_message_bubble("assistant", error_msg)
                 logger.error(f"LLM error: {error_msg}")
             elif content and content.strip():  # 只处理非空内容
                 # 检查内容是否包含以$开头的特殊标记
@@ -705,12 +851,27 @@ class NewLLMChatWidget(QWidget):
                 # 将完整回复添加到消息历史(只有非空内容才添加)
                 final_content = self._current_assistant_bubble._text_edit.toPlainText()
                 if final_content.strip():
-                    self._messages.append(LLMMessage(role="assistant", content=final_content))
+                    assistant_message = LLMMessage(role="assistant", content=final_content)
+                    self._messages.append(assistant_message)
+                    # 保存助手回复到会话
+                    self._save_current_message(assistant_message)
+                else:
+                    # 如果没有内容,删除空白气泡
+                    self._message_layout.removeWidget(self._current_assistant_bubble)
+                    self._current_assistant_bubble.deleteLater()
+                    self._current_assistant_bubble = None
+                    logger.debug("Removed empty assistant bubble")
                 
         except Exception as e:
             logger.error(f"Error in _on_response: {e}", exc_info=True)
-            self._add_message_bubble("assistant", f"❌ 处理响应时出错: {str(e)}")
-            
+            error_msg = f"❌ 处理响应时出错: {str(e)}"
+
+            # 保存错误消息到会话
+            error_message = LLMMessage(role="assistant", content=error_msg)
+            self._save_current_message(error_message)
+
+            self._add_message_bubble("assistant", error_msg)
+
             # 确保即使出错也能恢复状态
             self._is_generating = False
             self._send_button.setEnabled(True)
@@ -835,7 +996,13 @@ class NewLLMChatWidget(QWidget):
                             bubble = self._add_action_bubble("file_chooser", arguments)
                         except Exception as e:
                             logger.error(f"Error adding file_chooser bubble: {e}", exc_info=True)
-                            self._add_message_bubble("assistant", f"\n❌ 无法显示文件选择界面: {str(e)}\n")
+                            error_msg = f"\n❌ 无法显示文件选择界面: {str(e)}\n"
+
+                            # 保存错误消息到会话
+                            error_message = LLMMessage(role="assistant", content=error_msg)
+                            self._save_current_message(error_message)
+
+                            self._add_message_bubble("assistant", error_msg)
                         continue  # 直接处理下一个工具调用
 
                     # 特殊处理confirm工具 - 在对话中显示确认UI
@@ -844,7 +1011,13 @@ class NewLLMChatWidget(QWidget):
                             self._add_action_bubble("confirm", arguments)
                         except Exception as e:
                             logger.error(f"Error adding confirm bubble: {e}", exc_info=True)
-                            self._add_message_bubble("assistant", f"\n❌ 无法显示确认界面: {str(e)}\n")
+                            error_msg = f"\n❌ 无法显示确认界面: {str(e)}\n"
+
+                            # 保存错误消息到会话
+                            error_message = LLMMessage(role="assistant", content=error_msg)
+                            self._save_current_message(error_message)
+
+                            self._add_message_bubble("assistant", error_msg)
                         continue
 
                     # 特殊处理input工具 - 在对话中显示输入UI
@@ -853,7 +1026,13 @@ class NewLLMChatWidget(QWidget):
                             self._add_action_bubble("input", arguments)
                         except Exception as e:
                             logger.error(f"Error adding input bubble: {e}", exc_info=True)
-                            self._add_message_bubble("assistant", f"\n❌ 无法显示输入界面: {str(e)}\n")
+                            error_msg = f"\n❌ 无法显示输入界面: {str(e)}\n"
+
+                            # 保存错误消息到会话
+                            error_message = LLMMessage(role="assistant", content=error_msg)
+                            self._save_current_message(error_message)
+
+                            self._add_message_bubble("assistant", error_msg)
                         continue
 
                     # 特殊处理password工具 - 在对话中显示密码输入UI
@@ -862,7 +1041,13 @@ class NewLLMChatWidget(QWidget):
                             self._add_action_bubble("password", arguments)
                         except Exception as e:
                             logger.error(f"Error adding password bubble: {e}", exc_info=True)
-                            self._add_message_bubble("assistant", f"\n❌ 无法显示密码输入界面: {str(e)}\n")
+                            error_msg = f"\n❌ 无法显示密码输入界面: {str(e)}\n"
+
+                            # 保存错误消息到会话
+                            error_message = LLMMessage(role="assistant", content=error_msg)
+                            self._save_current_message(error_message)
+
+                            self._add_message_bubble("assistant", error_msg)
                         continue
 
                     # 特殊处理open_pdf工具 - 先让用户选择文件
@@ -932,17 +1117,34 @@ class NewLLMChatWidget(QWidget):
                         result_msg += f"成功: {result.get('message', '执行完成')}\n"
                     else:
                         result_msg += f"失败: {result.get('error', '未知错误')}\n"
+
+                    # 保存助手消息到会话
+                    assistant_message = LLMMessage(role="assistant", content=result_msg)
+                    self._save_current_message(assistant_message)
+
                     self._add_message_bubble("assistant", result_msg)
 
                 except Exception as e:
                     logger.error(f"Error processing tool call {tool_name}: {e}", exc_info=True)
                     # 即使出错也要清理
                     self._cleanup_after_tool_execution(tool_name)
-                    self._add_message_bubble("assistant", f"\n❌ 工具执行错误: {str(e)}\n")
+
+                    # 保存错误消息到会话
+                    error_msg = f"\n❌ 工具执行错误: {str(e)}\n"
+                    error_message = LLMMessage(role="assistant", content=error_msg)
+                    self._save_current_message(error_message)
+
+                    self._add_message_bubble("assistant", error_msg)
 
         except Exception as e:
             logger.error(f"Error in _handle_tool_calls: {e}", exc_info=True)
-            self._add_message_bubble("assistant", f"\n❌ 处理工具调用时出错: {str(e)}\n")
+            error_msg = f"\n❌ 处理工具调用时出错: {str(e)}\n"
+
+            # 保存错误消息到会话
+            error_message = LLMMessage(role="assistant", content=error_msg)
+            self._save_current_message(error_message)
+
+            self._add_message_bubble("assistant", error_msg)
 
     def _get_file_filter_for_tool(self, tool_name: str) -> str:
         """根据工具名称获取文件过滤器"""
@@ -1176,6 +1378,68 @@ class NewLLMChatWidget(QWidget):
 
         # 添加欢迎消息
         self._add_message_bubble("assistant", "您好！我是AI助手，可以帮助您处理PDF文档。您可以问我任何关于PDF的问题或请求我执行相关操作。")
+
+    def _create_new_session(self):
+        """创建新会话"""
+        if not self._session_manager:
+            logger.warning("Session manager not initialized")
+            return
+
+        # 创建新会话
+        new_session = self._session_manager.create_session("新对话", self._current_plugin)
+
+        # 切换到新会话
+        self._switch_to_session(new_session)
+
+        # 刷新会话列表
+        self._refresh_session_list()
+
+        logger.info(f"Created new session: {new_session.session_id}")
+
+    def _on_session_changed(self, index: int):
+        """会话选择改变"""
+        if index < 0 or not self._session_manager:
+            return
+
+        session_id = self._session_combo.itemData(index)
+        if not session_id:
+            return
+
+        # 获取会话
+        session = self._session_manager.get_session(session_id)
+        if session and session.session_id != self._current_session.session_id:
+            # 切换会话
+            self._switch_to_session(session)
+            logger.info(f"Switched to session: {session_id}")
+
+    def _switch_to_session(self, session: ChatSession):
+        """切换到指定会话"""
+        # 切换当前会话
+        self._current_session = session
+        self._session_manager.set_current_session(session.session_id)
+
+        # 加载会话历史
+        self._load_session_history(session)
+
+        # 更新插件选择
+        if session.plugin:
+            index = self._plugin_combo.findText(session.plugin)
+            if index >= 0:
+                self._plugin_combo.setCurrentIndex(index)
+
+    def _save_current_message(self, message: LLMMessage):
+        """保存消息到当前会话"""
+        if self._current_session and self._session_manager:
+            self._session_manager.add_message(self._current_session.session_id, message)
+
+            # 如果是第一条用户消息,更新会话标题
+            if message.role == "user" and len(self._current_session.messages) == 1:
+                # 取消息的前30个字符作为标题
+                title = message.content[:30] + "..." if len(message.content) > 30 else message.content
+                self._session_manager.update_session_title(self._current_session.session_id, title)
+
+                # 刷新会话列表
+                self._refresh_session_list()
 
     def _close_sidebar(self):
         """关闭侧边栏"""
