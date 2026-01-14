@@ -60,15 +60,24 @@ class OpenPDFTool(BaseTool):
                     "error": "无法访问主窗口"
                 }
 
-            if hasattr(main_window, 'open_file'):
-                main_window.open_file(file_path)
-                logger.info(f"Opened PDF file: {file_path}")
-                return {
-                    "success": True,
-                    "message": f"PDF加载完成: {file_path}",
-                    "file_path": file_path,
-                    "status": "loaded"
-                }
+            # 直接调用 pdf_processor.open_pdf 打开文件
+            if hasattr(main_window, 'pdf_processor') and main_window.pdf_processor:
+                success, message = main_window.pdf_processor.open_pdf(file_path, async_mode=True)
+
+                if success:
+                    logger.info(f"Opened PDF file: {file_path}")
+                    return {
+                        "success": True,
+                        "message": f"PDF加载完成",
+                        "file_path": file_path,
+                        "status": "loaded"
+                    }
+                else:
+                    logger.error(f"Failed to open PDF: {message}")
+                    return {
+                        "success": False,
+                        "error": f"打开PDF失败: {message}"
+                    }
             else:
                 return {
                     "success": False,

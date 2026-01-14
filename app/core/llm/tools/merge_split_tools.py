@@ -2,7 +2,7 @@
 from typing import Dict, Any, Optional
 from PyQt5.QtWidgets import QWidget
 from app.core.llm.tools.base_tool import BaseTool
-from app.core.llm.tool_interactions.file_chooser import FileChooserWidget
+from app.core.llm.tool_interactions.file_chooser import FileChooserWidget, DirectoryChooserWidget
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -42,10 +42,8 @@ class SplitPDFTool(BaseTool):
 
     def get_parameter_ui(self, param_name: str, parent: Optional[QWidget] = None) -> Optional[QWidget]:
         if param_name == "output_dir":
-            widget = FileChooserWidget(
-                parent=parent,
-                file_filter="",
-                mode="open"
+            widget = DirectoryChooserWidget(
+                parent=parent
             )
             widget._browse_button.setText("选择目录...")
             widget.set_placeholder("选择输出目录...")
@@ -81,14 +79,37 @@ class SplitPDFTool(BaseTool):
                 # 调用拆分PDF功能
                 main_window.split_pdf()
 
+                # 获取拆分结果
+                split_result = None
+                if hasattr(main_window, 'split_manager'):
+                    split_result = main_window.split_manager.last_split_result
+
                 logger.info(f"Split PDF with mode: {split_mode}, pages_per_file: {pages_per_file}, output_dir: {output_dir}")
-                return {
-                    "success": True,
-                    "message": "PDF拆分对话框已打开,请选择拆分参数",
-                    "split_mode": split_mode,
-                    "pages_per_file": pages_per_file,
-                    "output_dir": output_dir
-                }
+
+                # 如果有实际拆分结果，使用实际结果；否则返回对话框打开消息
+                if split_result:
+                    if split_result['success']:
+                        return {
+                            "success": True,
+                            "message": f"PDF已成功拆分为单页文件，所有文件已保存至: {split_result['output_dir']}",
+                            "output_dir": split_result['output_dir'],
+                            "output_files": split_result['output_files'],
+                            "file_count": split_result['file_count'],
+                            "is_barcode_split": split_result.get('is_barcode_split', False)
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "error": split_result.get('message', '拆分失败')
+                        }
+                else:
+                    return {
+                        "success": True,
+                        "message": "PDF拆分对话框已打开，请选择拆分参数",
+                        "split_mode": split_mode,
+                        "pages_per_file": pages_per_file,
+                        "output_dir": output_dir
+                    }
             else:
                 return {
                     "success": False,

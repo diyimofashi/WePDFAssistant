@@ -331,7 +331,7 @@ class GetPageTextTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "获取指定页面的文本内容。如果页面没有OCR文本,会自动进行OCR识别然后返回文本。"
+        return "获取指定页面的文本内容。如果页面包含原生文本,直接返回;如果没有文本,会自动进行OCR识别然后返回结果。支持使用-1表示最后一页,0表示当前页。"
 
     def get_parameters_schema(self) -> Dict[str, Any]:
         return {
@@ -339,7 +339,7 @@ class GetPageTextTool(BaseTool):
             "properties": {
                 "page_number": {
                     "type": "integer",
-                    "description": "页码,从1开始。例如1表示第一页,-1表示最后一页,0表示当前页"
+                    "description": "目标页码。从1开始编号,例如1表示第一页,-1表示最后一页,0或不填写表示当前页"
                 }
             },
             "required": []
@@ -389,14 +389,15 @@ class GetPageTextTool(BaseTool):
             # 转换为0-based索引
             page_index = page_number - 1
 
-            # 检查页面是否有OCR数据
-            has_ocr = False
+            # 检查页面是否有OCR数据或原生文本
+            has_text = False
             page_text = ""
+            is_native_text = False
 
             if hasattr(main_window, 'virtual_scroll') and hasattr(main_window.virtual_scroll, 'ocr_results'):
                 ocr_result = main_window.virtual_scroll.ocr_results.get(page_index)
                 if ocr_result:
-                    has_ocr = True
+                    has_text = True
                     # 提取OCR文本
                     if isinstance(ocr_result, dict):
                         lines = ocr_result.get("lines", [])
@@ -407,40 +408,55 @@ class GetPageTextTool(BaseTool):
                         page_text = str(ocr_result)
 
             # 如果没有OCR数据,尝试从PDF提取原生文本
-            if not has_ocr:
+            if not has_text:
                 try:
                     page = main_window.pdf_processor.fitz_document[page_index]
                     page_text = page.get_text()
                     if page_text.strip():
-                        has_ocr = True
+                        has_text = True
+                        is_native_text = True
                 except Exception as e:
                     logger.warning(f"Failed to extract native text from page {page_number}: {e}")
 
             # 如果仍然没有文本,需要执行OCR
-            if not has_ocr or not page_text.strip():
+            if not has_text or not page_text.strip():
                 logger.info(f"Page {page_number} has no text, performing OCR")
 
-                # 检查是否有perform_ocr方法
+                # 检查主窗口是否有perform_ocr方法
                 if hasattr(main_window, 'perform_ocr'):
                     # 执行单页OCR
-                    ocr_result = main_window.perform_ocr(page_index, page_index)
-                    if ocr_result and "success" in ocr_result:
-                        # 获取OCR结果
+                    ocr_result = main_window.perform_ocr(page_index)
+
+                    if ocr_result and ocr_result.is_success():
+                        # 弹出对话框显示OCR识别结果
+                        from app.ui.screenshot_result_dialog import ScreenshotOCRResultDialog
+                        dialog = ScreenshotOCRResultDialog(ocr_result, main_window)
+                        dialog.setWindowTitle(f"第{page_number}页 - OCR识别结果")
+                        dialog.exec_()
+
+                        # 提取OCR文本用于缓存
+                        page_text = ocr_result.text if hasattr(ocr_result, 'text') else str(ocr_result)
+                        has_text = True
+                        is_native_text = False
+
+                        # 将OCR结果保存到virtual_scroll的ocr_results中（如果存在）
                         if hasattr(main_window, 'virtual_scroll') and hasattr(main_window.virtual_scroll, 'ocr_results'):
-                            ocr_data = main_window.virtual_scroll.ocr_results.get(page_index)
-                            if ocr_data:
-                                if isinstance(ocr_data, dict):
-                                    lines = ocr_data.get("lines", [])
-                                    page_text = "\n".join([line.get("text", "") for line in lines])
-                                elif isinstance(ocr_data, str):
-                                    page_text = ocr_data
-                                else:
-                                    page_text = str(ocr_data)
-                                has_ocr = True
+                            main_window.virtual_scroll.ocr_results[page_index] = {
+                                "lines": [{"text": line} for line in page_text.split('\n')],
+                                "full_text": page_text
+                            }
+
+                        # OCR识别成功,只返回成功状态,不返回文本(用户已通过对话框看到)
+                        return {
+                            "success": True,
+                            "page_number": page_number,
+                            "message": f"第{page_number}页OCR识别完成"
+                        }
                     else:
+                        # OCR失败
                         return {
                             "success": False,
-                            "error": f"OCR识别失败: {ocr_result.get('error', '未知错误')}"
+                            "error": f"OCR识别失败: {ocr_result.message if hasattr(ocr_result, 'message') else '未知错误'}"
                         }
                 else:
                     return {
@@ -449,16 +465,34 @@ class GetPageTextTool(BaseTool):
                     }
 
             # 返回结果
-            result = {
-                "success": True,
-                "page_number": page_number,
-                "page_text": page_text,
-                "text_length": len(page_text),
-                "is_ocr": not (has_ocr and main_window.pdf_processor.fitz_document[page_index].get_text().strip())
-            }
-
-            logger.info(f"Retrieved text from page {page_number}, length: {len(page_text)}")
-            return result
+            # 如果是原生文本,返回文本内容
+            # 如果是OCR识别,已经在上面的代码中返回了成功状态
+            if is_native_text and page_text.strip():
+                result = {
+                    "success": True,
+                    "page_number": page_number,
+                    "page_text": page_text,
+                    "text_length": len(page_text),
+                    "message": f"第{page_number}页原生文本提取成功"
+                }
+                logger.info(f"Retrieved native text from page {page_number}, length: {len(page_text)}")
+                return result
+            elif has_text and page_text.strip():
+                # 缓存的OCR文本,返回文本
+                result = {
+                    "success": True,
+                    "page_number": page_number,
+                    "page_text": page_text,
+                    "text_length": len(page_text),
+                    "message": f"第{page_number}页OCR文本提取成功"
+                }
+                logger.info(f"Retrieved cached OCR text from page {page_number}, length: {len(page_text)}")
+                return result
+            else:
+                return {
+                    "success": False,
+                    "error": f"页面{page_number}无法提取文本"
+                }
 
         except Exception as e:
             logger.error(f"Error getting page text: {e}", exc_info=True)

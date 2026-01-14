@@ -966,3 +966,99 @@ class OCRManagerMixin:
             logger.error(f"获取选区图像数据时出错: {e}")
             logger.error(traceback.format_exc())
             return None
+
+    def perform_ocr(self, page_index: int) -> OCRResult:
+        """
+        对指定页面执行OCR识别（通用方法，供LLM工具使用）
+
+        Args:
+            page_index: 页面索引（0-based）
+
+        Returns:
+            OCRResult: OCR识别结果
+        """
+        try:
+            # 获取当前使用的OCR插件
+            current_plugin_name = self.ocr_config_manager.get_current_plugin()
+            if not current_plugin_name:
+                return OCRResult(
+                    code=OCRErrorCode.INVALID_PARAMETERS,
+                    message="请先在OCR设置中选择一个OCR插件",
+                    plugin_name=None
+                )
+
+            # 检查插件是否已加载
+            if current_plugin_name not in self.ocr_plugin_manager.plugins:
+                # 尝试加载插件
+                load_result = self.ocr_plugin_manager.load_all_plugins()
+                if current_plugin_name not in self.ocr_plugin_manager.plugins:
+                    return OCRResult(
+                        code=OCRErrorCode.PLUGIN_NOT_FOUND,
+                        message=f"OCR插件 '{current_plugin_name}' 加载失败",
+                        plugin_name=current_plugin_name
+                    )
+
+            # 获取插件实例
+            plugin = self.ocr_plugin_manager.plugins[current_plugin_name]
+
+            # 初始化插件（如果尚未初始化）
+            if not plugin.is_initialized:
+                plugin_config = self.ocr_config_manager.get_plugin_config(current_plugin_name)
+                init_result = self.ocr_plugin_manager.initialize_plugin(current_plugin_name, plugin_config)
+                if not init_result.is_success():
+                    return OCRResult(
+                        code=OCRErrorCode.INITIALIZATION_FAILED,
+                        message=f"插件初始化失败: {init_result.message}",
+                        plugin_name=current_plugin_name
+                    )
+
+            # 获取页面图像数据
+            page_image_data = self.pdf_processor.get_page_image_data(page_index)
+            if not page_image_data:
+                return OCRResult(
+                    code=OCRErrorCode.INVALID_PARAMETERS,
+                    message=f"无法获取第 {page_index + 1} 页图像数据",
+                    plugin_name=current_plugin_name
+                )
+
+            # 尝试不同的OCR识别方法
+            # 方法1: 直接使用字节数据
+            ocr_result = plugin.recognize_from_bytes(page_image_data)
+
+            # 如果方法1失败，尝试方法2: 转换为Base64字符串
+            if not ocr_result.is_success():
+                image_base64 = b64encode(page_image_data).decode('utf-8')
+                if image_base64.startswith('data:image'):
+                    image_base64 = image_base64.split(',')[1] if ',' in image_base64 else image_base64
+                ocr_result = plugin.recognize_from_base64(image_base64)
+
+            # 如果方法2也失败，尝试方法3: 保存为临时文件
+            if not ocr_result.is_success():
+                temp_dir = os.path.realpath(tempfile.gettempdir())
+                temp_filename = f"ocr_temp_{uuid.uuid4().hex}.png"
+                tmp_file_path = os.path.join(temp_dir, temp_filename)
+
+                try:
+                    with open(tmp_file_path, 'wb') as tmp_file:
+                        tmp_file.write(page_image_data)
+
+                    if os.path.exists(tmp_file_path):
+                        ocr_result = plugin.recognize_from_file(tmp_file_path)
+                except Exception as file_error:
+                    logger.error(f"创建临时文件时出错: {file_error}")
+                finally:
+                    try:
+                        if os.path.exists(tmp_file_path):
+                            os.unlink(tmp_file_path)
+                    except Exception:
+                        pass
+
+            return ocr_result
+
+        except Exception as e:
+            logger.error(f"执行OCR时出错: {e}", exc_info=True)
+            return OCRResult(
+                code=OCRErrorCode.UNKNOWN_ERROR,
+                message=f"OCR识别失败: {str(e)}",
+                plugin_name=current_plugin_name if 'current_plugin_name' in locals() else None
+            )

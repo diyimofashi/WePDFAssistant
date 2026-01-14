@@ -193,12 +193,13 @@ class SplitWorker(QThread):
 
 class SplitDialog(QDialog):
     """PDF拆分对话框 - 统一界面"""
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
         self.pdf_processor = parent.pdf_processor if parent else None
         self.worker = None
+        self.split_result = None  # 存储拆分结果
         self.init_ui()
         
     def init_ui(self):
@@ -588,10 +589,21 @@ class SplitDialog(QDialog):
     def on_split_finished(self, success: bool, message: str, output_files: List[str]):
         """拆分完成"""
         self.start_btn.setEnabled(True)
-        
+
         if success:
+            output_dir = self.output_dir_edit.text().strip()
+
+            # 保存拆分结果
+            self.split_result = {
+                'success': True,
+                'message': message,
+                'output_dir': output_dir,
+                'output_files': output_files,
+                'file_count': len(output_files)
+            }
+
             QMessageBox.information(self, "拆分完成", f"✅ {message}\n\n共生成 {len(output_files)} 个文件")
-            
+
             # 询问是否打开输出目录
             msg_box = QMessageBox(self)
             msg_box.setIcon(QMessageBox.Question)
@@ -601,19 +613,18 @@ class SplitDialog(QDialog):
             no_btn = msg_box.addButton("否", QMessageBox.NoRole)
             msg_box.setDefaultButton(no_btn)  # 默认选择"否"
             msg_box.exec_()
-            
+
             if msg_box.clickedButton() == yes_btn:
                 try:
-                    output_dir = self.output_dir_edit.text().strip()
                     # 标准化路径，确保使用正确的路径分隔符
                     if output_dir:
                         # 替换正斜杠为反斜杠，处理混合路径
                         normalized_dir = output_dir.replace('/', os.sep)
                         # 移除多余的路径分隔符
                         normalized_dir = os.path.normpath(normalized_dir)
-                        
+
                         logger.info(f"尝试打开目录: {normalized_dir}")
-                        
+
                         if os.path.exists(normalized_dir):
                             import subprocess
                             subprocess.Popen(['explorer', normalized_dir])
@@ -624,18 +635,42 @@ class SplitDialog(QDialog):
                 except Exception as e:
                     logger.error(f"打开输出目录失败: {e}")
                     QMessageBox.warning(self, "打开失败", f"无法打开输出目录：\n{str(e)}")
-            
+
             self.accept()
         else:
+            self.split_result = {
+                'success': False,
+                'message': message,
+                'output_dir': None,
+                'output_files': [],
+                'file_count': 0
+            }
             QMessageBox.critical(self, "拆分失败", f"❌ {message}")
     
     def on_barcode_split_finished(self, result):
         """条码拆分完成处理"""
         self.start_btn.setEnabled(True)
-        
+
         if result.success:
+            output_dir = None
+            # 从配置中获取输出目录
+            if hasattr(self, 'barcode_worker') and self.barcode_worker:
+                output_dir = self.barcode_worker.config.output_config.output_dir
+            else:
+                output_dir = self.output_dir_edit.text().strip()
+
+            # 保存条码拆分结果
+            self.split_result = {
+                'success': True,
+                'message': result.message,
+                'output_dir': output_dir,
+                'output_files': result.files_created,
+                'file_count': len(result.files_created),
+                'is_barcode_split': True
+            }
+
             QMessageBox.information(self, "拆分完成", f"✅ {result.message}\n\n共生成 {len(result.files_created)} 个文件")
-            
+
             # 询问是否打开输出目录
             msg_box = QMessageBox(self)
             msg_box.setIcon(QMessageBox.Question)
@@ -645,21 +680,15 @@ class SplitDialog(QDialog):
             no_btn = msg_box.addButton("否", QMessageBox.NoRole)
             msg_box.setDefaultButton(no_btn)
             msg_box.exec_()
-            
+
             if msg_box.clickedButton() == yes_btn:
                 try:
-                    # 从配置中获取输出目录
-                    if hasattr(self, 'barcode_worker') and self.barcode_worker:
-                        output_dir = self.barcode_worker.config.output_config.output_dir
-                    else:
-                        output_dir = self.output_dir_edit.text().strip()
-                    
                     if output_dir:
                         normalized_dir = output_dir.replace('/', os.sep)
                         normalized_dir = os.path.normpath(normalized_dir)
-                        
+
                         logger.info(f"尝试打开目录: {normalized_dir}")
-                        
+
                         if os.path.exists(normalized_dir):
                             import subprocess
                             subprocess.Popen(['explorer', normalized_dir])
@@ -670,9 +699,16 @@ class SplitDialog(QDialog):
                 except Exception as e:
                     logger.error(f"打开输出目录失败: {e}")
                     QMessageBox.warning(self, "打开失败", f"无法打开输出目录：\n{str(e)}")
-            
+
             self.accept()
         else:
+            self.split_result = {
+                'success': False,
+                'message': result.message,
+                'output_dir': None,
+                'output_files': [],
+                'file_count': 0
+            }
             QMessageBox.critical(self, "拆分失败", f"❌ {result.message}")
     
     def on_error_occurred(self, error_msg: str):
@@ -683,15 +719,30 @@ class SplitDialog(QDialog):
 
 class SplitManager:
     """PDF拆分管理器"""
-    
+
     def __init__(self, parent_window):
         self.parent = parent_window
-        
+        self.last_split_result = None
+
     def show_split_dialog(self):
-        """显示拆分对话框"""
+        """显示拆分对话框
+
+        Returns:
+            dict: 拆分结果字典，包含:
+                - success: 是否成功
+                - message: 消息
+                - output_dir: 输出目录
+                - output_files: 输出文件列表
+                - file_count: 文件数量
+                - is_barcode_split: 是否为条码拆分
+        """
         if not self.parent.pdf_processor or not self.parent.pdf_processor.pdf_document:
             QMessageBox.warning(self.parent, "警告", "请先打开PDF文件")
-            return
-        
+            return None
+
         dialog = SplitDialog(self.parent)
         dialog.exec_()
+
+        # 保存并返回拆分结果
+        self.last_split_result = dialog.split_result
+        return self.last_split_result
