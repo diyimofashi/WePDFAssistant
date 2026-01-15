@@ -4,57 +4,26 @@ LLM工具管理器
 """
 from typing import Optional, List, Dict, Any
 from app.core.llm.tools.tool_registry import ToolRegistry
-# 文件操作工具
-from app.core.llm.tools.file_operation_tools import (
+from app.core.llm.tools.complete_pdf_tools import (
     OpenPDFTool,
-    SavePDFTool
-)
-
-# 导航工具
-from app.core.llm.tools.navigation_tools import (
-    NavigatePDFTool
-)
-
-# 编辑工具
-from app.core.llm.tools.edit_tools import (
+    SavePDFTool,
+    NavigatePDFTool,
     InsertBlankPageTool,
     DeletePagesTool,
     RotatePageTool,
     ExtractPagesTool,
     InsertPDFPageTool,
-    InsertImagePageTool
-)
-
-# 合并拆分工具
-from app.core.llm.tools.merge_split_tools import (
+    InsertImagePageTool,
     SplitPDFTool,
-    MergePDFTool
-)
-
-# OCR工具
-from app.core.llm.tools.ocr_tools_enhanced import (
+    MergePDFTool,
     OCRLikePageTool,
-    CreateSearchablePDFTool
-)
-
-# 加密工具
-from app.core.llm.tools.encryption_tools import (
-    EncryptPDFTool
-)
-
-# 系统工具
-from app.core.llm.tools.system_tools import (
+    EncryptPDFTool,
+    ShowMessageTool,
+    ShowThumbnailTool,
     ClearCacheTool,
     UndoOperationTool,
     RedoOperationTool,
-    SearchTextTool,
-    ShowThumbnailTool,
-    GetPageTextTool
-)
-
-# 消息工具
-from app.core.llm.tools.message_tools import (
-    ShowMessageTool
+    SearchTextTool
 )
 from app.core.llm.tools.file_chooser_tool import FileChooserTool
 from app.core.llm.tool_interactions.interaction_handler import ToolInteractionHandler
@@ -95,9 +64,6 @@ class LLMToolManager:
             OpenPDFTool(),
             SavePDFTool(),
 
-            # PDF导航操作
-            NavigatePDFTool(),
-
             # PDF编辑操作
             InsertBlankPageTool(),
             DeletePagesTool(),
@@ -112,7 +78,6 @@ class LLMToolManager:
 
             # OCR功能
             OCRLikePageTool(),
-            CreateSearchablePDFTool(),
 
             # 安全功能
             EncryptPDFTool(),
@@ -120,13 +85,13 @@ class LLMToolManager:
             # UI工具
             ShowMessageTool(),
             ShowThumbnailTool(),
+            NavigatePDFTool(),
 
             # 系统工具
             ClearCacheTool(),
             UndoOperationTool(),
             RedoOperationTool(),
             SearchTextTool(),
-            GetPageTextTool(),
 
             # 文件选择工具
             FileChooserTool()
