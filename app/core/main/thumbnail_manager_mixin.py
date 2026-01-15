@@ -13,8 +13,12 @@ class ThumbnailManagerMixin:
             from PyQt5.QtWidgets import QMessageBox
             QMessageBox.warning(self, "警告", "请先打开PDF文件")
             return
-        
+
         self.split_manager.show_split_dialog()
+
+    def merge_pdf(self):
+        """PDF合并功能"""
+        self.merge_manager.show_merge_dialog()
     
     def show_barcode_settings(self):
         """显示条码设置对话框"""

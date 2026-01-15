@@ -172,6 +172,12 @@ class ToolbarManager(QObject):
         barcode_split_btn.setToolTip("根据条码拆分PDF文档")
         barcode_split_btn.triggered.connect(self.parent.barcode_split_pdf)
         toolbar.addAction(barcode_split_btn)
+
+        # 合并PDF
+        merge_btn = QAction("📑 合并PDF", self.parent)
+        merge_btn.setToolTip("合并多个PDF文件")
+        merge_btn.triggered.connect(self.parent.merge_pdf)
+        toolbar.addAction(merge_btn)
         
         # OCR工具 - 使用下拉按钮
         ocr_menu = QMenu("🔍 OCR工具", self.parent)

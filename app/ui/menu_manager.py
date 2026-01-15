@@ -186,6 +186,11 @@ class MenuManager(QObject):
         split_action = QAction("✂️ 分割PDF", self.parent)
         split_action.triggered.connect(self.parent.split_pdf)
         pdf_menu.addAction(split_action)
+
+        # 合并PDF
+        merge_action = QAction("📑 合并PDF", self.parent)
+        merge_action.triggered.connect(self.parent.merge_pdf)
+        pdf_menu.addAction(merge_action)
         
         # OCR工具子菜单
         tools_menu.addSeparator()

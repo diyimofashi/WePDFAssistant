@@ -21,6 +21,7 @@ from app.managers.file_manager import FileManager
 from app.managers.view_controller import ViewController
 from app.managers.search_manager import SearchManager
 from app.managers.split_manager import SplitManager
+from app.managers.merge_manager import MergeManager
 from app.managers.ocr_plugin_manager import OCRPluginManager
 from app.config.ocr_plugin_config import ocr_config_manager
 from app.core.ocr.ocr_plugin_interface import OCRErrorCode
@@ -101,6 +102,7 @@ class MainWindowBase(QMainWindow):
         self.view_controller = ViewController(self)
         self.search_manager = SearchManager(self)
         self.split_manager = SplitManager(self)
+        self.merge_manager = MergeManager(self)
         # 初始化OCR管理器
         self.ocr_plugin_manager = OCRPluginManager()
         self.ocr_config_manager = ocr_config_manager
