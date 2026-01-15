@@ -147,27 +147,3 @@ class BaseTool(ABC):
             是否需要在主线程中执行
         """
         return False
-
-    def _get_main_window(self):
-        """
-        获取主窗口实例
-
-        Returns:
-            主窗口实例或None
-        """
-        try:
-            from PyQt5.QtWidgets import QApplication
-
-            app = QApplication.instance()
-            if not app:
-                return None
-
-            # 获取主窗口
-            for widget in app.topLevelWidgets():
-                from app.core.main.main_window_base import MainWindowBase
-                if isinstance(widget, MainWindowBase):
-                    return widget
-            return None
-        except Exception as e:
-            logger.error(f"Error getting main window: {e}", exc_info=True)
-            return None

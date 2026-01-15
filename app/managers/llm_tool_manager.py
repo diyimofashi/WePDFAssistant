@@ -4,28 +4,20 @@ LLM工具管理器
 """
 from typing import Optional, List, Dict, Any
 from app.core.llm.tools.tool_registry import ToolRegistry
-from app.core.llm.tools.complete_pdf_tools import (
+from app.core.llm.tools.pdf_tools import (
     OpenPDFTool,
-    SavePDFTool,
-    NavigatePDFTool,
-    InsertBlankPageTool,
-    DeletePagesTool,
-    RotatePageTool,
-    ExtractPagesTool,
-    InsertPDFPageTool,
-    InsertImagePageTool,
     SplitPDFTool,
+    OCRPDFTool,
     MergePDFTool,
-    OCRLikePageTool,
-    EncryptPDFTool,
-    ShowMessageTool,
-    ShowThumbnailTool,
-    ClearCacheTool,
-    UndoOperationTool,
-    RedoOperationTool,
-    SearchTextTool
+    EncryptPDFTool
 )
 from app.core.llm.tools.file_chooser_tool import FileChooserTool
+from app.core.llm.tools.ui_tools import (
+    RenderPDFTool,
+    ShowPDFTool,
+    ShowMessageTool,
+    NavigatePDFTool
+)
 from app.core.llm.tool_interactions.interaction_handler import ToolInteractionHandler
 from app.utils.logger import get_logger
 
@@ -60,41 +52,16 @@ class LLMToolManager:
     def _register_default_tools(self):
         """注册默认工具"""
         tools = [
-            # PDF文件操作
             OpenPDFTool(),
-            SavePDFTool(),
-
-            # PDF编辑操作
-            InsertBlankPageTool(),
-            DeletePagesTool(),
-            RotatePageTool(),
-            ExtractPagesTool(),
-            InsertPDFPageTool(),
-            InsertImagePageTool(),
-
-            # PDF批量操作
             SplitPDFTool(),
+            OCRPDFTool(),
             MergePDFTool(),
-
-            # OCR功能
-            OCRLikePageTool(),
-
-            # 安全功能
             EncryptPDFTool(),
-
-            # UI工具
+            FileChooserTool(),
+            RenderPDFTool(),
+            ShowPDFTool(),
             ShowMessageTool(),
-            ShowThumbnailTool(),
-            NavigatePDFTool(),
-
-            # 系统工具
-            ClearCacheTool(),
-            UndoOperationTool(),
-            RedoOperationTool(),
-            SearchTextTool(),
-
-            # 文件选择工具
-            FileChooserTool()
+            NavigatePDFTool()
         ]
 
         for tool in tools:

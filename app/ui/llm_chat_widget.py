@@ -3,10 +3,10 @@
 提供美观的聊天界面和自然语言交互功能
 """
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QFrame, QComboBox,
-    QPushButton, QLabel, QSizePolicy, QProgressDialog
+    QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QFrame, QComboBox, 
+    QPushButton, QLabel, QSizePolicy
 )
-from PyQt5.QtCore import Qt, QMutex, QWaitCondition, pyqtSignal, QObject
+from PyQt5.QtCore import Qt
 from typing import List, Dict, Optional, Any
 import json
 import asyncio
@@ -41,10 +41,6 @@ class NewLLMChatWidget(QWidget):
         self._chat_thread: LLMChatThread | None = None
         self._is_generating = False
         self._pending_actions: Dict[str, ActionBubble] = {}
-
-        # 进度对话框相关
-        self._progress_dialog = None
-        self._tool_start_time = None
 
         self._init_ui()
         self._get_llm_integration()
@@ -380,20 +376,13 @@ class NewLLMChatWidget(QWidget):
         if action_type == "file_chooser":
             # 使用result中的save_mode标志来判断是否为保存模式
             save_mode = result.get('save_mode', False)
-
+            
             if save_mode:
                 # 直接调用继续处理,不添加消息
                 self._continue_after_action(action_type, result)
                 return
 
-        # 对于非必需参数的补充,不显示消息,直接继续
-        # 只在真正执行工具失败或用户主动取消时才显示消息
-        if result.get('success', True) and not result.get('error'):
-            # 成功完成参数补充,不显示消息
-            self._continue_after_action(action_type, result)
-            return
-
-        # 将操作结果添加到消息历史(只在错误时)
+        # 将操作结果添加到消息历史
         result_content = json.dumps(result, ensure_ascii=False)
         self._messages.append(LLMMessage(
             role="user",
@@ -623,10 +612,10 @@ class NewLLMChatWidget(QWidget):
                 # 显示错误信息
                 self._add_message_bubble("assistant", f"❌ {error_msg}")
                 logger.error(f"LLM error: {error_msg}")
-            elif content and content.strip():  # 只处理非空内容
+            elif content:
                 # 检查内容是否包含以$开头的特殊标记
                 special_content_handled = self._handle_special_content(content)
-
+                
                 if not special_content_handled:
                     # 如果没有特殊标记被处理，按正常流程添加内容
                     logger.debug(f"Updating content with {len(content)} characters")
@@ -701,8 +690,8 @@ class NewLLMChatWidget(QWidget):
                 self._is_generating = False
                 self._send_button.setEnabled(True)
                 self._send_button.setText("🚀 发送")
-
-                # 将完整回复添加到消息历史(只有非空内容才添加)
+                
+                # 将完整回复添加到消息历史
                 final_content = self._current_assistant_bubble._text_edit.toPlainText()
                 if final_content.strip():
                     self._messages.append(LLMMessage(role="assistant", content=final_content))
@@ -802,33 +791,6 @@ class NewLLMChatWidget(QWidget):
                         logger.error(f"Failed to parse arguments: {arguments_str}, error: {e}")
                         arguments = {}
 
-                    # 检查参数是否完整,如果不完整则通过action bubble收集
-                    if self._tool_manager and self._tool_manager.get_tool_registry():
-                        tool = self._tool_manager.get_tool_registry().get_tool(tool_name)
-                        if tool:
-                            complete, missing_params = tool.check_parameters_complete(arguments)
-                            if not complete:
-                                logger.info(f"Tool {tool_name} missing parameters: {missing_params}")
-                                # 为缺失的参数创建action bubble
-                                if missing_params:
-                                    # 对于文件路径类型的参数,使用file_chooser
-                                    for param_name in missing_params:
-                                        if 'path' in param_name or 'file' in param_name:
-                                            # 使用文件选择器
-                                            self._add_action_bubble("file_chooser", {
-                                                "purpose": f"选择{tool.description}",
-                                                "file_filter": self._get_file_filter_for_tool(tool_name),
-                                                "save_mode": "output" in param_name or "save" in param_name
-                                            })
-                                            break  # 一次只处理一个参数
-                                    # 如果不是文件参数,使用通用输入
-                                    else:
-                                        param_schema = tool.get_parameters_schema().get("properties", {}).get(missing_params[0], {})
-                                        self._add_action_bubble("input", {
-                                            "placeholder": param_schema.get("description", f"请输入{missing_params[0]}")
-                                        })
-                                continue  # 等待用户输入
-
                     # 特殊处理file_chooser工具 - 在对话中显示文件选择UI
                     if tool_name == "file_chooser":
                         try:
@@ -856,6 +818,31 @@ class NewLLMChatWidget(QWidget):
                             self._add_message_bubble("assistant", f"\n❌ 无法显示输入界面: {str(e)}\n")
                         continue
 
+                    # 特殊处理encrypt_pdf工具 - 先让用户选择保存路径
+                    if tool_name == "encrypt_pdf":
+                        # 先让用户选择保存路径
+                        import os
+                        parent_window = self.parent()
+                        main_window = None
+                        while parent_window:
+                            if hasattr(parent_window, 'pdf_processor'):
+                                main_window = parent_window
+                                break
+                            parent_window = parent_window.parent()
+
+                        if main_window:
+                            # 添加文件选择气泡，设置为保存模式
+                            save_args = arguments.copy()
+                            save_args["save_mode"] = True
+                            save_args["purpose"] = "选择加密后保存的文件路径"
+                            save_args["file_filter"] = "PDF Files (*.pdf)"
+                            
+                            self._add_action_bubble("file_chooser", save_args)
+                        else:
+                            logger.error("Main window not found, cannot access PDF processor")
+                            self._add_message_bubble("assistant", "\n❌ 无法访问PDF处理器\n")
+                        continue
+
                     # 特殊处理password工具 - 在对话中显示密码输入UI
                     if tool_name == "password":
                         try:
@@ -865,43 +852,47 @@ class NewLLMChatWidget(QWidget):
                             self._add_message_bubble("assistant", f"\n❌ 无法显示密码输入界面: {str(e)}\n")
                         continue
 
-                    # 特殊处理open_pdf工具 - 先让用户选择文件
-                    if tool_name == "open_pdf":
-                        file_path = arguments.get("file_path")
-                        if not file_path:
-                            # 没有提供文件路径,显示文件选择器
-                            self._add_action_bubble("file_chooser", {
-                                "purpose": "选择PDF文件",
-                                "file_filter": "PDF Files (*.pdf)",
-                                "save_mode": False
-                            })
+                    # 特殊处理show_pdf工具 - 在主窗口显示PDF
+                    if tool_name == "show_pdf":
+                        try:
+                            file_path = arguments.get("file_path")
+                            page_num = arguments.get("page_num", 0)
+
+                            # 获取主窗口
+                            parent_window = self.parent()
+                            main_window = None
+                            while parent_window:
+                                if hasattr(parent_window, 'pdf_processor'):
+                                    main_window = parent_window
+                                    break
+                                parent_window = parent_window.parent()
+
+                            if main_window and hasattr(main_window, 'open_pdf'):
+                                # 调用主窗口的打开PDF方法
+                                main_window.open_pdf(file_path)
+                                result = {"success": True, "message": f"PDF已显示: {file_path}"}
+                            else:
+                                logger.error("Main window or open_pdf method not found")
+                                result = {"success": False, "error": "无法访问PDF打开方法"}
+
+                            # 将工具执行结果添加到消息历史
+                            self._messages.append(LLMMessage(
+                                role="user",
+                                content=f"工具 {tool_name} 执行结果: {json.dumps(result, ensure_ascii=False)}"
+                            ))
+
+                            # 显示执行结果
+                            result_msg = f"\n✅ 工具 [{tool_name}]\n"
+                            if result.get('success'):
+                                result_msg += f"成功: {result.get('message', '执行完成')}\n"
+                            else:
+                                result_msg += f"失败: {result.get('error', '未知错误')}\n"
+                            self._add_message_bubble("assistant", result_msg)
                             continue
 
-                    # 特殊处理save_pdf, insert_pdf_page, insert_image_page, extract_pages等需要输出路径的工具
-                    output_path_tools = ["save_pdf", "extract_pages", "insert_pdf_page", "insert_image_page", "merge_pdf", "encrypt_pdf"]
-                    if tool_name in output_path_tools:
-                        output_path = arguments.get("output_path")
-                        if not output_path:
-                            # 没有提供输出路径,显示文件选择器
-                            save_mode = tool_name != "insert_pdf_page" and tool_name != "insert_image_page"
-                            self._add_action_bubble("file_chooser", {
-                                "purpose": f"选择{tool.description}",
-                                "file_filter": "PDF Files (*.pdf)",
-                                "save_mode": True
-                            })
-                            continue
-
-                    # 特殊处理insert_pdf_page, insert_image_page需要源文件/图片路径
-                    if tool_name in ["insert_pdf_page", "insert_image_page"]:
-                        source_path = arguments.get("pdf_path") if tool_name == "insert_pdf_page" else arguments.get("image_path")
-                        if not source_path:
-                            # 没有提供源文件路径,显示文件选择器
-                            file_filter = "PDF Files (*.pdf)" if tool_name == "insert_pdf_page" else "Image Files (*.png *.jpg *.jpeg *.gif *.bmp *.tiff)"
-                            self._add_action_bubble("file_chooser", {
-                                "purpose": f"选择{tool.description}",
-                                "file_filter": file_filter,
-                                "save_mode": False
-                            })
+                        except Exception as e:
+                            logger.error(f"Error showing PDF: {e}", exc_info=True)
+                            self._add_message_bubble("assistant", f"\n❌ 无法显示PDF: {str(e)}\n")
                             continue
 
                     # 对于其他工具，异步执行
@@ -910,14 +901,11 @@ class NewLLMChatWidget(QWidget):
                         if loop.is_running():
                             result = asyncio.run_coroutine_threadsafe(
                                 self._execute_tool(tool_name, arguments), loop
-                            ).result(timeout=120)  # 耗时工具延长超时到2分钟
+                            ).result(timeout=30)
                         else:
                             result = loop.run_until_complete(self._execute_tool(tool_name, arguments))
                     except RuntimeError:
                         result = asyncio.run(self._execute_tool(tool_name, arguments))
-
-                    # 执行完成后清理
-                    self._cleanup_after_tool_execution(tool_name)
 
                     # 将工具执行结果添加到消息历史
                     result_content = json.dumps(result, ensure_ascii=False)
@@ -936,126 +924,19 @@ class NewLLMChatWidget(QWidget):
 
                 except Exception as e:
                     logger.error(f"Error processing tool call {tool_name}: {e}", exc_info=True)
-                    # 即使出错也要清理
-                    self._cleanup_after_tool_execution(tool_name)
                     self._add_message_bubble("assistant", f"\n❌ 工具执行错误: {str(e)}\n")
 
         except Exception as e:
             logger.error(f"Error in _handle_tool_calls: {e}", exc_info=True)
             self._add_message_bubble("assistant", f"\n❌ 处理工具调用时出错: {str(e)}\n")
 
-    def _get_file_filter_for_tool(self, tool_name: str) -> str:
-        """根据工具名称获取文件过滤器"""
-        filter_map = {
-            "open_pdf": "PDF Files (*.pdf)",
-            "save_pdf": "PDF Files (*.pdf)",
-            "insert_pdf_page": "PDF Files (*.pdf)",
-            "insert_image_page": "Image Files (*.png *.jpg *.jpeg *.gif *.bmp *.tiff)",
-            "extract_pages": "PDF Files (*.pdf)",
-            "merge_pdf": "PDF Files (*.pdf)",
-            "encrypt_pdf": "PDF Files (*.pdf)"
-        }
-        return filter_map.get(tool_name, "All Files (*)")
-
     async def _execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """异步执行工具"""
-        if not self._tool_manager:
+        if self._tool_manager:
+            return await self._tool_manager.handle_tool_call(tool_name, arguments)
+        else:
             logger.error("Tool manager not available")
             return {"success": False, "error": "Tool manager not available"}
-
-        # 检查工具是否需要在主线程中执行
-        tool = self._tool_manager.get_tool_registry().get_tool(tool_name)
-        if not tool:
-            return {"success": False, "error": f"工具 '{tool_name}' 不存在"}
-
-        # 获取工具描述
-        tool_description = tool.description
-
-        # 定义耗时工具列表(这些工具执行时间较长)
-        time_consuming_tools = ["ocr_page", "create_searchable_pdf", "encrypt_pdf", "split_pdf", "merge_pdf"]
-
-        # 判断是否为耗时工具
-        is_time_consuming = tool_name in time_consuming_tools
-
-        # 显示进度提示
-        import time
-        self._tool_start_time = time.time()
-
-        # 禁用发送按钮,防止重复点击
-        if hasattr(self, '_send_button'):
-            self._send_button.setEnabled(False)
-
-        # 显示状态栏提示
-        parent_window = self.parent()
-        while parent_window:
-            if hasattr(parent_window, 'show_message'):
-                parent_window.show_message(f"正在执行: {tool_description}...")
-                break
-            parent_window = parent_window.parent()
-
-        # 如果是耗时工具,显示进度对话框
-        if is_time_consuming:
-            self._progress_dialog = QProgressDialog(
-                f"正在{tool_description}...",
-                "取消",
-                0, 100, self
-            )
-            self._progress_dialog.setWindowTitle("处理中")
-            self._progress_dialog.setWindowModality(Qt.WindowModal)
-            self._progress_dialog.show()
-
-        if tool.requires_main_thread():
-            # 对于需要在主线程执行的同步工具,直接同步调用execute
-            try:
-                # 直接同步调用,不使用async
-                import inspect
-                if inspect.iscoroutinefunction(tool.execute):
-                    # 如果是async方法,需要创建新的事件循环
-                    import asyncio
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        result = loop.run_until_complete(tool.execute(arguments))
-                        return result
-                    finally:
-                        loop.close()
-                else:
-                    # 同步方法,直接调用
-                    result = tool.execute(arguments)
-                    return result
-            except Exception as e:
-                logger.error(f"Error executing tool on main thread: {e}", exc_info=True)
-                return {
-                    "success": False,
-                    "error": f"工具执行失败: {str(e)}"
-                }
-        else:
-            # 在异步线程中执行
-            return await self._tool_manager.handle_tool_call(tool_name, arguments)
-
-    def _cleanup_after_tool_execution(self, tool_name: str):
-        """工具执行后的清理工作"""
-        try:
-            # 恢复发送按钮
-            if hasattr(self, '_send_button'):
-                self._send_button.setEnabled(True)
-
-            # 关闭进度对话框
-            if self._progress_dialog is not None:
-                self._progress_dialog.close()
-                self._progress_dialog = None
-
-            # 清除状态栏提示
-            parent_window = self.parent()
-            while parent_window:
-                if hasattr(parent_window, 'show_message'):
-                    parent_window.show_message("")
-                    break
-                parent_window = parent_window.parent()
-
-            logger.info(f"Tool execution cleanup completed for: {tool_name}")
-        except Exception as e:
-            logger.error(f"Error in cleanup after tool execution: {e}", exc_info=True)
 
     async def _encrypt_pdf_file(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """加密PDF文件"""
