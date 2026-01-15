@@ -479,37 +479,15 @@ class NewLLMChatWidget(QWidget):
     def _on_action_completed(self, action_type: str, result: Dict[str, Any]):
         """操作完成回调"""
 
-        # 对于文件选择操作,只在成功且有文件路径时才继续
+        # 特殊处理:如果是保存模式的文件选择,不添加消息,直接继续
         if action_type == "file_chooser":
-            file_path = result.get('file_path', '')
-            if not file_path:
-                # 用户取消了文件选择,不继续执行
-                logger.info("User cancelled file selection")
+            # 使用result中的save_mode标志来判断是否为保存模式
+            save_mode = result.get('save_mode', False)
+
+            if save_mode:
+                # 直接调用继续处理,不添加消息
+                self._continue_after_action(action_type, result)
                 return
-
-            # 无论是否保存模式,都需要添加消息显示操作结果
-            result_content = json.dumps(result, ensure_ascii=False)
-            self._messages.append(LLMMessage(
-                role="user",
-                content=f"用户操作 {action_type} 完成: {result_content}"
-            ))
-
-            # 显示操作结果消息
-            result_msg = f"\n✅ 用户操作 [{action_type}]\n"
-            if result.get('success', True):
-                result_msg += f"成功: {result.get('message', '操作完成')}\n"
-            else:
-                result_msg += f"失败: {result.get('error', '未知错误')}\n"
-
-            # 保存助手消息到会话
-            assistant_message = LLMMessage(role="assistant", content=result_msg)
-            self._save_current_message(assistant_message)
-
-            self._add_message_bubble("assistant", result_msg)
-
-            # 继续对话，让LLM基于操作结果继续执行工具
-            self._continue_after_action(action_type, result)
-            return
 
         # 对于非必需参数的补充,不显示消息,直接继续
         # 只在真正执行工具失败或用户主动取消时才显示消息
@@ -1010,8 +988,7 @@ class NewLLMChatWidget(QWidget):
                                         self._add_action_bubble("input", {
                                             "placeholder": param_schema.get("description", f"请输入{missing_params[0]}")
                                         })
-                                # 停止处理工具调用,等待用户操作
-                                return
+                                continue  # 等待用户输入
 
                     # 特殊处理file_chooser工具 - 在对话中显示文件选择UI
                     if tool_name == "file_chooser":
@@ -1026,7 +1003,7 @@ class NewLLMChatWidget(QWidget):
                             self._save_current_message(error_message)
 
                             self._add_message_bubble("assistant", error_msg)
-                        return  # 等待用户选择文件
+                        continue  # 直接处理下一个工具调用
 
                     # 特殊处理confirm工具 - 在对话中显示确认UI
                     if tool_name == "confirm":
@@ -1041,7 +1018,7 @@ class NewLLMChatWidget(QWidget):
                             self._save_current_message(error_message)
 
                             self._add_message_bubble("assistant", error_msg)
-                        return  # 等待用户确认
+                        continue
 
                     # 特殊处理input工具 - 在对话中显示输入UI
                     if tool_name == "user_input":
@@ -1056,7 +1033,7 @@ class NewLLMChatWidget(QWidget):
                             self._save_current_message(error_message)
 
                             self._add_message_bubble("assistant", error_msg)
-                        return  # 等待用户输入
+                        continue
 
                     # 特殊处理password工具 - 在对话中显示密码输入UI
                     if tool_name == "password":
@@ -1071,7 +1048,7 @@ class NewLLMChatWidget(QWidget):
                             self._save_current_message(error_message)
 
                             self._add_message_bubble("assistant", error_msg)
-                        return  # 等待用户输入密码
+                        continue
 
                     # 特殊处理open_pdf工具 - 先让用户选择文件
                     if tool_name == "open_pdf":
@@ -1083,7 +1060,7 @@ class NewLLMChatWidget(QWidget):
                                 "file_filter": "PDF Files (*.pdf)",
                                 "save_mode": False
                             })
-                            return  # 等待用户选择文件
+                            continue
 
                     # 特殊处理save_pdf, insert_pdf_page, insert_image_page, extract_pages等需要输出路径的工具
                     output_path_tools = ["save_pdf", "extract_pages", "insert_pdf_page", "insert_image_page", "merge_pdf", "encrypt_pdf"]
@@ -1097,7 +1074,7 @@ class NewLLMChatWidget(QWidget):
                                 "file_filter": "PDF Files (*.pdf)",
                                 "save_mode": True
                             })
-                            return  # 等待用户选择保存位置
+                            continue
 
                     # 特殊处理insert_pdf_page, insert_image_page需要源文件/图片路径
                     if tool_name in ["insert_pdf_page", "insert_image_page"]:
@@ -1110,7 +1087,7 @@ class NewLLMChatWidget(QWidget):
                                 "file_filter": file_filter,
                                 "save_mode": False
                             })
-                            return  # 等待用户选择源文件
+                            continue
 
                     # 对于其他工具，异步执行
                     loop = asyncio.get_event_loop()
