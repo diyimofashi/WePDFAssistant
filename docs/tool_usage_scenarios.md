@@ -1,1040 +1,653 @@
-# LLM 工具使用场景完整文档
+# LLM工具使用场景规划
 
-## 概述
+> 基于现有功能实现的工具使用场景
+> 创建时间: 2026-01-14
 
-本文档详细列出了所有 LLM 可用的工具及其使用场景、参数要求和执行流程。
-
----
-
-## 工具分类
+## 一、现有工具汇总
 
 ### 1. 文件操作工具
-- `open_pdf` - 打开 PDF 文档
-- `save_pdf` - 保存 PDF 文档
-- `download_file` - 下载文件
-- `upload_file` - 上传文件
+- **open_pdf**: 打开PDF文档
+- **save_pdf**: 保存PDF文档
 
 ### 2. 导航工具
-- `navigate_pdf` - PDF 页面导航
+- **navigate_pdf**: 翻页、跳转、缩放等PDF导航
 
-### 3. 文本工具
-- `get_page_text` - 获取页面文本（支持 OCR）
-- `search_text` - 在 PDF 中搜索文本
+### 3. 编辑工具
+- **insert_blank_page**: 插入空白页
+- **delete_pages**: 删除页面
+- **rotate_page**: 旋转页面
+- **extract_pages**: 提取页面到新PDF
+- **insert_pdf_page**: 从其他PDF插入页面
+- **insert_image_page**: 插入图片页面
 
-### 4. 编辑工具
-- `insert_blank_page` - 插入空白页
-- `delete_pages` - 删除页面
-- `rotate_page` - 旋转页面
-- `extract_pages` - 提取页面
-- `insert_pdf_page` - 插入 PDF 页面
-- `insert_image_page` - 插入图片页面
+### 4. 合并拆分工具
+- **split_pdf**: 拆分PDF(按页数、范围、书签)
+- **merge_pdf**: 合并PDF
 
-### 5. 合并拆分工具
-- `split_pdf` - 拆分 PDF
-- `merge_pdf` - 合并 PDF
+### 5. 条码工具
+- **barcode_split**: 根据条码分割PDF
 
-### 6. OCR 工具
-- `ocr_like_page` - 对指定页面执行 OCR
-- `create_searchable_pdf` - 创建可搜索 PDF
+### 6. 加密工具
+- **encrypt_pdf**: PDF加密
 
-### 7. 加密工具
-- `encrypt_pdf` - 加密 PDF
+### 7. OCR工具
+- **ocr_page**: OCR识别页面
+- **create_searchable_pdf**: 创建可搜索PDF
 
-### 8. 条码工具
-- `barcode_split` - 按条码拆分 PDF
+### 8. 系统工具
+- **clear_cache**: 清理缓存
+- **undo_operation**: 撤销操作
+- **redo_operation**: 重做操作
+- **search_text**: 文本搜索
+- **toggle_thumbnails**: 显示/隐藏缩略图
+- **get_page_text**: 获取页面文本
 
-### 9. 系统工具
-- `clear_cache` - 清理缓存
-- `undo_operation` - 撤销操作
-- `redo_operation` - 重做操作
-- `show_thumbnail` - 显示缩略图
+### 9. 文件选择工具
+- **file_chooser**: 文件/目录选择对话框
 
-### 10. 交互工具
-- `file_chooser` - 文件选择器
-- `confirm` - 确认对话框
-- `user_input` - 用户输入
-- `show_message` - 显示消息
+### 10. 上传工具
+- **upload_file**: 文件上传到远程服务器
 
 ---
 
-## 完整使用场景
+## 二、基于现有功能的使用场景
 
----
+### 场景分类一:基础文档操作
 
-## 场景 1: 打开 PDF 文档
+#### 场景1.1: 打开并浏览PDF
+**用户请求示例:**
+- "打开这个PDF文件"
+- "打开 D:/FNPData/test.pdf"
+- "帮我看下这个文档"
 
-**用户输入**: "打开文档"
+**工具调用流程:**
+1. `file_chooser` - 选择PDF文件(如果未提供路径)
+2. `open_pdf` - 打开PDF文档
+3. `navigate_pdf` - 根据需求导航(翻页、缩放等)
 
-### 执行流程
-
+**LLM响应示例:**
 ```
-1. 用户输入："打开文档"
-   ↓
-2. _send_message() → _start_generation()
-   ↓
-3. LLM 分析意图，决定调用 open_pdf
-   ↓
-4. LLM 返回 tool_calls: [
-     {"name": "open_pdf", "arguments": '{}'}
-   ]
-   ↓
-5. _handle_tool_calls() 解析参数
-   ↓
-6. 检查参数完整性 → file_path 缺失
-   ↓
-7. 显示 file_chooser action bubble
-   ↓
-8. return，停止工具执行循环
-   ↓
-9. 用户选择文件：D:/Documents/test.pdf
-   ↓
-10. _on_action_completed("file_chooser", {"file_path": "D:/Documents/test.pdf"})
-    ↓
-11. 使用选择的文件路径重新执行 open_pdf
-    ↓
-12. 打开 PDF 文档成功
-    ↓
-13. _continue_after_action() → _start_generation()
-    ↓
-14. LLM 接收工具结果，生成响应："已为您打开文档：test.pdf"
-    ↓
-15. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `open_pdf`
-- **必需参数**: `file_path` (string) - PDF 文件路径
-- **参数来源**: 用户通过 file_chooser 选择
-- **返回值**: `{"success": True, "file_path": "...", "page_count": 14}`
-
----
-
-## 场景 2: PDF 页面导航
-
-**用户输入**: "跳到最后一页" / "下一页" / "返回第一页"
-
-### 执行流程
-
-```
-1. 用户输入："跳到最后一页"
-   ↓
-2. _send_message() → _start_generation()
-   ↓
-3. LLM 返回 tool_calls: [
-     {"name": "navigate_pdf", "arguments": '{"action": "last_page"}'}
-   ]
-   ↓
-4. _handle_tool_calls() 检查参数 → action = "last_page" (完整)
-   ↓
-5. 执行 navigate_pdf 工具
-   ↓
-6. PDF 导航到最后一页 (第 14 页)
-   ↓
-7. 结果添加到消息历史
-   ↓
-8. _start_generation()
-   ↓
-9. LLM 生成响应："已跳转到最后一页 (第 14 页)"
-    ↓
-10. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `navigate_pdf`
-- **必需参数**: `action` (string) - 导航动作
-- **可选参数**:
-  - `action`: "next_page", "prev_page", "first_page", "last_page", "goto_page"
-  - `page_num`: 目标页码 (仅 goto_page 时需要)
-- **返回值**: `{"success": True, "current_page": 14, "message": "PDF导航: 最后一页(第14页)"}`
-
----
-
-## 场景 3: 提取页面文本（含 OCR）
-
-**用户输入**: "提取最后一页的文本"
-
-### 执行流程
-
-```
-1. 用户输入："提取最后一页的文本"
-   ↓
-2. _send_message() → _start_generation()
-   ↓
-3. 系统自动添加文档上下文到 System Prompt：
-   - 总页数: 14
-   - 当前页: 1
-   - 缩放比例: 1.50x
-   - 文档名: test.pdf
-   ↓
-4. LLM 基于上下文返回 tool_calls: [
-     {"name": "navigate_pdf", "arguments": '{"action": "last_page"}'},
-     {"name": "get_page_text", "arguments": '{"page_number": 14}'}
-   ]
-   ↓
-5. _handle_tool_calls() 执行第一个工具 navigate_pdf
-   ↓
-6. 导航到最后一页成功
-   ↓
-7. _handle_tool_calls() 执行第二个工具 get_page_text
-   ↓
-8. GetPageTextTool 检查是否有 OCR 数据 → 无
-   ↓
-9. 尝试提取 PDF 原生文本 → 无
-   ↓
-10. 调用 perform_ocr(page_index=13) 执行 OCR（使用与右键菜单相同的流程）
-    ↓
-11. OCR 识别成功，弹出对话框显示识别结果
-    ↓
-12. 用户关闭对话框,返回: {"success": True, "page_number": 14, "message": "第14页OCR识别完成"}
-    ↓
-13. 结果添加到消息历史
-    ↓
-14. _start_generation()
-    ↓
-15. LLM 基于工具结果生成响应："第14页OCR识别已完成"
-    ↓
-16. 创建 assistant bubble，显示响应
-```
-
-### 关键改进
-
-**文档上下文带来的优势**：
-- LLM 知道文档共14页，直接使用 page_number=14，而不是 -1
-- 无需先查询总页数，提高效率
-- 用户体验更流畅，响应更快
-
-**OCR 流程统一**：
-- `get_page_text` 工具使用 `main_window.perform_ocr()` 方法
-- 与右键菜单"提取文本"使用完全相同的 OCR 流程
-- 确保一致性：相同的插件、相同的识别方法、相同的结果格式
-
-**OCR 识别结果显示**：
-- OCR 识别成功后,弹出对话框显示识别结果
-- 对话框与右键菜单的 OCR 结果对话框完全一致
-- 工具只返回成功/失败状态,不返回 OCR 文本(用户已通过对话框看到)
-- 如果是原生文本或缓存的 OCR 文本,工具会返回文本内容
-
-### 工具信息
-
-- **工具名称**: `get_page_text`
-- **必需参数**: `page_number` (integer) - 页码
-  - `1` = 第一页
-  - `0` = 当前页
-  - `-1` = 最后一页
-- **自动 OCR**: 如果页面无文本，自动执行 OCR 并显示结果对话框
-- **返回值**:
-  - 原生文本: `{"success": True, "page_text": "...", "text_length": 58, "message": "..."}`
-  - 新 OCR 识别: `{"success": True, "page_number": 14, "message": "第14页OCR识别完成"}`
-  - 缓存的 OCR 文本: `{"success": True, "page_text": "...", "text_length": 58, "message": "..."}`
-
----
-
-## 场景 4: 保存 PDF 文档
-
-**用户输入**: "保存文档" / "另存为"
-
-### 执行流程
-
-```
-1. 用户输入："另存为"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "save_pdf", "arguments": '{}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → output_path 缺失
-   ↓
-4. 显示 file_chooser action bubble (save_mode=True)
-   ↓
-5. return，停止工具执行
-   ↓
-6. 用户选择保存路径：D:/Documents/saved.pdf
-   ↓
-7. _on_action_completed("file_chooser", {"file_path": "D:/Documents/saved.pdf"})
-    ↓
-8. 使用选择的路径重新执行 save_pdf
-    ↓
-9. PDF 保存成功
-    ↓
-10. _continue_after_action() → _start_generation()
-    ↓
-11. LLM 生成响应："文档已保存到：saved.pdf"
-    ↓
-12. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `save_pdf`
-- **必需参数**: `output_path` (string) - 保存路径
-- **参数来源**: 用户通过 file_chooser 选择
-- **返回值**: `{"success": True, "output_path": "...", "message": "PDF文档已保存"}`
-
----
-
-## 场景 5: 删除页面
-
-**用户输入**: "删除第 2 页" / "删除第 3-5 页"
-
-### 执行流程
-
-```
-1. 用户输入："删除第 2 页"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "delete_pages", "arguments": '{"page_numbers": [2]}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → page_numbers = [2] (完整)
-   ↓
-4. 执行 delete_pages 工具
-   ↓
-5. 删除第 2 页成功
-   ↓
-6. 结果添加到消息历史
-   ↓
-7. _start_generation()
-   ↓
-8. LLM 生成响应："已删除第 2 页"
-    ↓
-9. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `delete_pages`
-- **必需参数**: `page_numbers` (array) - 页码列表 (1-based)
-- **示例**: `[1, 2]` 删除第 1-2 页，`[3]` 删除第 3 页
-- **返回值**: `{"success": True, "deleted_count": 1, "remaining_pages": 13}`
-
----
-
-## 场景 6: 旋转页面
-
-**用户输入**: "把第 3 页旋转 90 度"
-
-### 执行流程
-
-```
-1. 用户输入："把第 3 页旋转 90 度"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "rotate_page", "arguments": '{"page_number": 3, "angle": 90}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → page_number=3, angle=90 (完整)
-   ↓
-4. 执行 rotate_page 工具
-   ↓
-5. 第 3 页旋转 90 度成功
-   ↓
-6. 结果添加到消息历史
-   ↓
-7. _start_generation()
-   ↓
-8. LLM 生成响应："第 3 页已顺时针旋转 90 度"
-    ↓
-9. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `rotate_page`
-- **必需参数**:
-  - `page_number` (integer) - 页码 (1-based)
-  - `angle` (integer) - 旋转角度 (90, 180, 270)
-- **返回值**: `{"success": True, "page_number": 3, "angle": 90}`
-
----
-
-## 场景 7: 插入图片页面
-
-**用户输入**: "在第 5 页后面插入一张图片"
-
-### 执行流程
-
-```
-1. 用户输入："在第 5 页后面插入一张图片"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "insert_image_page", "arguments": '{"page_number": 5}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → image_path 缺失
-   ↓
-4. 显示 file_chooser action bubble
-   ↓
-5. return，停止工具执行
-   ↓
-6. 用户选择图片：D:/Pictures/logo.png
-   ↓
-7. _on_action_completed("file_chooser", {"file_path": "D:/Pictures/logo.png"})
-    ↓
-8. 重新执行 insert_image_page(page_number=5, image_path="D:/Pictures/logo.png")
-    ↓
-9. 图片插入成功
-    ↓
-10. _continue_after_action() → _start_generation()
-    ↓
-11. LLM 生成响应："已在第 5 页后面插入图片：logo.png"
-    ↓
-12. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `insert_image_page`
-- **必需参数**:
-  - `page_number` (integer) - 在哪一页后面插入 (1-based)
-  - `image_path` (string) - 图片路径
-- **参数来源**: page_number 来自用户输入，image_path 通过 file_chooser 选择
-- **返回值**: `{"success": True, "page_number": 5, "image_path": "..."}`
-
----
-
-## 场景 8: 插入 PDF 页面
-
-**用户输入**: "在当前页插入另一个 PDF 的第 3 页"
-
-### 执行流程
-
-```
-1. 用户输入："在当前页插入另一个 PDF 的第 3 页"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "insert_pdf_page", "arguments": '{"page_number": 0}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → pdf_path 缺失
-   ↓
-4. 显示 file_chooser action bubble
-   ↓
-5. return，停止工具执行
-   ↓
-6. 用户选择 PDF：D:/Documents/other.pdf
-   ↓
-7. _on_action_completed("file_chooser", {"file_path": "D:/Documents/other.pdf"})
-    ↓
-8. LLM 重新调用，明确指定要插入的页码：[
-     {"name": "insert_pdf_page", "arguments": '{"page_number": 0, "pdf_path": "D:/Documents/other.pdf", "source_page": 3}'}
-   ]
-   ↓
-9. 执行 insert_pdf_page 工具
-    ↓
-10. PDF 页面插入成功
-    ↓
-11. _start_generation()
-    ↓
-12. LLM 生成响应："已将 other.pdf 的第 3 页插入到当前文档"
-    ↓
-13. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `insert_pdf_page`
-- **必需参数**:
-  - `page_number` (integer) - 在哪一页后面插入 (1-based)
-  - `pdf_path` (string) - 源 PDF 路径
-  - `source_page` (integer) - 源 PDF 的页码 (1-based)
-- **参数来源**: page_number 和 source_page 来自用户输入，pdf_path 通过 file_chooser 选择
-- **返回值**: `{"success": True, "page_number": 3, "source_path": "..."}`
-
----
-
-## 场景 9: 提取页面
-
-**用户输入**: "提取第 2-5 页保存为单独的 PDF"
-
-### 执行流程
-
-```
-1. 用户输入："提取第 2-5 页保存为单独的 PDF"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "extract_pages", "arguments": '{"page_numbers": [2, 3, 4, 5]}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → page_numbers 完整，output_path 缺失
-   ↓
-4. 显示 file_chooser action bubble (save_mode=True)
-   ↓
-5. return，停止工具执行
-   ↓
-6. 用户选择保存路径：D:/Documents/extracted.pdf
-   ↓
-7. _on_action_completed("file_chooser", {"file_path": "D:/Documents/extracted.pdf"})
-    ↓
-8. 重新执行 extract_pages(page_numbers=[2,3,4,5], output_path="D:/Documents/extracted.pdf")
-    ↓
-9. 页面提取成功
-    ↓
-10. _continue_after_action() → _start_generation()
-    ↓
-11. LLM 生成响应："已提取第 2-5 页，保存到：extracted.pdf"
-    ↓
-12. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `extract_pages`
-- **必需参数**:
-  - `page_numbers` (array) - 要提取的页码列表 (1-based)
-  - `output_path` (string) - 保存路径
-- **参数来源**: page_numbers 来自用户输入，output_path 通过 file_chooser 选择
-- **返回值**: `{"success": True, "extracted_count": 4, "output_path": "..."}`
-
----
-
-## 场景 10: 合并 PDF
-
-**用户输入**: "把这两个 PDF 合并成一个" / "合并当前文档和另一个 PDF"
-
-### 执行流程
-
-```
-1. 用户输入："把这两个 PDF 合并成一个"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "merge_pdf", "arguments": '{}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → 缺少 source_paths 和 output_path
-   ↓
-4. 显示 file_chooser action bubble (save_mode=False)
-   ↓
-5. return，停止工具执行
-   ↓
-6. 用户选择第一个 PDF：D:/Documents/doc1.pdf
-   ↓
-7. _on_action_completed() 提示继续选择第二个 PDF
-   ↓
-8. LLM 再次调用，包含第一个 PDF：[
-     {"name": "merge_pdf", "arguments": '{"source_paths": ["D:/Documents/doc1.pdf"]}'}
-   ]
-   ↓
-9. _handle_tool_calls() 检查参数 → 仍然缺少第二个 PDF 和 output_path
-    ↓
-10. 显示 file_chooser 选择第二个 PDF
-    ↓
-11. 用户选择：D:/Documents/doc2.pdf
-    ↓
-12. LLM 再次调用：[
-     {"name": "merge_pdf", "arguments": '{"source_paths": ["doc1.pdf", "doc2.pdf"]}'}
-   ]
-    ↓
-13. _handle_tool_calls() 检查参数 → 仍然缺少 output_path
-    ↓
-14. 显示 file_chooser (save_mode=True) 选择保存位置
-    ↓
-15. 用户选择：D:/Documents/merged.pdf
-    ↓
-16. 执行 merge_pdf 工具
-    ↓
-17. PDF 合并成功
-    ↓
-18. _start_generation()
-    ↓
-19. LLM 生成响应："已成功合并 doc1.pdf 和 doc2.pdf，保存到：merged.pdf"
-    ↓
-20. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `merge_pdf`
-- **必需参数**:
-  - `source_paths` (array) - 要合并的 PDF 路径列表
-  - `output_path` (string) - 合并后的保存路径
-- **参数来源**: 通过多次 file_chooser 选择
-- **返回值**: `{"success": True, "merged_count": 2, "output_path": "..."}`
-
----
-
-## 场景 11: 拆分 PDF
-
-**用户输入**: "把这个 PDF 按页拆分成单独的文件" / "每 3 页拆分一次"
-
-### 执行流程
-
-```
-1. 用户输入："把这个 PDF 按页拆分成单独的文件"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "split_pdf", "arguments": '{"split_mode": "all"}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → 缺少 output_path
-   ↓
-4. 显示 file_chooser action bubble (选择输出目录)
-   ↓
-5. return，停止工具执行
-   ↓
-6. 用户选择目录：D:/Documents/output/
-   ↓
-7. _on_action_completed("file_chooser", {"file_path": "D:/Documents/output/"})
-    ↓
-8. 重新执行 split_pdf(split_mode="all", output_path="D:/Documents/output/")
-    ↓
-9. PDF 拆分成功
-    ↓
-10. _continue_after_action() → _start_generation()
-    ↓
-11. LLM 生成响应："已将 PDF 拆分为 14 个单独文件，保存到：output/"
-    ↓
-12. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `split_pdf`
-- **必需参数**:
-  - `split_mode` (string) - 拆分模式 ("all", "range", "interval")
-  - `output_path` (string) - 输出目录路径
-- **可选参数**:
-  - `page_range`: 页面范围 (range 模式) [start, end]
-  - `interval`: 间隔页数 (interval 模式)
-- **参数来源**: split_mode 来自用户输入，output_path 通过 file_chooser 选择
-- **返回值**: `{"success": True, "split_count": 14, "output_path": "..."}`
-
----
-
-## 场景 12: 加密 PDF
-
-**用户输入**: "加密这个 PDF" / "给文档设置密码"
-
-### 执行流程
-
-```
-1. 用户输入："给文档设置密码"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "encrypt_pdf", "arguments": '{}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → 缺少 password 和 output_path
-   ↓
-4. 显示 password action bubble
-   ↓
-5. return，停止工具执行
-   ↓
-6. 用户输入密码：123456
-   ↓
-7. _on_action_completed("password", {"password": "123456"})
-    ↓
-8. LLM 再次调用，包含密码：[
-     {"name": "encrypt_pdf", "arguments": '{"password": "123456"}'}
-   ]
-   ↓
-9. _handle_tool_calls() 检查参数 → 缺少 output_path
-    ↓
-10. 显示 file_chooser (save_mode=True)
-    ↓
-11. 用户选择：D:/Documents/encrypted.pdf
-    ↓
-12. 执行 encrypt_pdf(password="123456", output_path="D:/Documents/encrypted.pdf")
-    ↓
-13. PDF 加密成功
-    ↓
-14. _start_generation()
-    ↓
-15. LLM 生成响应："文档已加密，密码：123456，保存到：encrypted.pdf"
-    ↓
-16. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `encrypt_pdf`
-- **必需参数**:
-  - `password` (string) - 加密密码
-  - `output_path` (string) - 加密后的保存路径
-- **参数来源**: password 通过 password bubble 输入，output_path 通过 file_chooser 选择
-- **返回值**: `{"success": True, "output_path": "...", "message": "PDF文档已加密"}`
-
----
-
-## 场景 13: 搜索文本
-
-**用户输入**: "搜索 '发票'" / "查找关键词"
-
-### 执行流程
-
-```
-1. 用户输入："搜索 '发票'"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "search_text", "arguments": '{"query": "发票"}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → query="发票" (完整)
-   ↓
-4. 执行 search_text 工具
-   ↓
-5. 在整个 PDF 中搜索"发票"
-   ↓
-6. 找到 3 个匹配项
-   ↓
-7. 结果添加到消息历史
-   ↓
-8. _start_generation()
-   ↓
-9. LLM 生成响应："在文档中找到 3 个'发票'，分别在：第 2 页、第 5 页、第 8 页"
-    ↓
-10. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `search_text`
-- **必需参数**:
-  - `query` (string) - 搜索文本
-- **可选参数**:
-  - `case_sensitive` (boolean) - 是否区分大小写
-  - `whole_word` (boolean) - 是否全词匹配
-- **返回值**: `{"success": True, "matches": [...], "total_count": 3}`
-
----
-
-## 场景 14: 执行 OCR
-
-**用户输入**: "对第 3 页进行 OCR 识别" / "OCR 识别当前页"
-
-### 执行流程
-
-```
-1. 用户输入："对第 3 页进行 OCR 识别"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "ocr_like_page", "arguments": '{"page_number": 3}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → page_number=3 (完整)
-   ↓
-4. 执行 ocr_like_page 工具
-   ↓
-5. OCR 识别开始...
-   ↓
-6. OCR 识别完成，提取文本
-   ↓
-7. 结果添加到消息历史
-   ↓
-8. _start_generation()
-   ↓
-9. LLM 生成响应："第 3 页 OCR 识别完成，提取到 156 个字符"
-    ↓
-10. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `ocr_like_page`
-- **必需参数**: `page_number` (integer) - 页码 (1-based)
-- **返回值**: `{"success": True, "text": "...", "text_length": 156}`
-
----
-
-## 场景 15: 创建可搜索 PDF
-
-**用户输入**: "创建可搜索 PDF" / "让 PDF 支持文本搜索"
-
-### 执行流程
-
-```
-1. 用户输入："创建可搜索 PDF"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "create_searchable_pdf", "arguments": '{}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → 缺少 output_path
-   ↓
-4. 显示 file_chooser action bubble (save_mode=True)
-   ↓
-5. return，停止工具执行
-   ↓
-6. 用户选择保存路径：D:/Documents/searchable.pdf
-   ↓
-7. _on_action_completed("file_chooser", {"file_path": "D:/Documents/searchable.pdf"})
-    ↓
-8. 重新执行 create_searchable_pdf(output_path="D:/Documents/searchable.pdf")
-    ↓
-9. 对所有页面执行 OCR
-    ↓
-10. 创建可搜索 PDF 成功
-    ↓
-11. _continue_after_action() → _start_generation()
-    ↓
-12. LLM 生成响应："已创建可搜索 PDF，保存到：searchable.pdf"
-    ↓
-13. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `create_searchable_pdf`
-- **必需参数**: `output_path` (string) - 可搜索 PDF 的保存路径
-- **参数来源**: 通过 file_chooser 选择
-- **返回值**: `{"success": True, "output_path": "...", "ocr_pages": 14}`
-
----
-
-## 场景 16: 显示/隐藏缩略图
-
-**用户输入**: "显示缩略图" / "隐藏缩略图"
-
-### 执行流程
-
-```
-1. 用户输入："显示缩略图"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "show_thumbnail", "arguments": '{"show": true}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → show=True (完整)
-   ↓
-4. 执行 show_thumbnail 工具
-   ↓
-5. 缩略图面板显示
-   ↓
-6. 结果添加到消息历史
-   ↓
-7. _start_generation()
-   ↓
-8. LLM 生成响应："缩略图面板已显示"
-    ↓
-9. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `show_thumbnail`
-- **必需参数**: `show` (boolean) - true=显示, false=隐藏
-- **返回值**: `{"success": True, "message": "缩略图面板已显示"}`
-
----
-
-## 场景 17: 撤销/重做操作
-
-**用户输入**: "撤销" / "重做" / "Ctrl+Z"
-
-### 执行流程
-
-```
-1. 用户输入："撤销"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "undo_operation", "arguments": '{}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → 无需参数 (完整)
-   ↓
-4. 执行 undo_operation 工具
-   ↓
-5. 操作撤销成功
-   ↓
-6. 结果添加到消息历史
-   ↓
-7. _start_generation()
-   ↓
-8. LLM 生成响应："已撤销上一步操作"
-    ↓
-9. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `undo_operation` / `redo_operation`
-- **必需参数**: 无
-- **返回值**: `{"success": True, "message": "操作已撤销"}`
-
----
-
-## 场景 18: 清理缓存
-
-**用户输入**: "清理缓存" / "释放内存"
-
-### 执行流程
-
-```
-1. 用户输入："清理缓存"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "clear_cache", "arguments": '{}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → 无需参数 (完整)
-   ↓
-4. 执行 clear_cache 工具
-   ↓
-5. 缓存清理成功，释放内存
-   ↓
-6. 结果添加到消息历史
-   ↓
-7. _start_generation()
-   ↓
-8. LLM 生成响应："缓存已清理，释放 125 MB 内存"
-    ↓
-9. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `clear_cache`
-- **必需参数**: 无
-- **返回值**: `{"success": True, "freed_memory": 125, "message": "缓存已清理"}`
-
----
-
-## 场景 19: 条码拆分
-
-**用户输入**: "按条码拆分文档"
-
-### 执行流程
-
-```
-1. 用户输入："按条码拆分文档"
-   ↓
-2. LLM 返回 tool_calls: [
-     {"name": "barcode_split", "arguments": '{}'}
-   ]
-   ↓
-3. _handle_tool_calls() 检查参数 → 缺少 output_path
-   ↓
-4. 显示 file_chooser action bubble (选择输出目录)
-   ↓
-5. return，停止工具执行
-   ↓
-6. 用户选择目录：D:/Documents/barcode_output/
-   ↓
-7. _on_action_completed("file_chooser", {"file_path": "D:/Documents/barcode_output/"})
-    ↓
-8. 重新执行 barcode_split(output_path="D:/Documents/barcode_output/")
-    ↓
-9. 条码检测和拆分开始...
-   ↓
-10. 检测到 5 个条码，拆分为 6 个文档
-    ↓
-11. _continue_after_action() → _start_generation()
-    ↓
-12. LLM 生成响应："按条码拆分完成，共拆分为 6 个文档，保存到：barcode_output/"
-    ↓
-13. 创建 assistant bubble，显示响应
-```
-
-### 工具信息
-
-- **工具名称**: `barcode_split`
-- **必需参数**: `output_path` (string) - 输出目录路径
-- **参数来源**: 通过 file_chooser 选择
-- **返回值**: `{"success": True, "split_count": 6, "barcodes_detected": 5, "output_path": "..."}`
-
----
-
-## 参数处理策略总结
-
-### 需要用户交互的参数
-
-| 参数类型 | Action Bubble | 示例工具 |
-|---------|--------------|----------|
-| 文件路径 (打开) | `file_chooser` (save_mode=False) | `open_pdf`, `insert_pdf_page`, `insert_image_page` |
-| 文件路径 (保存) | `file_chooser` (save_mode=True) | `save_pdf`, `extract_pages`, `merge_pdf`, `create_searchable_pdf` |
-| 密码 | `password` | `encrypt_pdf` |
-| 用户输入 | `input` | `confirm`, `user_input` |
-
-### 参数处理流程
-
-```
-1. LLM 返回工具调用
-   ↓
-2. 检查参数完整性
-   ↓
-3. 如果参数不完整：
-   a. 显示对应的 action bubble
-   b. return 停止工具执行
-   c. 等待用户完成交互
-   d. 用户完成后重新执行工具
-   ↓
-4. 如果参数完整：
-   a. 直接执行工具
-   b. 结果添加到消息历史
-   c. 继续下一个工具（如果有的话）
+好的,请选择要打开的PDF文件。
+已打开PDF文件,共10页。
+已跳转到第3页。
+已放大显示。
 ```
 
 ---
 
-## 多工具执行模式
+#### 场景1.2: 保存PDF文档
+**用户请求示例:**
+- "保存当前PDF"
+- "另存为 D:/FNPData/output.pdf"
+- "把文档保存一下"
 
-### 当前实现：批量执行
+**工具调用流程:**
+1. `file_chooser` - 选择保存路径(如果未指定)
+2. `save_pdf` - 保存文档
 
+**LLM响应示例:**
 ```
-LLM 返回 [工具A, 工具B, 工具C]
-   ↓
-执行工具 A → 结果添加到历史
-   ↓
-执行工具 B → 结果添加到历史
-   ↓
-执行工具 C → 结果添加到历史
-   ↓
-_start_generation()
-   ↓
-LLM 基于所有结果生成最终响应
+请选择保存位置。
+PDF已保存至: D:/FNPData/output.pdf
 ```
-
-**适用场景**：
-- 工具之间没有依赖关系
-- LLM 能提前规划好所有需要的工具
-
-**示例**：
-- 导航 + 提取文本（navigate_pdf + get_page_text）
-- 多个页面操作（rotate_page + rotate_page）
 
 ---
 
-## 迭代式执行（未来可考虑）
+### 场景分类二:文档浏览与查看
 
+#### 场景2.1: 翻页浏览
+**用户请求示例:**
+- "下一页"
+- "翻到第5页"
+- "最后一页"
+- "上一页"
+
+**工具调用流程:**
+1. `navigate_pdf` - 执行翻页操作
+
+**LLM响应示例:**
 ```
-LLM 返回 [工具A]
-   ↓
-执行工具 A → 结果添加到历史
-   ↓
-_start_generation()
-   ↓
-LLM 基于结果决定：是否需要工具B
-   ↓
-如果需要，LLM 返回 [工具B]
-   ↓
-执行工具 B → 结果添加到历史
-   ↓
-_start_generation()
-   ↓
-LLM 基于结果决定：是否需要工具C
+已翻到下一页(当前第4页)
+已跳转到第5页
+已跳转到最后一页(第10页)
 ```
-
-**适用场景**：
-- 工具之间有依赖关系
-- 需要基于前一个工具的结果决定后续操作
-
-**示例**：
-- 提取文本 + 翻译（需要先提取文本才能翻译）
-- OCR + 分析（需要先 OCR 才能分析）
 
 ---
 
-## 总结
+#### 场景2.2: 缩放查看
+**用户请求示例:**
+- "放大一点"
+- "缩小"
+- "适应宽度"
+- "适应页面"
 
-本文档涵盖了 19 个主要场景，包括：
-- ✅ 文件操作（打开、保存、上传、下载）
-- ✅ 导航（页面跳转）
-- ✅ 文本处理（提取、搜索、OCR）
-- ✅ 页面编辑（插入、删除、旋转、提取）
-- ✅ 文档处理（合并、拆分）
-- ✅ 安全（加密）
-- ✅ 高级功能（条码拆分、可搜索 PDF）
-- ✅ 系统操作（撤销、重做、清理缓存）
+**工具调用流程:**
+1. `navigate_pdf` - 执行缩放操作
 
-每个场景都包含完整的执行流程，从用户输入到最终响应，便于理解和调试。
+**LLM响应示例:**
+```
+已放大显示(1.5x)
+已缩小显示(0.8x)
+已适应宽度显示
+已适应页面显示
+```
+
+---
+
+#### 场景2.3: 缩略图控制
+**用户请求示例:**
+- "显示缩略图"
+- "隐藏缩略图"
+- "切换缩略图"
+
+**工具调用流程:**
+1. `toggle_thumbnails` - 显示/隐藏缩略图
+
+**LLM响应示例:**
+```
+缩略图面板已显示
+缩略图面板已隐藏
+```
+
+---
+
+### 场景分类三:文本提取与搜索
+
+#### 场景3.1: 获取页面文本
+**用户请求示例:**
+- "看看第3页有什么内容"
+- "提取当前页的文本"
+- "最后一页说了什么"
+
+**工具调用流程:**
+1. `get_page_text` - 获取指定页面文本
+
+**LLM响应示例:**
+```
+正在获取第3页的文本...
+第3页原生文本提取成功,文本长度: 256字符
+[展示文本内容...]
+```
+
+---
+
+#### 场景3.2: 搜索文本
+**用户请求示例:**
+- "搜索'合同'"
+- "找一下包含'发票'的页面"
+- "搜索一下'甲方'"
+
+**工具调用流程:**
+1. `search_text` - 在文档中搜索文本
+
+**LLM响应示例:**
+```
+已搜索文本: '合同'
+在文档中找到5处匹配
+```
+
+---
+
+### 场景分类四:文档编辑
+
+#### 场景4.1: 插入空白页
+**用户请求示例:**
+- "在第3页后插入空白页"
+- "在最后加一页空白页"
+
+**工具调用流程:**
+1. `insert_blank_page` - 插入空白页
+
+**LLM响应示例:**
+```
+已在第3页后插入空白页
+已在最后一页后插入空白页
+```
+
+---
+
+#### 场景4.2: 删除页面
+**用户请求示例:**
+- "删除第5页"
+- "删除第2、3、4页"
+- "把这几页删掉"
+
+**工具调用流程:**
+1. `delete_pages` - 删除指定页面
+
+**LLM响应示例:**
+```
+已删除1页: [5]
+已删除3页: [2, 3, 4]
+```
+
+---
+
+#### 场景4.3: 旋转页面
+**用户请求示例:**
+- "第3页顺时针转90度"
+- "把这一页转正"
+- "旋转第5页180度"
+
+**工具调用流程:**
+1. `rotate_page` - 旋转指定页面
+
+**LLM响应示例:**
+```
+已将第3页旋转90度
+已将第5页旋转180度
+```
+
+---
+
+#### 场景4.4: 提取页面
+**用户请求示例:**
+- "把第1、2页提取出来"
+- "提取第5页单独保存"
+- "提取前3页"
+
+**工具调用流程:**
+1. `file_chooser` - 选择输出路径(如果未指定)
+2. `extract_pages` - 提取页面到新PDF
+
+**LLM响应示例:**
+```
+请选择输出文件...
+已提取2页到 D:/FNPData/extract.pdf
+```
+
+---
+
+#### 场景4.5: 从其他PDF插入页面
+**用户请求示例:**
+- "在第2页后插入这个PDF"
+- "插入 D:/FNPData/append.pdf 到第3页后"
+
+**工具调用流程:**
+1. `file_chooser` - 选择要插入的PDF文件(如果未指定)
+2. `insert_pdf_page` - 插入PDF页面
+
+**LLM响应示例:**
+```
+请选择要插入的PDF文件...
+已从PDF文件插入页面
+```
+
+---
+
+#### 场景4.6: 插入图片页面
+**用户请求示例:**
+- "在第4页后插入这张图片"
+- "插入 D:/FNPData/image.jpg 作为新页面"
+
+**工具调用流程:**
+1. `file_chooser` - 选择图片文件(如果未指定)
+2. `insert_image_page` - 插入图片页面
+
+**LLM响应示例:**
+```
+请选择图片文件...
+已插入图片页面
+```
+
+---
+
+### 场景分类五:PDF拆分
+
+#### 场景5.1: 拆分为单页
+**用户请求示例:**
+- "拆分成单页的pdf"
+- "每页单独保存"
+- "按页拆分"
+
+**工具调用流程:**
+1. `file_chooser` - 选择输出目录(如果未指定)
+2. `split_pdf` - 执行拆分
+
+**LLM响应示例:**
+```
+请选择输出目录...
+PDF已成功拆分为单页文件,所有文件已保存至: D:/FNPData/output
+共生成10个文件
+```
+
+---
+
+#### 场景5.2: 按页数拆分
+**用户请求示例:**
+- "每3页拆成一个文件"
+- "按5页拆分"
+
+**工具调用流程:**
+1. `file_chooser` - 选择输出目录(如果未指定)
+2. `split_pdf` - 执行拆分(split_mode=pages, pages_per_file=3)
+
+**LLM响应示例:**
+```
+请选择输出目录...
+PDF已拆分,每个文件3页,共生成4个文件
+```
+
+---
+
+#### 场景5.3: 按范围拆分
+**用户请求示例:**
+- "拆分1-5页,6-10页"
+
+**工具调用流程:**
+1. `split_pdf` - 执行拆分(弹出对话框让用户选择范围)
+
+**LLM响应示例:**
+```
+PDF拆分对话框已打开,请选择拆分参数
+```
+
+---
+
+#### 场景5.4: 按书签拆分
+**用户请求示例:**
+- "按书签拆分PDF"
+
+**工具调用流程:**
+1. `split_pdf` - 执行拆分(split_mode=bookmarks)
+
+**LLM响应示例:**
+```
+PDF拆分对话框已打开,请选择拆分参数
+```
+
+---
+
+### 场景分类六:PDF合并
+
+#### 场景6.1: 合并多个PDF
+**用户请求示例:**
+- "合并这几个PDF"
+- "把 D:/a.pdf, D:/b.pdf, D:/c.pdf 合并"
+
+**工具调用流程:**
+1. `file_chooser` - 选择要合并的PDF文件(用户需提供路径)
+2. `file_chooser` - 选择输出路径
+3. `merge_pdf` - 执行合并
+
+**LLM响应示例:**
+```
+正在合并以下文件:
+- D:/a.pdf
+- D:/b.pdf
+- D:/c.pdf
+请选择输出文件...
+PDF合并已完成: 3个文件合并为 D:/merged.pdf
+```
+
+---
+
+### 场景分类七:条码拆分
+
+#### 场景7.1: 按条码拆分
+**用户请求示例:**
+- "按条码拆分这个PDF"
+- "用二维码分割文档"
+
+**工具调用流程:**
+1. `file_chooser` - 选择输出目录(如果未指定)
+2. `barcode_split` - 执行条码拆分
+
+**LLM响应示例:**
+```
+请选择输出目录...
+检测到8个条码标记
+已成功按条码拆分PDF,生成8个文件
+```
+
+---
+
+### 场景分类八:PDF加密
+
+#### 场景8.1: 添加密码保护
+**用户请求示例:**
+- "给这个PDF加个密码"
+- "加密当前文档"
+
+**工具调用流程:**
+1. `encrypt_pdf` - 用户输入密码,选择输出路径
+
+**LLM响应示例:**
+```
+请输入加密密码...
+请选择输出文件...
+PDF加密已完成
+```
+
+---
+
+### 场景分类九:OCR文字识别
+
+#### 场景9.1: 识别当前页
+**用户请求示例:**
+- "识别这一页的文本"
+- "对当前页进行OCR"
+
+**工具调用流程:**
+1. `ocr_page` - 识别当前页
+
+**LLM响应示例:**
+```
+已完成第3页的OCR识别,已生成可搜索PDF。您现在可以搜索识别到的文本了。
+```
+
+---
+
+#### 场景9.2: 识别指定页
+**用户请求示例:**
+- "识别第5页"
+- "OCR识别第1、2、3页"
+
+**工具调用流程:**
+1. `ocr_page` - 识别指定页面
+
+**LLM响应示例:**
+```
+已完成第5页的OCR识别
+已完成第1、2、3页的OCR识别
+```
+
+---
+
+#### 场景9.3: 批量OCR
+**用户请求示例:**
+- "整个文档进行OCR"
+- "识别所有页面"
+- "生成可搜索PDF"
+
+**工具调用流程:**
+1. `ocr_page` - 批量识别(不指定page_nums或指定多个页)
+2. 或 `create_searchable_pdf` - 创建可搜索PDF
+
+**LLM响应示例:**
+```
+已启动批量OCR识别,处理完成后会自动生成可搜索PDF。请稍候...
+已启动OCR识别,处理完成后会生成可搜索PDF。请稍候...
+```
+
+---
+
+### 场景分类十:系统操作
+
+#### 场景10.1: 撤销操作
+**用户请求示例:**
+- "撤销"
+- "撤回刚才的操作"
+- "undo"
+
+**工具调用流程:**
+1. `undo_operation` - 撤销上一次操作
+
+**LLM响应示例:**
+```
+已撤销上一次操作
+```
+
+---
+
+#### 场景10.2: 重做操作
+**用户请求示例:**
+- "重做"
+- "恢复刚才撤销的操作"
+
+**工具调用流程:**
+1. `redo_operation` - 重做上一次撤销的操作
+
+**LLM响应示例:**
+```
+已重做上一次撤销的操作
+```
+
+---
+
+#### 场景10.3: 清理缓存
+**用户请求示例:**
+- "清理一下缓存"
+- "释放内存"
+
+**工具调用流程:**
+1. `clear_cache` - 清理所有缓存
+
+**LLM响应示例:**
+```
+所有缓存已清理
+```
+
+---
+
+### 场景分类十一:文件上传
+
+#### 场景11.1: 上传PDF到服务器
+**用户请求示例:**
+- "把这个PDF上传到服务器"
+- "上传 D:/FNPData/test.pdf 到远程"
+
+**工具调用流程:**
+1. `upload_file` - 上传文件到远程服务器
+
+**LLM响应示例:**
+```
+正在上传文件到远程服务器...
+上传成功,远程路径: /remote/path/test.pdf
+```
+
+---
+
+## 三、典型工作流示例
+
+### 工作流1: PDF拆分+合并
+**用户操作流程:**
+```
+用户: 打开 D:/FNPData/document.pdf
+用户: 拆分成单页的PDF
+用户: 选择目录 D:/FNPData/split
+用户: 把第2、4、6页的PDF合并起来
+用户: 输出到 D:/FNPData/result.pdf
+```
+
+**工具调用序列:**
+1. `open_pdf` (file_path="D:/FNPData/document.pdf")
+2. `file_chooser` (directory_only=True, purpose="选择拆分输出目录")
+3. `split_pdf` (split_mode="pages", pages_per_file=1, output_dir="D:/FNPData/split")
+4. `merge_pdf` (input_files=["D:/FNPData/split/page_2.pdf", "D:/FNPData/split/page_4.pdf", "D:/FNPData/split/page_6.pdf"], output_path="D:/FNPData/result.pdf")
+
+---
+
+### 工作流2: PDF编辑+OCR
+**用户操作流程:**
+```
+用户: 打开 D:/FNPData/scan.pdf
+用户: 识别第3页的文本
+用户: 识别所有页面
+用户: 保存
+```
+
+**工具调用序列:**
+1. `open_pdf` (file_path="D:/FNPData/scan.pdf")
+2. `ocr_page` (page_nums=[3])
+3. `ocr_page` (page_nums=[])  // 批量识别
+4. `save_pdf` (file_path="D:/FNPData/scan_ocr.pdf")
+
+---
+
+### 工作流3: PDF提取+加密
+**用户操作流程:**
+```
+用户: 打开 D:/FNPData/report.pdf
+用户: 提取第1-5页
+用户: 保存到 D:/FNPData/extract.pdf
+用户: 给提取的PDF加密码
+```
+
+**工具调用序列:**
+1. `open_pdf` (file_path="D:/FNPData/report.pdf")
+2. `extract_pages` (page_nums=[1,2,3,4,5], output_path="D:/FNPData/extract.pdf")
+3. `open_pdf` (file_path="D:/FNPData/extract.pdf")
+4. `encrypt_pdf` (password="用户输入的密码", output_path="D:/FNPData/extract_encrypted.pdf")
+
+---
+
+## 四、工具组合建议
+
+### 组合1: 文档浏览流程
+- `open_pdf` → `navigate_pdf` → `get_page_text` → `search_text`
+
+### 组合2: 文档编辑流程
+- `open_pdf` → `insert_blank_page`/`delete_pages`/`rotate_page` → `save_pdf`
+
+### 组合3: 文档拆分流程
+- `open_pdf` → `split_pdf` → `navigate_pdf`(查看结果)
+
+### 组合4: 文档合并流程
+- `file_chooser`(选择文件) → `merge_pdf` → `navigate_pdf`(查看结果)
+
+### 组合5: OCR流程
+- `open_pdf` → `ocr_page` → `save_pdf`
+
+### 组合6: 安全流程
+- `open_pdf` → `extract_pages` → `encrypt_pdf` → `save_pdf`
+
+---
+
+## 五、用户友好提示语
+
+### 5.1 文件选择提示
+- "请选择要打开的PDF文件"
+- "请选择保存位置"
+- "请选择输出目录"
+- "请选择要合并的PDF文件"
+
+### 5.2 操作确认提示
+- "PDF加载完成"
+- "PDF已保存"
+- "操作已完成"
+- "处理中,请稍候..."
+
+### 5.3 错误提示
+- "请先打开PDF文档"
+- "无法访问主窗口"
+- "参数不完整,请提供..."
+- "操作失败:..."
+
+### 5.4 进度提示
+- "正在处理第1/10页..."
+- "已识别3/10页"
+- "合并进度: 5/10"
+
+---
+
+## 六、扩展建议(未来可考虑)
+
+以下功能目前未实现,未来可以考虑:
+- 列出目录中的PDF文件(需要新增 `list_directory` 工具)
+- 按索引选择文件(需要文件列表工具)
+- 批量删除文件(需要文件操作工具)
+- PDF水印添加
+- PDF转换(TIFF、图片等)
+- 批量OCR优化
+- 更多条码类型支持

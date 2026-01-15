@@ -644,10 +644,14 @@ class PDFLoader:
 
             # 检查文件是否存在和可读
             if not os.path.exists(file_path):
-                return False, "文件不存在"
+                error_msg = "文件不存在"
+                self.loading_finished.emit(False, error_msg)
+                return False, error_msg
 
             if not os.access(file_path, os.R_OK):
-                return False, "文件不可读"
+                error_msg = "文件不可读"
+                self.loading_finished.emit(False, error_msg)
+                return False, error_msg
 
             # 获取文件大小
             self.file_size = os.path.getsize(file_path)
@@ -662,11 +666,17 @@ class PDFLoader:
                     try:
                         result = self.pdf_document.decrypt(password)
                         if result == 0:
-                            return False, "密码错误，无法解密PDF文件"
+                            error_msg = "密码错误，无法解密PDF文件"
+                            self.loading_finished.emit(False, error_msg)
+                            return False, error_msg
                     except Exception as e:
-                        return False, f"解密失败: {str(e)}"
+                        error_msg = f"解密失败: {str(e)}"
+                        self.loading_finished.emit(False, error_msg)
+                        return False, error_msg
                 else:
-                    return False, "PDF文件已加密，需要密码才能打开"
+                    error_msg = "PDF文件已加密，需要密码才能打开"
+                    self.loading_finished.emit(False, error_msg)
+                    return False, error_msg
 
             # 额外验证PDF文件完整性
             total_pages = len(self.pdf_document.pages)
@@ -693,11 +703,17 @@ class PDFLoader:
                                 try:
                                     result = self.pdf_document.decrypt(password)
                                     if result == 0:
-                                        return False, "密码错误，无法解密PDF文件"
+                                        error_msg = "密码错误，无法解密PDF文件"
+                                        self.loading_finished.emit(False, error_msg)
+                                        return False, error_msg
                                 except Exception as e:
-                                    return False, f"解密失败: {str(e)}"
+                                    error_msg = f"解密失败: {str(e)}"
+                                    self.loading_finished.emit(False, error_msg)
+                                    return False, error_msg
                             else:
-                                return False, "PDF文件已加密，需要密码才能打开"
+                                error_msg = "PDF文件已加密，需要密码才能打开"
+                                self.loading_finished.emit(False, error_msg)
+                                return False, error_msg
 
                         total_pages = len(self.pdf_document.pages)
 
@@ -710,7 +726,9 @@ class PDFLoader:
                                 _ = first_page.get('/MediaBox', [0, 0, 612, 792])
                         except Exception:
                             # 如果访问页面失败，可能是文件损坏
-                            return False, "PDF文件不完整或已损坏，无法访问页面内容"
+                            error_msg = "PDF文件不完整或已损坏，无法访问页面内容"
+                            self.loading_finished.emit(False, error_msg)
+                            return False, error_msg
 
                         # 使用PyMuPDF打开修复后的文件用于页面渲染
                         try:
@@ -725,25 +743,34 @@ class PDFLoader:
                                     if not auth_status:
                                         self.fitz_document.close()
                                         self.fitz_document = None
-                                        return False, "密码错误，无法打开PDF文件"
+                                        error_msg = "密码错误，无法打开PDF文件"
+                                        self.loading_finished.emit(False, error_msg)
+                                        return False, error_msg
                                 else:
                                     self.fitz_document.close()
                                     self.fitz_document = None
-                                    return False, "PDF文件已加密，需要密码才能打开"
+                                    error_msg = "PDF文件已加密，需要密码才能打开"
+                                    self.loading_finished.emit(False, error_msg)
+                                    return False, error_msg
                         except Exception as e:
                             error_msg = str(e)
                             # 检查是否是PyMuPDF无法打开损坏文档的错误
                             if "cannot open" in error_msg.lower() and ("broken" in error_msg.lower() or "damaged" in error_msg.lower()):
-                                return False, f"PDF文件不完整或已损坏，无法渲染: {error_msg}"
+                                error_msg = f"PDF文件不完整或已损坏，无法渲染: {error_msg}"
                             elif "password" in error_msg.lower():
-                                return False, "密码错误，无法打开PDF文件"
+                                error_msg = "密码错误，无法打开PDF文件"
                             else:
-                                return False, f"初始化渲染引擎失败: {error_msg}"
+                                error_msg = f"初始化渲染引擎失败: {error_msg}"
+                            self.loading_finished.emit(False, error_msg)
+                            return False, error_msg
                     except Exception as e:
-                        error_msg = str(e)
-                        return False, f"PDF文件不完整或已损坏，且自动修复失败: {error_msg}"
+                        error_msg = f"PDF文件不完整或已损坏，且自动修复失败: {str(e)}"
+                        self.loading_finished.emit(False, error_msg)
+                        return False, error_msg
                 else:
-                    return False, "PDF文件不完整或已损坏，无法访问页面内容"
+                    error_msg = "PDF文件不完整或已损坏，无法访问页面内容"
+                    self.loading_finished.emit(False, error_msg)
+                    return False, error_msg
 
             # 使用PyMuPDF打开文件用于页面渲染
             try:
@@ -766,20 +793,26 @@ class PDFLoader:
                         if not auth_status:
                             self.fitz_document.close()
                             self.fitz_document = None
-                            return False, "密码错误，无法打开PDF文件"
+                            error_msg = "密码错误，无法打开PDF文件"
+                            self.loading_finished.emit(False, error_msg)
+                            return False, error_msg
                     else:
                         self.fitz_document.close()
                         self.fitz_document = None
-                        return False, "PDF文件已加密，需要密码才能打开"
+                        error_msg = "PDF文件已加密，需要密码才能打开"
+                        self.loading_finished.emit(False, error_msg)
+                        return False, error_msg
             except Exception as e:
                 error_msg = str(e)
                 # 检查是否是PyMuPDF无法打开损坏文档的错误
                 if "cannot open" in error_msg.lower() and ("broken" in error_msg.lower() or "damaged" in error_msg.lower()):
-                    return False, f"PDF文件不完整或已损坏，无法渲染: {error_msg}"
+                    error_msg = f"PDF文件不完整或已损坏，无法渲染: {error_msg}"
                 elif "password" in error_msg.lower():
-                    return False, "密码错误，无法打开PDF文件"
+                    error_msg = "密码错误，无法打开PDF文件"
                 else:
-                    return False, f"初始化渲染引擎失败: {error_msg}"
+                    error_msg = f"初始化渲染引擎失败: {error_msg}"
+                self.loading_finished.emit(False, error_msg)
+                return False, error_msg
 
             # 重置状态
             self.current_file = file_path
@@ -790,7 +823,11 @@ class PDFLoader:
             # 计算加载时间
             self.load_time = time.time() - start_time
 
-            return True, f"文件打开成功 ({self.get_file_size_str()}, {self.load_time:.2f}秒)"
+            # 发射加载完成信号,触发UI更新和渲染
+            success_message = f"文件打开成功 ({self.get_file_size_str()}, {self.load_time:.2f}秒)"
+            self.loading_finished.emit(True, success_message)
+
+            return True, success_message
 
         except PdfReadError as e:
             error_msg = str(e)
@@ -799,6 +836,7 @@ class PDFLoader:
                 self.last_error = f"PDF文件不完整或已损坏: {error_msg}"
             else:
                 self.last_error = f"PDF文件格式错误: {error_msg}"
+            self.loading_finished.emit(False, self.last_error)
             return False, self.last_error
         except Exception as e:
             error_msg = str(e)
@@ -807,6 +845,7 @@ class PDFLoader:
                 self.last_error = f"PDF文件不完整或已损坏: {error_msg}"
             else:
                 self.last_error = f"无法打开PDF文件: {error_msg}"
+            self.loading_finished.emit(False, self.last_error)
             return False, self.last_error
     
     def open_pdf_async(self, file_path, password=None):

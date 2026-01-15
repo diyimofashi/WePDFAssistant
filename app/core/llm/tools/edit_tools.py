@@ -34,6 +34,10 @@ class InsertBlankPageTool(BaseTool):
     def requires_main_thread(self) -> bool:
         return True
 
+    def auto_complete(self) -> bool:
+        """插入空白页操作完成后不需要反馈给大模型"""
+        return True
+
     def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         page_num = params.get("page_num")
 
@@ -53,23 +57,35 @@ class InsertBlankPageTool(BaseTool):
                     "error": "请先打开PDF文档"
                 }
 
+            # 确保 page_editor 已初始化
+            if not hasattr(main_window.pdf_processor, 'page_editor') or main_window.pdf_processor.page_editor is None:
+                from app.core.editing.page_editor import PageEditor
+                main_window.pdf_processor.page_editor = PageEditor(main_window.pdf_processor)
+                logger.info("Initialized page_editor for pdf_processor")
+
             # 检查是否有插入空白页的方法
-            if hasattr(main_window.pdf_processor, 'insert_blank_page'):
-                main_window.pdf_processor.insert_blank_page(page_num)
+            if hasattr(main_window.pdf_processor.page_editor, 'insert_blank_page'):
+                success, message = main_window.pdf_processor.page_editor.insert_blank_page(page_num)
 
-                # 更新界面
-                if hasattr(main_window, 'view_controller'):
-                    main_window.view_controller.load_thumbnails()
-                    main_window.update_preview()
-                    if hasattr(main_window, 'repaint'):
-                        main_window.repaint()
+                if success:
+                    # 更新界面
+                    if hasattr(main_window, 'view_controller'):
+                        main_window.view_controller.load_thumbnails()
+                        main_window.update_preview()
+                        if hasattr(main_window, 'repaint'):
+                            main_window.repaint()
 
-                logger.info(f"Inserted blank page after page {page_num}")
-                return {
-                    "success": True,
-                    "message": f"已在第{page_num}页后插入空白页",
-                    "page_num": page_num
-                }
+                    logger.info(f"Inserted blank page after page {page_num}")
+                    return {
+                        "success": True,
+                        "message": message,
+                        "page_num": page_num
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": message
+                    }
             else:
                 return {
                     "success": False,
@@ -110,6 +126,10 @@ class DeletePagesTool(BaseTool):
     def requires_main_thread(self) -> bool:
         return True
 
+    def auto_complete(self) -> bool:
+        """删除页面操作完成后不需要反馈给大模型"""
+        return True
+
     def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         page_nums = params.get("page_nums", [])
 
@@ -129,25 +149,37 @@ class DeletePagesTool(BaseTool):
                     "error": "请先打开PDF文档"
                 }
 
+            # 确保 page_editor 已初始化
+            if not hasattr(main_window.pdf_processor, 'page_editor') or main_window.pdf_processor.page_editor is None:
+                from app.core.editing.page_editor import PageEditor
+                main_window.pdf_processor.page_editor = PageEditor(main_window.pdf_processor)
+                logger.info("Initialized page_editor for pdf_processor")
+
             # 检查是否有删除页面的方法
-            if hasattr(main_window.pdf_processor, 'delete_pages'):
+            if hasattr(main_window.pdf_processor.page_editor, 'delete_pages'):
                 # 删除页面(从小到大排序后再删除,避免索引变化)
                 sorted_pages = sorted(page_nums)
-                main_window.pdf_processor.delete_pages(sorted_pages)
+                success, message = main_window.pdf_processor.page_editor.delete_pages(sorted_pages)
 
-                # 更新界面
-                if hasattr(main_window, 'view_controller'):
-                    main_window.view_controller.load_thumbnails()
-                    main_window.update_preview()
-                    if hasattr(main_window, 'repaint'):
-                        main_window.repaint()
+                if success:
+                    # 更新界面
+                    if hasattr(main_window, 'view_controller'):
+                        main_window.view_controller.load_thumbnails()
+                        main_window.update_preview()
+                        if hasattr(main_window, 'repaint'):
+                            main_window.repaint()
 
-                logger.info(f"Deleted pages: {page_nums}")
-                return {
-                    "success": True,
-                    "message": f"已删除 {len(page_nums)} 页: {page_nums}",
-                    "page_nums": page_nums
-                }
+                    logger.info(f"Deleted pages: {page_nums}")
+                    return {
+                        "success": True,
+                        "message": message,
+                        "page_nums": page_nums
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": message
+                    }
             else:
                 return {
                     "success": False,
@@ -191,6 +223,10 @@ class RotatePageTool(BaseTool):
     def requires_main_thread(self) -> bool:
         return True
 
+    def auto_complete(self) -> bool:
+        """旋转页面操作完成后不需要反馈给大模型"""
+        return True
+
     def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         page_num = params.get("page_num")
         rotation = params.get("rotation")
@@ -211,24 +247,36 @@ class RotatePageTool(BaseTool):
                     "error": "请先打开PDF文档"
                 }
 
+            # 确保 page_editor 已初始化
+            if not hasattr(main_window.pdf_processor, 'page_editor') or main_window.pdf_processor.page_editor is None:
+                from app.core.editing.page_editor import PageEditor
+                main_window.pdf_processor.page_editor = PageEditor(main_window.pdf_processor)
+                logger.info("Initialized page_editor for pdf_processor")
+
             # 检查是否有旋转页面的方法
-            if hasattr(main_window.pdf_processor, 'rotate_page'):
-                main_window.pdf_processor.rotate_page(page_num, rotation)
+            if hasattr(main_window.pdf_processor.page_editor, 'rotate_page'):
+                success, message = main_window.pdf_processor.page_editor.rotate_page(page_num, rotation)
 
-                # 更新界面
-                if hasattr(main_window, 'view_controller'):
-                    main_window.view_controller.load_thumbnails()
-                    main_window.update_preview()
-                    if hasattr(main_window, 'repaint'):
-                        main_window.repaint()
+                if success:
+                    # 更新界面
+                    if hasattr(main_window, 'view_controller'):
+                        main_window.view_controller.load_thumbnails()
+                        main_window.update_preview()
+                        if hasattr(main_window, 'repaint'):
+                            main_window.repaint()
 
-                logger.info(f"Rotated page {page_num} by {rotation} degrees")
-                return {
-                    "success": True,
-                    "message": f"已将第{page_num}页旋转{rotation}度",
-                    "page_num": page_num,
-                    "rotation": rotation
-                }
+                    logger.info(f"Rotated page {page_num} by {rotation} degrees")
+                    return {
+                        "success": True,
+                        "message": message,
+                        "page_num": page_num,
+                        "rotation": rotation
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": message
+                    }
             else:
                 return {
                     "success": False,
@@ -284,6 +332,10 @@ class ExtractPagesTool(BaseTool):
     def requires_main_thread(self) -> bool:
         return True
 
+    def auto_complete(self) -> bool:
+        """提取页面操作完成后不需要反馈给大模型"""
+        return True
+
     def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         page_nums = params.get("page_nums", [])
         output_path = params.get("output_path")
@@ -304,17 +356,29 @@ class ExtractPagesTool(BaseTool):
                     "error": "请先打开PDF文档"
                 }
 
-            # 检查是否有提取页面的方法
-            if hasattr(main_window.pdf_processor, 'extract_pages'):
-                main_window.pdf_processor.extract_pages(page_nums, output_path)
+            # 确保 page_editor 已初始化
+            if not hasattr(main_window.pdf_processor, 'page_editor') or main_window.pdf_processor.page_editor is None:
+                from app.core.editing.page_editor import PageEditor
+                main_window.pdf_processor.page_editor = PageEditor(main_window.pdf_processor)
+                logger.info("Initialized page_editor for pdf_processor")
 
-                logger.info(f"Extracted pages {page_nums} to {output_path}")
-                return {
-                    "success": True,
-                    "message": f"已提取 {len(page_nums)} 页到 {output_path}",
-                    "page_nums": page_nums,
-                    "output_path": output_path
-                }
+            # 检查是否有提取页面的方法
+            if hasattr(main_window.pdf_processor.page_editor, 'extract_pages'):
+                success, message = main_window.pdf_processor.page_editor.extract_pages(page_nums, output_path)
+
+                if success:
+                    logger.info(f"Extracted pages {page_nums} to {output_path}")
+                    return {
+                        "success": True,
+                        "message": message,
+                        "page_nums": page_nums,
+                        "output_path": output_path
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": message
+                    }
             else:
                 return {
                     "success": False,
@@ -369,6 +433,10 @@ class InsertPDFPageTool(BaseTool):
     def requires_main_thread(self) -> bool:
         return True
 
+    def auto_complete(self) -> bool:
+        """插入PDF页面操作完成后不需要反馈给大模型"""
+        return True
+
     def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         page_num = params.get("page_num")
         pdf_path = params.get("pdf_path")
@@ -389,24 +457,36 @@ class InsertPDFPageTool(BaseTool):
                     "error": "请先打开PDF文档"
                 }
 
+            # 确保 page_editor 已初始化
+            if not hasattr(main_window.pdf_processor, 'page_editor') or main_window.pdf_processor.page_editor is None:
+                from app.core.editing.page_editor import PageEditor
+                main_window.pdf_processor.page_editor = PageEditor(main_window.pdf_processor)
+                logger.info("Initialized page_editor for pdf_processor")
+
             # 检查是否有插入PDF页面的方法
-            if hasattr(main_window.pdf_processor, 'insert_pdf_page'):
-                main_window.pdf_processor.insert_pdf_page(page_num, pdf_path)
+            if hasattr(main_window.pdf_processor.page_editor, 'insert_pdf_page'):
+                success, message = main_window.pdf_processor.page_editor.insert_pdf_page(page_num, pdf_path)
 
-                # 更新界面
-                if hasattr(main_window, 'view_controller'):
-                    main_window.view_controller.load_thumbnails()
-                    main_window.update_preview()
-                    if hasattr(main_window, 'repaint'):
-                        main_window.repaint()
+                if success:
+                    # 更新界面
+                    if hasattr(main_window, 'view_controller'):
+                        main_window.view_controller.load_thumbnails()
+                        main_window.update_preview()
+                        if hasattr(main_window, 'repaint'):
+                            main_window.repaint()
 
-                logger.info(f"Inserted PDF pages from {pdf_path} after page {page_num}")
-                return {
-                    "success": True,
-                    "message": f"已从PDF文件插入页面",
-                    "page_num": page_num,
-                    "pdf_path": pdf_path
-                }
+                    logger.info(f"Inserted PDF pages from {pdf_path} after page {page_num}")
+                    return {
+                        "success": True,
+                        "message": message,
+                        "page_num": page_num,
+                        "pdf_path": pdf_path
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": message
+                    }
             else:
                 return {
                     "success": False,
@@ -461,6 +541,10 @@ class InsertImagePageTool(BaseTool):
     def requires_main_thread(self) -> bool:
         return True
 
+    def auto_complete(self) -> bool:
+        """插入图片页面操作完成后不需要反馈给大模型"""
+        return True
+
     def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         page_num = params.get("page_num")
         image_path = params.get("image_path")
@@ -481,24 +565,36 @@ class InsertImagePageTool(BaseTool):
                     "error": "请先打开PDF文档"
                 }
 
+            # 确保 page_editor 已初始化
+            if not hasattr(main_window.pdf_processor, 'page_editor') or main_window.pdf_processor.page_editor is None:
+                from app.core.editing.page_editor import PageEditor
+                main_window.pdf_processor.page_editor = PageEditor(main_window.pdf_processor)
+                logger.info("Initialized page_editor for pdf_processor")
+
             # 检查是否有插入图片页面的方法
-            if hasattr(main_window.pdf_processor, 'insert_image_page'):
-                main_window.pdf_processor.insert_image_page(page_num, image_path)
+            if hasattr(main_window.pdf_processor.page_editor, 'insert_image_page'):
+                success, message = main_window.pdf_processor.page_editor.insert_image_page(page_num, image_path)
 
-                # 更新界面
-                if hasattr(main_window, 'view_controller'):
-                    main_window.view_controller.load_thumbnails()
-                    main_window.update_preview()
-                    if hasattr(main_window, 'repaint'):
-                        main_window.repaint()
+                if success:
+                    # 更新界面
+                    if hasattr(main_window, 'view_controller'):
+                        main_window.view_controller.load_thumbnails()
+                        main_window.update_preview()
+                        if hasattr(main_window, 'repaint'):
+                            main_window.repaint()
 
-                logger.info(f"Inserted image {image_path} after page {page_num}")
-                return {
-                    "success": True,
-                    "message": f"已插入图片页面",
-                    "page_num": page_num,
-                    "image_path": image_path
-                }
+                    logger.info(f"Inserted image {image_path} after page {page_num}")
+                    return {
+                        "success": True,
+                        "message": message,
+                        "page_num": page_num,
+                        "image_path": image_path
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": message
+                    }
             else:
                 return {
                     "success": False,

@@ -371,7 +371,7 @@ class GetPageTextTool(BaseTool):
             if page_number is None or page_number == 0:
                 # 获取当前页
                 if hasattr(main_window, 'virtual_scroll'):
-                    page_number = main_window.virtual_scroll.current_page + 1  # 转换为1-based
+                    page_number = main_window.virtual_scroll.get_current_page()  # 已经是1-based
                 else:
                     return {
                         "success": False,
