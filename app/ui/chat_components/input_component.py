@@ -3,8 +3,9 @@
 处理用户输入消息
 """
 from PyQt5.QtWidgets import QTextEdit
-from PyQt5.QtCore import pyqtSignal,Qt
+from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QKeyEvent
+
 
 class InputTextEdit(QTextEdit):
     """支持Enter键发送的文本输入框"""

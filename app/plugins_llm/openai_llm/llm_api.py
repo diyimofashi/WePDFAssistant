@@ -378,28 +378,20 @@ class OpenAILLMPlugin(LLMPluginInterface):
                                     tool_calls_buffer[index] = {
                                         "id": tool_call_delta.get("id", ""),
                                         "type": tool_call_delta.get("type", "function"),
-                                        "name": tool_call_delta.get("function", {}).get("name", ""),
+                                        "name": "",
                                         "arguments": ""
                                     }
-                                    # 如果name存在，在这里记录
-                                    if tool_calls_buffer[index]["name"]:
-                                        logger.debug(f"Tool call name received: {tool_calls_buffer[index]['name']}")
 
                                 tool_call = tool_calls_buffer[index]
 
-                                # 更新名称（仅当存在name字段时才更新，避免覆盖已设置的name）
-                                if ("function" in tool_call_delta and 
-                                    "name" in tool_call_delta["function"] and 
-                                    tool_call_delta["function"]["name"]):  # 只有当name不为空时才更新
+                                # 更新名称
+                                if "function" in tool_call_delta and "name" in tool_call_delta["function"]:
                                     tool_call["name"] = tool_call_delta["function"]["name"]
                                     logger.debug(f"Tool call name received: {tool_call['name']}")
 
                                 # 追加参数
                                 if "function" in tool_call_delta and "arguments" in tool_call_delta["function"]:
-                                    # 确保 arguments 不为 None
-                                    new_args = tool_call_delta["function"]["arguments"]
-                                    if new_args is not None:
-                                        tool_call["arguments"] = (tool_call["arguments"] or "") + new_args
+                                    tool_call["arguments"] += tool_call_delta["function"]["arguments"]
                                     logger.debug(f"Tool call arguments received (partial)")
 
                         # 检查函数调用 (旧版API格式)
