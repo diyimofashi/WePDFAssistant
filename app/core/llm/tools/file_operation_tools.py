@@ -1,7 +1,6 @@
 """文件操作工具 - 打开、保存PDF文档"""
 from typing import Dict, Any, Optional
 from PyQt5.QtWidgets import QWidget
-from PyQt5.QtCore import QEventLoop, QTimer
 from app.core.llm.tools.base_tool import BaseTool
 from app.core.llm.tool_interactions.file_chooser import FileChooserWidget
 from app.utils.logger import get_logger
@@ -46,9 +45,8 @@ class OpenPDFTool(BaseTool):
     def requires_main_thread(self) -> bool:
         return True
 
-    def auto_complete(self) -> bool:
-        """打开PDF操作完成后不需要反馈给大模型"""
-        return True
+    def get_next_tool(self) -> Optional[str]:
+        return "render_pdf"
 
     def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         file_path = params.get("file_path")
@@ -64,8 +62,7 @@ class OpenPDFTool(BaseTool):
 
             # 直接调用 pdf_processor.open_pdf 打开文件
             if hasattr(main_window, 'pdf_processor') and main_window.pdf_processor:
-                # 使用同步模式打开，确保文档完全加载后再返回
-                success, message = main_window.pdf_processor.open_pdf(file_path, async_mode=False)
+                success, message = main_window.pdf_processor.open_pdf(file_path, async_mode=True)
 
                 if success:
                     logger.info(f"Opened PDF file: {file_path}")
@@ -129,10 +126,6 @@ class SavePDFTool(BaseTool):
         return None
 
     def requires_main_thread(self) -> bool:
-        return True
-
-    def auto_complete(self) -> bool:
-        """保存PDF操作完成后不需要反馈给大模型"""
         return True
 
     def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:

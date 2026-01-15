@@ -22,15 +22,13 @@ class DownloadFileTool(BaseTool):
             self._download_manager = DownloadPluginManager()
         return self._download_manager
 
-    @property
-    def name(self) -> str:
+    def get_name(self) -> str:
         return "download_file"
 
-    @property
-    def description(self) -> str:
+    def get_description(self) -> str:
         return "从远程服务器下载文件"
 
-    def get_parameters_schema(self) -> Dict[str, Any]:
+    def get_parameters(self) -> Dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -50,23 +48,12 @@ class DownloadFileTool(BaseTool):
             "required": ["url", "plugin"]
         }
 
-    def check_parameters_complete(self, params: Dict[str, Any]) -> tuple:
-        """检查参数是否完整"""
-        schema = self.get_parameters_schema()
-        required = schema.get("required", [])
-        missing = []
-        for param_name in required:
-            if param_name not in params or not params[param_name]:
-                missing.append(param_name)
-        return len(missing) == 0, missing
-
-    async def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """执行文件下载"""
-        is_complete, missing = self.check_parameters_complete(parameters)
-        if not is_complete:
+        if not self.validate_parameters(parameters):
             return {
                 "success": False,
-                "error": f"缺少必要参数: {', '.join(missing)}"
+                "error": "Invalid parameters"
             }
 
         try:

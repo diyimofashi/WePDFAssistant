@@ -42,21 +42,6 @@ from app.core.llm.tools.encryption_tools import (
     EncryptPDFTool
 )
 
-# 条码工具
-from app.core.llm.tools.barcode_tools import (
-    BarcodeSplitTool
-)
-
-# 上传工具
-from app.core.llm.tools.upload_tools import (
-    UploadFileTool
-)
-
-# 下载工具
-from app.core.llm.tools.download_tools import (
-    DownloadFileTool
-)
-
 # 系统工具
 from app.core.llm.tools.system_tools import (
     ClearCacheTool,
@@ -131,15 +116,6 @@ class LLMToolManager:
 
             # 安全功能
             EncryptPDFTool(),
-
-            # 条码功能
-            BarcodeSplitTool(),
-
-            # 上传功能
-            UploadFileTool(),
-
-            # 下载功能
-            DownloadFileTool(),
 
             # UI工具
             ShowMessageTool(),
@@ -223,18 +199,6 @@ class LLMToolManager:
             }
 
         return await self._interaction_handler.handle_tool_call(tool_name, params)
-
-    def get_tool(self, tool_name: str):
-        """
-        获取工具实例
-
-        Args:
-            tool_name: 工具名称
-
-        Returns:
-            工具实例或None
-        """
-        return self._tool_registry.get_tool(tool_name)
 
     def enable_tool(self, tool_name: str) -> bool:
         """

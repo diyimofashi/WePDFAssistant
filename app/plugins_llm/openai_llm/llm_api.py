@@ -303,7 +303,6 @@ class OpenAILLMPlugin(LLMPluginInterface):
                 "temperature": temperature,
                 "stream": True
             }
-            logger.debug(f"Request payload: {payload}")
 
             # 优先使用tools(新版API),如果没有则使用functions(旧版API)
             if tools:
@@ -321,7 +320,6 @@ class OpenAILLMPlugin(LLMPluginInterface):
             # 发送流式请求
             url = f"{self._config['base_url']}/chat/completions"
             response = self._session.post(url, json=payload, stream=True, timeout=60)
-            logger.debug(f"response: {response}")
 
             if response.status_code != 200:
                 error_data = response.json()

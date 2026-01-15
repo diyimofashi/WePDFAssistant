@@ -335,7 +335,7 @@ class LLMIntegration:
 
         return result
 
-    async def chat_with_tools(
+    def chat_with_tools(
         self,
         plugin_name: str | None,
         messages: List[LLMMessage],
@@ -404,18 +404,7 @@ class LLMIntegration:
 
                     # 执行工具
                     try:
-                        tool_result = await self._tool_manager.handle_tool_call(tool_name, tool_args)
-
-                        # 检查工具是否设置了自动完成
-                        tool = self._tool_manager.get_tool(tool_name)
-                        if tool and tool.auto_complete():
-                            # 只有成功时才自动完成,失败时需要反馈给大模型
-                            if tool_result.get('success', False):
-                                logger.info(f"Tool '{tool_name}' completed successfully, not feeding back to LLM")
-                                continue
-                            else:
-                                # 失败时需要反馈给大模型
-                                logger.warning(f"Tool '{tool_name}' failed, feeding back to LLM: {tool_result.get('error', 'Unknown error')}")
+                        tool_result = self._tool_manager.execute_tool(tool_name, tool_args)
 
                         # 将工具结果添加到消息中
                         messages.append(LLMMessage(

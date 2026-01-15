@@ -43,9 +43,6 @@ class NewLLMChatWidget(QWidget):
         self._is_generating = False
         self._pending_actions: Dict[str, ActionBubble] = {}
 
-        # 待处理的工具列表（用于需要用户交互的工具）
-        self._pending_tool_calls: List[Dict[str, Any]] = []
-
         # 会话管理
         self._session_manager: SessionManager | None = None
         self._current_session: ChatSession | None = None
@@ -562,6 +559,9 @@ class NewLLMChatWidget(QWidget):
 
                 # 检查是否是保存模式（加密另存为）
                 save_mode = result.get('save_mode', False)
+                
+                # 只依赖save_mode标志，不再进行关键词匹配
+                # save_mode应该在工具调用时由系统正确设置
 
                 if save_mode:
                     # 如果是保存模式，记录保存路径，然后询问密码
@@ -574,22 +574,64 @@ class NewLLMChatWidget(QWidget):
                     })
                     return
 
-                # 将文件路径添加到第一个待处理工具的参数中
-                if self._pending_tool_calls:
-                    first_tool_call = self._pending_tool_calls[0]
-                    # 更新参数
-                    arguments_str = first_tool_call.get("arguments", "{}")
-                    try:
-                        arguments = json.loads(arguments_str)
-                        arguments["file_path"] = file_path
-                        first_tool_call["arguments"] = json.dumps(arguments, ensure_ascii=False)
-                        logger.info(f"Updated tool parameters with file_path: {file_path}")
-                    except Exception as e:
-                        logger.error(f"Error updating tool parameters: {e}", exc_info=True)
+                # 否则，执行 open_pdf 工具（包含打开和渲染的完整流程）
+                # 直接调用主窗口的打开方法，避免工具执行链的问题
+                parent_window = self.parent()
+                main_window = None
+                while parent_window:
+                    if hasattr(parent_window, 'pdf_processor'):
+                        main_window = parent_window
+                        break
+                    parent_window = parent_window.parent()
 
-                # 继续执行待处理的工具列表
-                self._execute_pending_tool_calls()
-                return
+                if main_window:
+                    try:
+                        # 调用主窗口的PDF打开方法
+                        # 使用pdf_processor打开PDF文件
+                        if hasattr(main_window, 'pdf_processor'):
+                            success, message = main_window.pdf_processor.open_pdf(file_path, async_mode=True)
+                            if success:
+                                logger.info(f"PDF opened successfully: {file_path}")
+                                # 不显示打开成功的消息,让LLM生成响应
+                            else:
+                                logger.error(f"Failed to open PDF: {message}")
+                                open_msg = f"\n❌ 打开PDF失败\n"
+                                open_msg += f"错误: {message}\n"
+
+                                # 保存错误消息到会话
+                                error_message = LLMMessage(role="assistant", content=open_msg)
+                                self._save_current_message(error_message)
+
+                                self._add_message_bubble("assistant", open_msg)
+                        else:
+                            logger.error("Main window does not have pdf_processor attribute")
+                            open_msg = f"\n❌ 无法打开PDF\n"
+                            open_msg += f"错误: 主窗口缺少pdf_processor属性\n"
+
+                            # 保存错误消息到会话
+                            error_message = LLMMessage(role="assistant", content=open_msg)
+                            self._save_current_message(error_message)
+
+                            self._add_message_bubble("assistant", open_msg)
+
+                        # 将操作结果添加到消息历史
+                        self._messages.append(LLMMessage(
+                            role="user",
+                            content=f"已打开PDF文件: {file_path}"
+                        ))
+                    except Exception as e:
+                        logger.error(f"Error opening PDF: {e}", exc_info=True)
+                        open_msg = f"\n❌ 打开PDF时出错\n"
+                        open_msg += f"错误: {str(e)}\n"
+
+                        # 保存错误消息到会话
+                        error_message = LLMMessage(role="assistant", content=open_msg)
+                        self._save_current_message(error_message)
+
+                        self._add_message_bubble("assistant", open_msg)
+                else:
+                    logger.error("Main window not found")
+                    self._add_message_bubble("assistant", "\n❌ 无法访问主窗口\n")
 
             elif action_type == "password" and result.get('value'):
                 password = result['value']
@@ -658,109 +700,6 @@ class NewLLMChatWidget(QWidget):
             self._add_message_bubble("assistant", error_msg)
             self._start_generation()
 
-    def _execute_pending_tool_calls(self):
-        """
-        执行待处理的工具列表
-        将用户补充参数后的工具继续执行完
-        """
-        if not self._pending_tool_calls:
-            logger.warning("No pending tool calls to execute")
-            self._start_generation()
-            return
-
-        tool_results = []
-
-        # 执行所有待处理的工具
-        for tool_call in self._pending_tool_calls:
-            logger.debug(f"Executing pending tool_call: {tool_call}")
-
-            # 获取工具名称和参数
-            try:
-                tool_name = tool_call.get("name")
-                arguments_str = tool_call.get("arguments", "{}")
-            except Exception as e:
-                logger.error(f"Error getting tool attributes: {e}", exc_info=True)
-                continue
-
-            if not tool_name:
-                logger.warning("Tool call has empty name, skipping")
-                continue
-
-            # 解析参数
-            try:
-                arguments = json.loads(arguments_str)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse arguments: {arguments_str}, error: {e}")
-                arguments = {}
-
-            # 检查参数是否完整，如果仍然不完整，则需要再次等待用户输入
-            if self._tool_manager and self._tool_manager.get_tool_registry():
-                tool = self._tool_manager.get_tool_registry().get_tool(tool_name)
-                if tool:
-                    complete, missing_params = tool.check_parameters_complete(arguments)
-                    if not complete:
-                        logger.info(f"Tool {tool_name} still missing parameters: {missing_params}")
-                        # 需要继续等待用户输入，不要执行
-                        return
-
-            # 执行工具
-            try:
-                loop = asyncio.get_event_loop()
-                try:
-                    if loop.is_running():
-                        result = asyncio.run_coroutine_threadsafe(
-                            self._execute_tool(tool_name, arguments), loop
-                        ).result(timeout=120)
-                    else:
-                        result = loop.run_until_complete(self._execute_tool(tool_name, arguments))
-                except RuntimeError:
-                    result = asyncio.run(self._execute_tool(tool_name, arguments))
-            except Exception as e:
-                logger.error(f"Error executing tool {tool_name}: {e}", exc_info=True)
-                result = {"success": False, "error": str(e)}
-
-            # 收集结果
-            tool_results.append({
-                "name": tool_name,
-                "result": result
-            })
-
-            # 执行完成后清理
-            self._cleanup_after_tool_execution(tool_name)
-
-        # 所有工具执行完成，将结果统一反馈给大模型
-        self._send_tool_results_to_llm(tool_results)
-
-        # 清空待处理的工具列表
-        self._pending_tool_calls = []
-
-    def _send_tool_results_to_llm(self, tool_results: List[Dict[str, Any]]):
-        """
-        将工具执行结果发送给大模型
-
-        Args:
-            tool_results: 工具执行结果列表
-        """
-        # 将所有工具执行结果添加到消息历史
-        for tool_result in tool_results:
-            tool_name = tool_result["name"]
-            result = tool_result["result"]
-
-            result_content = json.dumps(result, ensure_ascii=False)
-            self._messages.append(LLMMessage(
-                role="user",
-                content=f"工具 {tool_name} 执行结果: {result_content}"
-            ))
-
-            # 只在错误时显示错误信息
-            if not result.get('success'):
-                result_msg = result.get('error', '未知错误')
-                if result_msg and result_msg.strip():
-                    self._add_message_bubble("assistant", result_msg)
-
-        # 继续对话，让 LLM 基于工具结果生成回复
-        self._start_generation()
-
     def _send_message(self):
         """发送消息"""
         if not self._current_plugin:
@@ -813,35 +752,25 @@ class NewLLMChatWidget(QWidget):
         
         # 添加当前文档状态信息到系统提示中
         if tools and len(tools) > 0:
-            # 获取当前文档状态信息
-            doc_context = self._get_document_context()
-            
-            # 构建system prompt,包含文档上下文信息
-            system_prompt = (
-                "你是一个PDF文档助手。当用户要求对PDF文档进行任何操作时,"
-                "包括但不限于打开、保存、拆分、合并、OCR识别、加密、插入图片、插入PDF页面、"
-                "删除页面、旋转页面、提取页面、创建可搜索PDF、条形码分割等,"
-                "你必须使用相应的工具来完成操作。"
-                "不要询问参数,如果参数缺失,工具会提示用户输入。"
-                "仔细分析用户的请求,使用最合适的工具完成任务。"
-                "\n\n注意："
-                "1. 用户可能会复制粘贴错误日志或调试信息，这种情况下不要调用任何工具，"
-                "   应该直接分析用户的意图或提示用户提供清晰的问题描述。"
-                "2. 只有在用户明确提出PDF操作需求时才使用工具，其他情况直接对话回复。"
-                "3. 不要盲目执行工具，先理解用户的真实需求再决定。"
-            )
-            
-            # 添加文档上下文信息
-            if doc_context:
-                system_prompt += f"\n\n当前文档状态:\n{doc_context}"
-            
-            system_prompt += f"\n\n可用工具: " + ", ".join([t["function"]["name"] for t in tools])
-            
-            # 移除所有旧的system message
-            messages_to_send = [m for m in messages_to_send if m.role != "system"]
-            
-            # 在开头插入新的system message
-            messages_to_send.insert(0, LLMMessage(role="system", content=system_prompt))
+            # 检查是否已经有system message
+            has_system = any(m.role == "system" for m in messages_to_send)
+            if not has_system:
+                # 获取当前文档状态信息
+                doc_context = self._get_document_context()
+                
+                # 构建system prompt,包含文档上下文信息
+                system_prompt = (
+                    "你是一个PDF文档助手。当用户要求打开、拆分、OCR、合并或加密PDF文档时,"
+                    "你必须使用相应的工具来完成操作。"
+                    "不要询问参数,如果参数缺失,工具会提示用户输入。"
+                )
+                
+                # 添加文档上下文信息
+                if doc_context:
+                    system_prompt += f"\n\n当前文档状态:\n{doc_context}"
+                
+                system_prompt += f"\n\n可用工具: " + ", ".join([t["function"]["name"] for t in tools])
+                messages_to_send.insert(0, LLMMessage(role="system", content=system_prompt))
 
 
         self._chat_thread = LLMChatThread(self._llm_integration, self._current_plugin, messages_to_send, tools)
@@ -1035,12 +964,6 @@ class NewLLMChatWidget(QWidget):
 
             # 注意:工具调用已经在 _on_response 中添加到消息历史,这里不需要再次添加
 
-            # 保存待处理的工具列表（用于需要用户交互的场景）
-            self._pending_tool_calls = tool_calls.copy()
-
-            # 收集所有工具执行结果
-            tool_results = []
-
             # 执行每个工具调用
             for tool_call in tool_calls:
                 logger.debug(f"Processing tool_call: {tool_call}")
@@ -1217,31 +1140,35 @@ class NewLLMChatWidget(QWidget):
                     # 执行完成后清理
                     self._cleanup_after_tool_execution(tool_name)
 
-                    # 收集工具执行结果
-                    tool_results.append({
-                        "name": tool_name,
-                        "result": result
-                    })
+                    # 将工具执行结果添加到消息历史
+                    result_content = json.dumps(result, ensure_ascii=False)
+                    self._messages.append(LLMMessage(
+                        role="user",
+                        content=f"工具 {tool_name} 执行结果: {result_content}"
+                    ))
+
+                    # 不显示工具执行结果，让LLM基于工具结果生成响应
+                    # 只在错误时显示错误信息
+                    if not result.get('success'):
+                        result_msg = result.get('error', '未知错误')
+                        if result_msg and result_msg.strip():
+                            self._add_message_bubble("assistant", result_msg)
 
                 except Exception as e:
                     logger.error(f"Error processing tool call {tool_name}: {e}", exc_info=True)
                     # 即使出错也要清理
                     self._cleanup_after_tool_execution(tool_name)
 
-                    # 记录错误结果
-                    tool_results.append({
-                        "name": tool_name,
-                        "result": {"success": False, "error": str(e)}
-                    })
-
                     # 保存错误消息到会话
                     error_msg = f"\n❌ 工具执行错误: {str(e)}\n"
                     error_message = LLMMessage(role="assistant", content=error_msg)
                     self._save_current_message(error_message)
+
                     self._add_message_bubble("assistant", error_msg)
 
-            # 所有工具执行完成，将结果统一反馈给大模型
-            self._send_tool_results_to_llm(tool_results)
+            # 所有工具调用执行完成后，继续对话让LLM生成响应
+            logger.debug("All tool calls completed, continuing conversation")
+            self._start_generation()
 
         except Exception as e:
             logger.error(f"Error in _handle_tool_calls: {e}", exc_info=True)

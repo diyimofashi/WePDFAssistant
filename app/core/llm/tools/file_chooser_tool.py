@@ -121,6 +121,18 @@ class FileChooserTool(BaseTool):
         """设置父窗口"""
         self._parent_widget = parent_widget
 
+    def get_next_tool(self) -> Optional[str]:
+        """
+        获取后续工具名称
+
+        Returns:
+            后续工具名称，对于文件选择工具，通常会打开PDF
+        """
+        # 根据目的决定后续工具
+        # 这里可以根据选择的文件类型来决定后续工具
+        # 暂时默认返回 open_pdf
+        return "open_pdf"
+
     def requires_main_thread(self) -> bool:
         """
         文件选择工具需要GUI交互，必须在主线程中执行

@@ -148,15 +148,6 @@ class BaseTool(ABC):
         """
         return False
 
-    def auto_complete(self) -> bool:
-        """
-        判断工具是否应该自动完成,不需要将结果反馈给大模型
-
-        Returns:
-            是否自动完成
-        """
-        return False
-
     def _get_main_window(self):
         """
         获取主窗口实例
