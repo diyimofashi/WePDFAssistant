@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 
 class FileChooserWidget(QWidget):
-    """文件选择组件 - 用于选择文件"""
+    """文件选择组件"""
 
     value_changed = pyqtSignal(str)
 
@@ -99,73 +99,3 @@ class FileChooserWidget(QWidget):
     def set_mode(self, mode: str) -> None:
         """设置模式"""
         self._mode = mode
-
-
-class DirectoryChooserWidget(QWidget):
-    """目录选择组件 - 用于选择目录"""
-
-    value_changed = pyqtSignal(str)
-
-    def __init__(
-        self,
-        parent: Optional[QWidget] = None,
-        default_dir: Optional[str] = None
-    ):
-        """
-        初始化目录选择组件
-
-        Args:
-            parent: 父窗口
-            default_dir: 默认目录
-        """
-        super().__init__(parent)
-        self._default_dir = default_dir
-        self._init_ui()
-
-    def _init_ui(self):
-        """初始化UI"""
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        # 目录路径输入框
-        self._path_edit = QLineEdit()
-        self._path_edit.setPlaceholderText("选择目录...")
-        self._path_edit.textChanged.connect(self._on_path_changed)
-        layout.addWidget(self._path_edit)
-
-        # 浏览按钮
-        self._browse_button = QPushButton("浏览...")
-        self._browse_button.clicked.connect(self._on_browse_clicked)
-        layout.addWidget(self._browse_button)
-
-    def _on_path_changed(self, path: str):
-        """路径改变事件"""
-        self.value_changed.emit(path)
-
-    def _on_browse_clicked(self):
-        """浏览按钮点击事件"""
-        dir_path = QFileDialog.getExistingDirectory(
-            self,
-            "选择目录",
-            self._default_dir or ""
-        )
-
-        if dir_path:
-            self._path_edit.setText(dir_path)
-
-    def set_value(self, value: str) -> None:
-        """设置值"""
-        self._path_edit.setText(value)
-
-    def get_value(self) -> str:
-        """获取值"""
-        return self._path_edit.text().strip()
-
-    def set_placeholder(self, text: str) -> None:
-        """设置占位符文本"""
-        self._path_edit.setPlaceholderText(text)
-
-    def set_default_dir(self, default_dir: str) -> None:
-        """设置默认目录"""
-        self._default_dir = default_dir
-

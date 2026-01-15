@@ -187,31 +187,6 @@ class NewLLMChatWidget(QWidget):
         self._session_combo.currentIndexChanged.connect(self._on_session_changed)
         toolbar_layout.addWidget(self._session_combo)
 
-        # 删除会话按钮
-        delete_session_button = QPushButton("🗑️ 删除")
-        delete_session_button.setMinimumHeight(32)
-        delete_session_button.setToolTip("删除当前会话")
-        delete_session_button.setStyleSheet("""
-            QPushButton {
-                background: #ffcdd2;
-                color: #c62828;
-                border: 1px solid #ef9a9a;
-                border-radius: 4px;
-                padding: 4px 12px;
-                font-size: 12px;
-            }
-            QPushButton:hover {
-                background: #ef9a9a;
-            }
-            QPushButton:disabled {
-                background: #e0e0e0;
-                color: #9e9e9e;
-                border: 1px solid #bdbdbd;
-            }
-        """)
-        delete_session_button.clicked.connect(self._delete_current_session)
-        toolbar_layout.addWidget(delete_session_button)
-
         # 关闭按钮
         close_button = QPushButton("✕")
         close_button.setMaximumWidth(40)
@@ -519,8 +494,20 @@ class NewLLMChatWidget(QWidget):
                 content=f"用户操作 {action_type} 完成: {result_content}"
             ))
 
-            # 不显示用户操作结果消息，直接继续对话
-            # 让LLM基于操作结果继续执行工具
+            # 显示操作结果消息
+            result_msg = f"\n✅ 用户操作 [{action_type}]\n"
+            if result.get('success', True):
+                result_msg += f"成功: {result.get('message', '操作完成')}\n"
+            else:
+                result_msg += f"失败: {result.get('error', '未知错误')}\n"
+
+            # 保存助手消息到会话
+            assistant_message = LLMMessage(role="assistant", content=result_msg)
+            self._save_current_message(assistant_message)
+
+            self._add_message_bubble("assistant", result_msg)
+
+            # 继续对话，让LLM基于操作结果继续执行工具
             self._continue_after_action(action_type, result)
             return
 
@@ -538,7 +525,19 @@ class NewLLMChatWidget(QWidget):
             content=f"用户操作 {action_type} 完成: {result_content}"
         ))
 
-        # 不显示用户操作结果消息，直接继续对话
+        # 显示操作结果消息
+        result_msg = f"\n✅ 用户操作 [{action_type}]\n"
+        if result.get('success', True):
+            result_msg += f"成功: {result.get('message', '操作完成')}\n"
+        else:
+            result_msg += f"失败: {result.get('error', '未知错误')}\n"
+
+        # 保存助手消息到会话
+        assistant_message = LLMMessage(role="assistant", content=result_msg)
+        self._save_current_message(assistant_message)
+
+        self._add_message_bubble("assistant", result_msg)
+
         # 继续对话，让LLM基于操作结果继续执行工具
         self._continue_after_action(action_type, result)
 
@@ -591,8 +590,14 @@ class NewLLMChatWidget(QWidget):
                         if hasattr(main_window, 'pdf_processor'):
                             success, message = main_window.pdf_processor.open_pdf(file_path, async_mode=True)
                             if success:
-                                logger.info(f"PDF opened successfully: {file_path}")
-                                # 不显示打开成功的消息,让LLM生成响应
+                                open_msg = f"\n✅ 打开PDF\n"
+                                open_msg += f"成功: PDF已打开: {file_path}\n"
+
+                                # 保存助手消息到会话
+                                assistant_message = LLMMessage(role="assistant", content=open_msg)
+                                self._save_current_message(assistant_message)
+
+                                self._add_message_bubble("assistant", open_msg)
                             else:
                                 logger.error(f"Failed to open PDF: {message}")
                                 open_msg = f"\n❌ 打开PDF失败\n"
@@ -741,35 +746,26 @@ class NewLLMChatWidget(QWidget):
         self._send_button.setEnabled(False)
         self._send_button.setText("⏳ 生成中...")
 
-        # 不预先创建空的 assistant bubble，等到有内容时再创建
-        self._current_assistant_bubble = None
+        # 添加助手消息气泡
+        self._current_assistant_bubble = MessageBubble("assistant", "")
+        self._message_layout.addWidget(self._current_assistant_bubble)
 
         # 创建并启动对话线程
         tools = self._tool_manager.get_tools_for_llm() if self._tool_manager else None
 
         # 如果有工具,添加system prompt强制使用工具
         messages_to_send = self._messages.copy()
-        
-        # 添加当前文档状态信息到系统提示中
         if tools and len(tools) > 0:
             # 检查是否已经有system message
             has_system = any(m.role == "system" for m in messages_to_send)
             if not has_system:
-                # 获取当前文档状态信息
-                doc_context = self._get_document_context()
-                
-                # 构建system prompt,包含文档上下文信息
+                # 添加system prompt,明确要求使用工具
                 system_prompt = (
                     "你是一个PDF文档助手。当用户要求打开、拆分、OCR、合并或加密PDF文档时,"
                     "你必须使用相应的工具来完成操作。"
                     "不要询问参数,如果参数缺失,工具会提示用户输入。"
+                    "可用工具: " + ", ".join([t["function"]["name"] for t in tools])
                 )
-                
-                # 添加文档上下文信息
-                if doc_context:
-                    system_prompt += f"\n\n当前文档状态:\n{doc_context}"
-                
-                system_prompt += f"\n\n可用工具: " + ", ".join([t["function"]["name"] for t in tools])
                 messages_to_send.insert(0, LLMMessage(role="system", content=system_prompt))
 
 
@@ -802,12 +798,6 @@ class NewLLMChatWidget(QWidget):
                 if not special_content_handled:
                     # 如果没有特殊标记被处理，按正常流程添加内容
                     logger.debug(f"Updating content with {len(content)} characters")
-
-                    # 如果还没有创建 bubble，现在创建
-                    if self._current_assistant_bubble is None:
-                        self._current_assistant_bubble = MessageBubble("assistant", "")
-                        self._message_layout.addWidget(self._current_assistant_bubble)
-
                     current_text = self._current_assistant_bubble._text_edit.toPlainText()
                     self._current_assistant_bubble.update_content(current_text + content)
 
@@ -880,22 +870,19 @@ class NewLLMChatWidget(QWidget):
                 self._send_button.setEnabled(True)
                 self._send_button.setText("🚀 发送")
 
-                # 将完整回复添加到消息历史(只有创建了bubble且有内容才添加)
-                if self._current_assistant_bubble is not None:
-                    final_content = self._current_assistant_bubble._text_edit.toPlainText()
-                    if final_content.strip():
-                        assistant_message = LLMMessage(role="assistant", content=final_content)
-                        self._messages.append(assistant_message)
-                        # 保存助手回复到会话
-                        self._save_current_message(assistant_message)
-                    else:
-                        # 如果没有内容,删除空白气泡
-                        self._message_layout.removeWidget(self._current_assistant_bubble)
-                        self._current_assistant_bubble.deleteLater()
-                        self._current_assistant_bubble = None
-                        logger.debug("Removed empty assistant bubble")
+                # 将完整回复添加到消息历史(只有非空内容才添加)
+                final_content = self._current_assistant_bubble._text_edit.toPlainText()
+                if final_content.strip():
+                    assistant_message = LLMMessage(role="assistant", content=final_content)
+                    self._messages.append(assistant_message)
+                    # 保存助手回复到会话
+                    self._save_current_message(assistant_message)
                 else:
-                    logger.debug("No assistant bubble created (LLM only returned tool calls)")
+                    # 如果没有内容,删除空白气泡
+                    self._message_layout.removeWidget(self._current_assistant_bubble)
+                    self._current_assistant_bubble.deleteLater()
+                    self._current_assistant_bubble = None
+                    logger.debug("Removed empty assistant bubble")
                 
         except Exception as e:
             logger.error(f"Error in _on_response: {e}", exc_info=True)
@@ -1147,12 +1134,18 @@ class NewLLMChatWidget(QWidget):
                         content=f"工具 {tool_name} 执行结果: {result_content}"
                     ))
 
-                    # 不显示工具执行结果，让LLM基于工具结果生成响应
-                    # 只在错误时显示错误信息
-                    if not result.get('success'):
-                        result_msg = result.get('error', '未知错误')
-                        if result_msg and result_msg.strip():
-                            self._add_message_bubble("assistant", result_msg)
+                    # 显示执行结果
+                    result_msg = f"\n✅ 工具 [{tool_name}]\n"
+                    if result.get('success'):
+                        result_msg += f"成功: {result.get('message', '执行完成')}\n"
+                    else:
+                        result_msg += f"失败: {result.get('error', '未知错误')}\n"
+
+                    # 保存助手消息到会话
+                    assistant_message = LLMMessage(role="assistant", content=result_msg)
+                    self._save_current_message(assistant_message)
+
+                    self._add_message_bubble("assistant", result_msg)
 
                 except Exception as e:
                     logger.error(f"Error processing tool call {tool_name}: {e}", exc_info=True)
@@ -1165,10 +1158,6 @@ class NewLLMChatWidget(QWidget):
                     self._save_current_message(error_message)
 
                     self._add_message_bubble("assistant", error_msg)
-
-            # 所有工具调用执行完成后，继续对话让LLM生成响应
-            logger.debug("All tool calls completed, continuing conversation")
-            self._start_generation()
 
         except Exception as e:
             logger.error(f"Error in _handle_tool_calls: {e}", exc_info=True)
@@ -1475,67 +1464,6 @@ class NewLLMChatWidget(QWidget):
                 # 刷新会话列表
                 self._refresh_session_list()
 
-    def _delete_current_session(self):
-        """删除当前会话"""
-        from PyQt5.QtWidgets import QMessageBox
-
-        if not self._current_session:
-            QMessageBox.warning(self, "警告", "没有可删除的会话")
-            return
-
-        # 确认对话框
-        msg_box = QMessageBox(self)
-        msg_box.setIcon(QMessageBox.Question)
-        msg_box.setWindowTitle("确认删除")
-        msg_box.setText(f"确定要删除会话「{self._current_session.title}」吗？")
-        msg_box.setInformativeText("此操作不可恢复，会话及其所有消息将被永久删除。")
-
-        yes_btn = msg_box.addButton("删除", QMessageBox.YesRole)
-        no_btn = msg_box.addButton("取消", QMessageBox.NoRole)
-        msg_box.setDefaultButton(no_btn)
-        msg_box.exec_()
-
-        if msg_box.clickedButton() != yes_btn:
-            return
-
-        # 执行删除
-        session_id = self._current_session.session_id
-        if self._session_manager.delete_session(session_id):
-            # 清空消息显示
-            self._clear_message_display()
-
-            # 刷新会话列表
-            self._refresh_session_list()
-
-            # 加载新会话
-            self._load_current_session()
-
-            QMessageBox.information(self, "删除成功", "会话已成功删除")
-        else:
-            QMessageBox.critical(self, "删除失败", "删除会话失败，请稍后重试")
-
-    def _clear_message_display(self):
-        """清空消息显示区域"""
-        # 删除所有消息气泡
-        for i in reversed(range(self._message_layout.count())):
-            item = self._message_layout.itemAt(i)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
-
-    def _load_current_session(self):
-        """加载当前会话"""
-        # 获取当前会话
-        self._current_session = self._session_manager.get_current_session()
-
-        if not self._current_session:
-            # 如果没有当前会话，创建新会话
-            self._current_session = self._session_manager.create_session()
-            self._refresh_session_list()
-
-        # 加载会话历史
-        self._load_session_history(self._current_session)
-
     def _close_sidebar(self):
         """关闭侧边栏"""
         # 获取主窗口
@@ -1546,67 +1474,3 @@ class NewLLMChatWidget(QWidget):
                 parent_window._toggle_llm_sidebar()
                 break
             parent_window = parent_window.parent()
-
-    def _get_document_context(self) -> str:
-        """
-        获取当前文档的上下文信息
-        返回格式化后的文档状态字符串
-        """
-        context_parts = []
-        
-        # 获取主窗口
-        parent_window = self.parent()
-        main_window = None
-        while parent_window:
-            if hasattr(parent_window, 'pdf_processor'):
-                main_window = parent_window
-                break
-            parent_window = parent_window.parent()
-        
-        if not main_window:
-            return ""
-        
-        # 获取文档基本信息
-        try:
-            if hasattr(main_window, 'pdf_processor'):
-                pdf_processor = main_window.pdf_processor
-                
-                # 获取总页数
-                if hasattr(pdf_processor, 'page_count'):
-                    total_pages = pdf_processor.page_count
-                    context_parts.append(f"总页数: {total_pages}")
-                
-                # 获取当前页码
-                if hasattr(main_window, 'current_page'):
-                    current_page = main_window.current_page
-                    context_parts.append(f"当前页: {current_page}")
-                
-                # 获取当前缩放比例
-                if hasattr(main_window, 'pdf_renderer') and hasattr(main_window.pdf_renderer, 'current_scale'):
-                    scale = main_window.pdf_renderer.current_scale
-                    context_parts.append(f"缩放比例: {scale:.2f}x")
-                
-                # 获取文档路径
-                if hasattr(pdf_processor, 'pdf_file'):
-                    doc_path = pdf_processor.pdf_file
-                    if doc_path:
-                        import os
-                        doc_name = os.path.basename(doc_path)
-                        context_parts.append(f"文档名: {doc_name}")
-                else:
-                    context_parts.append("未打开文档")
-                
-                # 获取文档是否加密
-                if hasattr(pdf_processor, 'is_encrypted'):
-                    is_encrypted = pdf_processor.is_encrypted()
-                    context_parts.append(f"是否加密: {'是' if is_encrypted else '否'}")
-                
-                # 获取文档是否已加载
-                if hasattr(pdf_processor, 'is_loaded'):
-                    is_loaded = pdf_processor.is_loaded()
-                    context_parts.append(f"文档状态: {'已加载' if is_loaded else '未加载'}")
-                
-        except Exception as e:
-            logger.error(f"Error getting document context: {e}", exc_info=True)
-        
-        return "\n".join(context_parts) if context_parts else ""
