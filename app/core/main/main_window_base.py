@@ -27,6 +27,7 @@ from app.core.ocr.ocr_plugin_interface import OCRErrorCode
 from app.managers.upload_plugin_manager import UploadPluginManager
 from app.config.upload_plugin_config import upload_config_manager
 from app.managers.shortcut_manager import ShortcutManager
+from app.utils.logger import get_logger
 
 
 class MainWindowBase(QMainWindow):
@@ -111,15 +112,8 @@ class MainWindowBase(QMainWindow):
         self.upload_config_manager = upload_config_manager
         # 自动加载所有上传插件
         self.upload_plugin_manager.load_all_plugins()
-<<<<<<< HEAD
-
         # 初始化快捷键管理器
         self.shortcut_manager = ShortcutManager(self)
-
-        # 初始化LLM系统
-        self._init_llm_system()
-=======
->>>>>>> parent of 01e28a5 (llm)
         
     def _connect_signals(self):
         """连接PDF处理器信号"""
@@ -138,6 +132,7 @@ class MainWindowBase(QMainWindow):
     
     def _load_ocr_highlight_mode_setting(self):
         """加载OCR高亮模式设置"""
+        logger = get_logger('main')
         try:
             from app.config.settings import AppSettings
             ocr_highlight_enabled = AppSettings.get_ocr_highlight_mode()
@@ -160,7 +155,6 @@ class MainWindowBase(QMainWindow):
     def init_ui(self):
         """初始化UI界面"""
         try:
-            from app.utils.logger import get_logger
             logger = get_logger('main')
             
             logger.debug("开始初始化UI...")
@@ -197,7 +191,6 @@ class MainWindowBase(QMainWindow):
             self.show_message("🚀 优化版就绪 - 支持异步加载和虚拟滚动")
             logger.debug("UI初始化完成")
         except Exception as e:
-            from app.utils.logger import get_logger
             logger = get_logger('main')
             logger.error(f"UI初始化过程中出现错误: {e}")
             import traceback
@@ -257,20 +250,6 @@ class MainWindowBase(QMainWindow):
         """更新保存操作的状态"""
         has_changes = self.pdf_processor.has_unsaved_changes()
         
-        self.save_changes_action.setEnabled(has_changes)
-        self.discard_changes_action.setEnabled(has_changes)
-        
-        can_undo = self.pdf_processor.can_undo()
-        can_redo = self.pdf_processor.can_redo()
-        
-        self.undo_action.setEnabled(can_undo)
-        self.redo_action.setEnabled(can_redo)
-        
-        if hasattr(self, 'undo_btn'):
-            self.undo_btn.setEnabled(can_undo)
-        if hasattr(self, 'redo_btn'):
-            self.redo_btn.setEnabled(can_redo)
-            
         operation_summary = self.pdf_processor.get_operation_summary()
         if has_changes:
             self.show_message(f"● 文档已修改 | {operation_summary}")
@@ -282,7 +261,6 @@ class MainWindowBase(QMainWindow):
     
     def show_message(self, message):
         """显示状态消息"""
-        from app.utils.logger import get_logger
         logger = get_logger('main')
         
         # 确保状态标签存在，避免在UI初始化期间出错
@@ -316,7 +294,6 @@ class MainWindowBase(QMainWindow):
                 total_pages = self.pdf_processor.get_total_pages()
                 self.toolbar_total_pages_label.setText(f"/ {total_pages}")
             except Exception as e:
-                from app.utils.logger import get_logger
                 logger = get_logger('main')
                 logger.error(f"页面变化时更新工具栏总页数显示失败: {e}")
                 self.toolbar_total_pages_label.setText("/ 0")
@@ -361,7 +338,6 @@ class MainWindowBase(QMainWindow):
                 self.pdf_processor.optimize_memory_usage()
                 
         except Exception as e:
-            from app.utils.logger import get_logger
             logger = get_logger('main')
             logger.error(f"性能监控错误: {e}")
     
@@ -390,7 +366,6 @@ class MainWindowBase(QMainWindow):
 
     def on_virtual_scroll_page_changed(self, current_page):
         """处理虚拟滚动页面变更事件"""
-        from app.utils.logger import get_logger
         logger = get_logger('main')
 
         if current_page != self.page_spinbox.value():
@@ -460,7 +435,6 @@ class MainWindowBase(QMainWindow):
     def closeEvent(self, a0):
         """处理窗口关闭事件"""
         event = a0  # 保持向后兼容
-        from app.utils.logger import get_logger
         logger = get_logger('main')
         
         logger.debug("开始处理窗口关闭事件")
