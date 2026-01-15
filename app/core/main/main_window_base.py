@@ -272,11 +272,9 @@ class MainWindowBase(QMainWindow):
             QDockWidget > QWidget { alignment: center; }
         """)
 
-        self.llm_sidebar_dock.setMinimumWidth(500)  # 设置最小宽度为500
-        self.llm_sidebar_dock.setMaximumWidth(1000)  # 设置最大宽度为1000
-        self.llm_sidebar_dock.resize(500, self.height())  # 初始宽度设置为500
+        self.llm_sidebar_dock.setMinimumWidth(350)
 
-        from app.ui.llm_chat_widget import NewLLMChatWidget
+        from app.ui.new_llm_chat_widget import NewLLMChatWidget
         self.llm_sidebar = NewLLMChatWidget(self)
         self.llm_sidebar_dock.setWidget(self.llm_sidebar)
         self.addDockWidget(Qt.RightDockWidgetArea, self.llm_sidebar_dock)
