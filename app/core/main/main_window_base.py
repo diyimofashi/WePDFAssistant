@@ -2,10 +2,10 @@
 
 import sys
 import os
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QHBoxLayout,
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QHBoxLayout, 
                              QWidget, QLabel, QStatusBar, QMessageBox,
                              QDockWidget, QProgressDialog, QDialog)
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QPoint
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QPen
 
 from app.config.settings import AppSettings
@@ -13,7 +13,6 @@ from app.ui.styles import AppStyles
 from app.core.processing.pdf_processor import PDFProcessor
 from app.ui.virtual_scroll import VirtualScrollArea
 from app.core.processing.thumbnail_manager import ThumbnailManager
-from app.utils.logger import get_logger
 
 from app.ui.menu_manager import MenuManager
 from app.ui.toolbar_manager import ToolbarManager
@@ -28,8 +27,6 @@ from app.core.ocr.ocr_plugin_interface import OCRErrorCode
 from app.managers.upload_plugin_manager import UploadPluginManager
 from app.config.upload_plugin_config import upload_config_manager
 from app.managers.shortcut_manager import ShortcutManager
-
-logger = get_logger(__name__)
 
 
 class MainWindowBase(QMainWindow):
@@ -114,12 +111,15 @@ class MainWindowBase(QMainWindow):
         self.upload_config_manager = upload_config_manager
         # 自动加载所有上传插件
         self.upload_plugin_manager.load_all_plugins()
+<<<<<<< HEAD
 
         # 初始化快捷键管理器
         self.shortcut_manager = ShortcutManager(self)
 
         # 初始化LLM系统
         self._init_llm_system()
+=======
+>>>>>>> parent of 01e28a5 (llm)
         
     def _connect_signals(self):
         """连接PDF处理器信号"""
@@ -162,52 +162,38 @@ class MainWindowBase(QMainWindow):
         try:
             from app.utils.logger import get_logger
             logger = get_logger('main')
-
+            
             logger.debug("开始初始化UI...")
             self.setWindowTitle(f"{AppSettings.APP_NAME} v{AppSettings.APP_VERSION}")
             self.setGeometry(100, 100, AppSettings.WINDOW_WIDTH, AppSettings.WINDOW_HEIGHT)
             self.setMinimumSize(AppSettings.WINDOW_MIN_WIDTH, AppSettings.WINDOW_MIN_HEIGHT)
             self.showMaximized()
-
+            
             # 创建中央部件
             central_widget = QWidget()
             self.setCentralWidget(central_widget)
             main_layout = QHBoxLayout(central_widget)
             main_layout.setSpacing(0)
             main_layout.setContentsMargins(0, 0, 0, 0)
-
+            
             # 创建缩略图区域
             self.create_thumbnail_area(main_layout)
-
+            
             # 创建PDF显示区域
             self.create_pdf_display_area(main_layout)
-
-            # 创建LLM侧边栏
-            self.create_llm_sidebar_area(main_layout)
-
-            # 创建LLM浮动按钮
-            self.create_llm_floating_button()
-
+            
             # 创建菜单栏和工具栏
             self.menu_manager.create_menubar()
             self.toolbar_manager.create_main_toolbar()
-
-            # 设置LLM菜单
-            self._setup_llm_menu()
-
+            
             # 创建状态栏
             self.create_statusbar()
-
+            
             # 初始化缩略图显示状态
             self.show_thumbnails = False  # 初始时缩略图是隐藏的
             if hasattr(self, 'thumbnail_action'):
                 self.thumbnail_action.setChecked(False)  # 确保菜单中的缩略图动作状态与实际状态一致
-
-            # 初始化LLM侧边栏显示状态
-            self.show_llm_sidebar = False  # 初始时LLM侧边栏是隐藏的
-            if hasattr(self, 'llm_sidebar_action'):
-                self.llm_sidebar_action.setChecked(False)
-
+            
             self.show_message("🚀 优化版就绪 - 支持异步加载和虚拟滚动")
             logger.debug("UI初始化完成")
         except Exception as e:
@@ -259,70 +245,6 @@ class MainWindowBase(QMainWindow):
         self.virtual_scroll.page_hidden.connect(self._on_page_hidden)
         self.virtual_scroll.page_changed.connect(self.on_virtual_scroll_page_changed)
         main_layout.addWidget(self.virtual_scroll)
-
-    def create_llm_sidebar_area(self, main_layout):
-        """创建LLM侧边栏"""
-        self.llm_sidebar_dock = QDockWidget("AI助手", self)
-        self.llm_sidebar_dock.setAllowedAreas(Qt.RightDockWidgetArea)
-        self.llm_sidebar_dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
-
-        self.llm_sidebar_dock.setStyleSheet("""
-            QDockWidget { border: none; }
-            QDockWidget::title { background-color: #667eea; color: white; border: none; padding: 4px; text-align: left; font-weight: bold; }
-            QDockWidget > QWidget { alignment: center; }
-        """)
-
-        self.llm_sidebar_dock.setMinimumWidth(350)
-
-        from app.ui.new_llm_chat_widget import NewLLMChatWidget
-        self.llm_sidebar = NewLLMChatWidget(self)
-        self.llm_sidebar_dock.setWidget(self.llm_sidebar)
-        self.addDockWidget(Qt.RightDockWidgetArea, self.llm_sidebar_dock)
-        self.llm_sidebar_dock.hide()
-
-    def create_llm_floating_button(self):
-        """创建LLM浮动按钮"""
-        from app.ui.llm_floating_button import LLMFloatingButton
-        self.llm_floating_button = LLMFloatingButton(self)
-        self.llm_floating_button.clicked.connect(self._toggle_llm_sidebar)
-
-        # 使用定时器延迟设置按钮位置，确保窗口已完全初始化
-        QTimer.singleShot(100, self._update_llm_button_position)
-
-    def _update_llm_button_position(self):
-        """更新LLM浮动按钮位置"""
-        if not hasattr(self, 'llm_floating_button') or not self.llm_floating_button:
-            return
-
-        # 获取窗口尺寸
-        width = self.width()
-        height = self.height()
-
-        # 设置位置（距离右下角80px）
-        x = width - 80
-        y = height - 80
-
-        # 确保按钮不会超出窗口范围
-        x = max(0, min(x, width - 60))
-        y = max(0, min(y, height - 60))
-
-        self.llm_floating_button.move(x, y)
-        self.llm_floating_button.show()
-        logger.debug(f"LLM floating button positioned at ({x}, {y})")
-
-    def resizeEvent(self, event):
-        """窗口大小改变事件"""
-        super().resizeEvent(event)
-
-        # 更新浮动按钮位置
-        QTimer.singleShot(50, self._update_llm_button_position)
-
-    def showEvent(self, event):
-        """窗口显示事件"""
-        super().showEvent(event)
-
-        # 确保浮动按钮位置正确
-        QTimer.singleShot(100, self._update_llm_button_position)
     
     def apply_styles(self):
         """应用样式"""
@@ -334,27 +256,21 @@ class MainWindowBase(QMainWindow):
     def update_save_actions_state(self):
         """更新保存操作的状态"""
         has_changes = self.pdf_processor.has_unsaved_changes()
-
-        # 安全地更新保存相关动作
-        if hasattr(self, 'save_changes_action'):
-            self.save_changes_action.setEnabled(has_changes)
-        if hasattr(self, 'discard_changes_action'):
-            self.discard_changes_action.setEnabled(has_changes)
-
+        
+        self.save_changes_action.setEnabled(has_changes)
+        self.discard_changes_action.setEnabled(has_changes)
+        
         can_undo = self.pdf_processor.can_undo()
         can_redo = self.pdf_processor.can_redo()
-
-        # 安全地更新撤销/重做动作
-        if hasattr(self, 'undo_action'):
-            self.undo_action.setEnabled(can_undo)
-        if hasattr(self, 'redo_action'):
-            self.redo_action.setEnabled(can_redo)
-
+        
+        self.undo_action.setEnabled(can_undo)
+        self.redo_action.setEnabled(can_redo)
+        
         if hasattr(self, 'undo_btn'):
             self.undo_btn.setEnabled(can_undo)
         if hasattr(self, 'redo_btn'):
             self.redo_btn.setEnabled(can_redo)
-
+            
         operation_summary = self.pdf_processor.get_operation_summary()
         if has_changes:
             self.show_message(f"● 文档已修改 | {operation_summary}")

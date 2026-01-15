@@ -127,6 +127,7 @@ from app.core.main.ocr_manager_mixin import OCRManagerMixin
 from app.core.main.upload_manager_mixin import UploadManagerMixin
 from app.core.main.download_manager_mixin import DownloadManagerMixin
 from app.core.main.operation_manager_mixin import OperationManagerMixin
+<<<<<<< HEAD
 from app.core.main.llm_manager_mixin import LLMManagerMixin
 from app.core.main.shortcut_manager_mixin import ShortcutManagerMixin
 
@@ -135,6 +136,13 @@ class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailMana
                   SearchManagerMixin, OCRManagerMixin, UploadManagerMixin,
                   DownloadManagerMixin, OperationManagerMixin, LLMManagerMixin,
                   ShortcutManagerMixin):
+=======
+
+
+class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailManagerMixin, 
+                  SearchManagerMixin, OCRManagerMixin, UploadManagerMixin, 
+                  DownloadManagerMixin, OperationManagerMixin):
+>>>>>>> parent of 01e28a5 (llm)
     """极灵PDF主窗口 - 重构版本"""
     def zoom_in(self):
         """放大：跳转到下一个更大的缩放级别"""
