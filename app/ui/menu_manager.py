@@ -17,19 +17,22 @@ class MenuManager(QObject):
     def create_menubar(self):
         """创建菜单栏"""
         menubar = self.parent.menuBar()
-        
+
         # 文件菜单
         self._create_file_menu(menubar)
-        
+
         # 视图菜单
         self._create_view_menu(menubar)
-        
+
+        # 设置菜单
+        self._create_settings_menu(menubar)
+
         # 工具菜单
         self._create_tools_menu(menubar)
-        
+
         # 帮助菜单
         self._create_help_menu(menubar)
-        
+
         return menubar
     
     def _create_file_menu(self, menubar):
@@ -141,22 +144,35 @@ class MenuManager(QObject):
         # 页面布局子菜单
         view_menu.addSeparator()
         layout_menu = view_menu.addMenu("📄 页面布局")
-        
+
         single_page_action = QAction("📖 单页显示", self.parent)
         single_page_action.setCheckable(True)
         single_page_action.setChecked(True)
         # 假设父窗口有相关方法
         layout_menu.addAction(single_page_action)
-        
+
         double_page_action = QAction("📚 双页显示", self.parent)
         double_page_action.setCheckable(True)
         # 假设父窗口有相关方法
         layout_menu.addAction(double_page_action)
-        
+
         continuous_action = QAction("📜 连续模式", self.parent)
         continuous_action.setCheckable(True)
         # 假设父窗口有相关方法
         layout_menu.addAction(continuous_action)
+
+    def _create_settings_menu(self, menubar):
+        """创建设置菜单"""
+        settings_menu = menubar.addMenu("⚙️ 设置")
+
+        # 实际大小选项
+        actual_size_action = QAction("📏 实际大小", self.parent)
+        actual_size_action.setCheckable(True)
+        from app.config.settings import AppSettings
+        actual_size_action.setChecked(not AppSettings.get_use_a4_scaling())  # 默认不选中
+        actual_size_action.triggered.connect(self.parent.toggle_actual_size)
+        settings_menu.addAction(actual_size_action)
+        self.parent.actual_size_action = actual_size_action  # 保存引用以便后续访问
     
     def _create_tools_menu(self, menubar):
         """创建工具菜单"""

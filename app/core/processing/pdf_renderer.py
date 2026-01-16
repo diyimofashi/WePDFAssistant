@@ -83,18 +83,22 @@ class PDFRenderer(QObject):
         self.base_zoom = 2.0  # 基准缩放因子（用户看到的100%实际是200%基准）
         self.page_editor = None  # 页面编辑器
 
+        # A4缩放设置
+        from app.config.settings import AppSettings
+        self.use_a4_scaling = AppSettings.get_use_a4_scaling()  # 是否使用A4缩放
+
         # 异步加载器
         self.thumbnail_loader = None
         self.page_renderer = None
-        
+
         # 新的缓存系统
         self.render_cache = RenderCache(max_memory_mb=200, max_items=50)
         self.disk_cache = DiskCache(cache_dir="cache", max_size_mb=500)
-        
+
         # 向后兼容的简单缓存
         self.simple_cache = {}
         self.cache_max_size = 10
-        
+
         # 连续浏览模式属性
         self.continuous_mode = True  # 是否启用连续浏览模式
         self.pages_per_view = 3  # 连续模式下每次显示的页面数
@@ -121,6 +125,19 @@ class PDFRenderer(QObject):
             return True, f"缩放比例已设置为{int(zoom_factor * 100)}%"
         else:
             return False, "缩放比例必须在8%-6400%之间"
+
+    def set_use_a4_scaling(self, enabled):
+        """设置是否使用A4缩放"""
+        from app.config.settings import AppSettings
+        self.use_a4_scaling = bool(enabled)
+        AppSettings.set_use_a4_scaling(enabled)
+        # 清除渲染缓存，因为缩放方式已更改
+        self.clear_render_cache()
+        logger.info(f"A4缩放设置已更新: {enabled}")
+
+    def get_use_a4_scaling(self):
+        """获取是否使用A4缩放"""
+        return self.use_a4_scaling
     
     def get_zoom(self):
         """获取当前缩放比例（返回用户看到的相对值）"""
@@ -415,8 +432,8 @@ class PDFRenderer(QObject):
             width = rect.width
             height = rect.height
 
-            # 如果需要应用自动缩放，统一缩放到A4宽度
-            if apply_auto_scaling:
+            # 如果需要应用自动缩放并且启用了A4缩放，统一缩放到A4宽度
+            if apply_auto_scaling and self.use_a4_scaling:
                 A4_WIDTH = 595
                 # 计算缩放比例（所有页面都缩放到A4宽度）
                 scale = A4_WIDTH / width
@@ -473,21 +490,27 @@ class PDFRenderer(QObject):
             page_height = page_rect.height
             logger.debug(f"页面尺寸: {page_width} x {page_height}")
 
-
-
             # A4纸标准尺寸（点）
             A4_WIDTH = 595
 
-            # 所有页面统一缩放到A4宽度，然后应用zoom_factor
-            # 计算缩放到A4宽度的缩放比例
-            a4_scale = A4_WIDTH / page_width
-            # 计算最终的缩放因子：A4缩放比例 * zoom_factor
-            zoom = a4_scale * self.zoom_factor
-            logger.debug(f"页面{page_num}原始宽度({page_width:.1f})缩放到A4({A4_WIDTH})，缩放比例={a4_scale:.2f}，总zoom={zoom:.2f}")
-            # 渲染宽度 = A4宽度 * zoom_factor
-            render_width = int(A4_WIDTH * self.zoom_factor)
-            # 渲染高度 = 原始高度 * A4缩放比例 * zoom_factor
-            render_height = int(page_height * zoom)
+            # 根据设置决定是否使用A4缩放
+            if self.use_a4_scaling:
+                # 所有页面统一缩放到A4宽度，然后应用zoom_factor
+                # 计算缩放到A4宽度的缩放比例
+                a4_scale = A4_WIDTH / page_width
+                # 计算最终的缩放因子：A4缩放比例 * zoom_factor
+                zoom = a4_scale * self.zoom_factor
+                logger.debug(f"页面{page_num}原始宽度({page_width:.1f})缩放到A4({A4_WIDTH})，缩放比例={a4_scale:.2f}，总zoom={zoom:.2f}")
+                # 渲染宽度 = A4宽度 * zoom_factor
+                render_width = int(A4_WIDTH * self.zoom_factor)
+                # 渲染高度 = 原始高度 * A4缩放比例 * zoom_factor
+                render_height = int(page_height * zoom)
+            else:
+                # 不使用A4缩放，直接使用原始尺寸乘以zoom_factor
+                zoom = self.zoom_factor
+                logger.debug(f"页面{page_num}使用原始尺寸，zoom={zoom:.2f}")
+                render_width = int(page_width * zoom)
+                render_height = int(page_height * zoom)
 
             logger.debug(f"渲染尺寸: {render_width} x {render_height}")
 

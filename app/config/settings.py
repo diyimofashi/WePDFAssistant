@@ -117,3 +117,16 @@ class AppSettings:
         settings = cls._load_settings()
         settings['ocr_highlight_mode'] = bool(enabled)
         cls._save_settings()
+
+    @classmethod
+    def get_use_a4_scaling(cls):
+        """获取是否使用A4缩放"""
+        settings = cls._load_settings()
+        return settings.get('use_a4_scaling', True)  # 默认启用A4缩放
+
+    @classmethod
+    def set_use_a4_scaling(cls, enabled):
+        """设置是否使用A4缩放"""
+        settings = cls._load_settings()
+        settings['use_a4_scaling'] = bool(enabled)
+        cls._save_settings()

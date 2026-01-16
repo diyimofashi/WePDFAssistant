@@ -23,6 +23,30 @@ class ViewManagerMixin:
         
     def set_actual_size(self):
         return self.view_controller.set_actual_size()
+
+    def toggle_actual_size(self):
+        """切换实际大小（A4缩放）"""
+        if hasattr(self, 'pdf_processor') and self.pdf_processor:
+            # 获取当前设置
+            current_a4_scaling = self.pdf_processor.get_use_a4_scaling()
+            # 切换设置（实际大小 = 不使用A4缩放）
+            new_a4_scaling = not current_a4_scaling
+            self.pdf_processor.set_use_a4_scaling(new_a4_scaling)
+
+            # 更新菜单项的选中状态
+            if hasattr(self, 'actual_size_action'):
+                self.actual_size_action.setChecked(not new_a4_scaling)
+
+            # 重新渲染页面
+            if hasattr(self, 'update_preview'):
+                self.update_preview()
+
+            # 显示提示信息
+            status_msg = "使用实际大小" if not new_a4_scaling else "使用A4缩放"
+            self.show_message(status_msg)
+            logger.info(f"切换页面缩放模式: {status_msg}")
+        else:
+            logger.warning("PDF处理器不可用，无法切换实际大小模式")
     
     def set_zoom_level(self, level):
         """设置缩放级别"""

@@ -365,12 +365,13 @@ class PDFManagerMixin:
             for page_num in range(total_pages):
                 dimensions = self.pdf_processor.get_page_dimensions(page_num)
                 if dimensions:
-                    width = int(dimensions['width'] * self.pdf_processor.zoom_factor)
-                    height = int(dimensions['height'] * self.pdf_processor.zoom_factor)
+                    # 存储缩放后的尺寸（已经应用了A4缩放），不乘zoom_factor
+                    width = int(dimensions['width'])
+                    height = int(dimensions['height'])
                 else:
                     width = 800
                     height = 1100
-                
+
                 pages_data.append({
                     'page_num': page_num,
                     'width': width,
