@@ -1,8 +1,7 @@
 """条码拆分处理器模块"""
 
 import os
-import fitz
-import PyPDF2
+import fitz  # PyMuPDF
 from typing import Dict, List, Tuple, Optional, Callable
 from dataclasses import dataclass
 from PyQt5.QtCore import QThread, pyqtSignal

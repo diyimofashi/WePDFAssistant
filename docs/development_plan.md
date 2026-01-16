@@ -42,7 +42,7 @@
 - **交互体验**：流畅的用户交互和响应式设计
 
 ### 后端技术
-- **PDF处理**：PyMuPDF(fitz)、PyPDF2
+- **PDF处理**：PyMuPDF(fitz)
 - **图像处理**：Pillow
 - **文件操作**：Python标准库
 
@@ -118,7 +118,6 @@
 ### 当前依赖
 - PyQt5: GUI框架
 - PyMuPDF(fitz): PDF渲染和处理
-- PyPDF2: PDF文档操作
 - Pillow: 图像处理
 
 ### 新增依赖规划

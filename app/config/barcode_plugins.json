@@ -2,7 +2,7 @@
   "global": {},
   "plugins": {
     "advanced_barcode": {
-      "split_position_rule": "first_page",
+      "split_position_rule": "separator_page",
       "remove_barcode_pages": true,
       "merge_same_barcode": true,
       "min_length": 1,

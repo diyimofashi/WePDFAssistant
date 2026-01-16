@@ -1,14 +1,12 @@
 """页面编辑功能模块
 提供PDF页面的插入、删除、复制、旋转等编辑功能"""
 
-from PyQt5.QtWidgets import QFileDialog, QMessageBox
+from PyQt5.QtWidgets import QFileDialog, QMessageBox, QApplication
 from PyQt5.QtCore import Qt, QObject, pyqtSignal
 import os
 import tempfile
 import shutil
 import fitz  # PyMuPDF
-import PyPDF2
-from PyPDF2 import PdfWriter, PdfReader
 from PIL import Image
 from PIL.Image import Resampling
 import time
@@ -173,30 +171,30 @@ class PageEditor(QObject):
                 if not success:
                     return False, f"创建临时文件失败: {message}"
             
-            # 使用PyPDF2恢复被删除的页面
-            reader = PdfReader(self.temp_file)
-            writer = PdfWriter()
-            
+            # 使用PyMuPDF恢复被删除的页面
+            reader = fitz.open(self.temp_file)
+            writer = fitz.open()
+
             # 复制到插入位置前的所有页面
             for i in range(page_num - 1):
-                if i < len(reader.pages):
-                    writer.add_page(reader.pages[i])
-            
+                if i < len(reader):
+                    writer.insert_pdf(reader, from_page=i, to_page=i)
+
             # 插入被删除的页面数据
             if 'page_data' in data and data['page_data']:
-                writer.add_page(data['page_data'])
+                writer.insert_pdf(data['page_data'])
             else:
                 # 如果没有页面数据，插入空白页作为替代
-                blank_page = PyPDF2.PageObject.create_blank_page(width=595, height=842)
-                writer.add_page(blank_page)
-            
+                writer.new_page(width=595, height=842)
+
             # 复制剩余页面
-            for i in range(page_num - 1, len(reader.pages)):
-                writer.add_page(reader.pages[i])
-            
+            for i in range(page_num - 1, len(reader)):
+                writer.insert_pdf(reader, from_page=i, to_page=i)
+
             # 写入临时文件
-            with open(self.temp_file, 'wb') as output_file:
-                writer.write(output_file)
+            writer.save(self.temp_file, deflate=True, clean=True, garbage=1)
+            reader.close()
+            writer.close()
             
             # 通知PDF处理器加载临时文件
             if self.pdf_processor:
@@ -603,8 +601,60 @@ class PageEditor(QObject):
                 return False, f"页码超出范围：{page_num}"
 
             # 打开要插入的PDF文档
-            insert_doc = fitz.open(pdf_path)
+            # 先尝试直接打开，如果失败则可能是加密文档
+            insert_doc = None
+            password = None
+
+            try:
+                insert_doc = fitz.open(pdf_path)
+                # 检查是否需要密码
+                if insert_doc.needs_pass:
+                    insert_doc.close()
+                    insert_doc = None
+                    raise ValueError("需要密码")
+            except Exception as e:
+                # 如果打开失败或需要密码
+                password = None
+
+                # 导入密码对话框
+                from app.ui.password_dialog import PasswordDialog
+
+                # 获取主窗口作为对话框的父窗口
+                main_window = None
+                if hasattr(QApplication, 'activeWindow'):
+                    main_window = QApplication.activeWindow()
+
+                # 弹出密码输入对话框
+                password = PasswordDialog.get_user_password(
+                    parent=main_window,
+                    title=f"输入密码 - {os.path.basename(pdf_path)}",
+                    max_attempts=3
+                )
+
+                if password is None:
+                    logger.debug("用户取消了密码输入")
+                    return False, "用户取消了密码输入"
+
+                # 使用密码打开文档：先打开再验证
+                try:
+                    insert_doc = fitz.open(pdf_path)
+                    # 验证密码
+                    if insert_doc.needs_pass:
+                        if not insert_doc.authenticate(password):
+                            insert_doc.close()
+                            return False, "密码错误，无法打开文档"
+                except Exception as auth_e:
+                    logger.error(f"使用密码打开文档失败: {auth_e}")
+                    return False, f"打开PDF文件失败: {str(auth_e)}"
+
+            if insert_doc is None:
+                return False, "无法打开PDF文档"
+
             insert_pages_count = len(insert_doc)
+
+            if insert_pages_count == 0:
+                insert_doc.close()
+                return False, "要插入的PDF文件没有页面"
 
             # 记录操作前的状态用于撤销
             operation_data = {
@@ -612,17 +662,63 @@ class PageEditor(QObject):
                 'pdf_path': pdf_path
             }
 
-            # 逐页插入
-            for i in range(insert_pages_count):
-                # 从插入的PDF中复制页面
-                page_to_insert = insert_doc[i]
+            # 先使用 insert_pdf 将所有页面插入到目标文档（会插入到末尾）
+            inserted_page_indices = None
+            try:
+                # 记录插入前的总页数
+                initial_page_count = len(self.pdf_processor.fitz_document)
+                logger.debug(f"插入前总页数: {initial_page_count}, 要插入页数: {insert_pages_count}")
 
-                # 在指定位置插入新页面
-                new_page = self.pdf_processor.fitz_document.new_page(insert_position + i)
-                new_page.show_pdf_page(new_page.rect, page_to_insert, keep_proportion=True)
+                # 一次性插入所有页面
+                self.pdf_processor.fitz_document.insert_pdf(
+                    insert_doc,
+                    from_page=0,
+                    to_page=insert_pages_count - 1
+                )
 
-            # 关闭插入的PDF文档
-            insert_doc.close()
+                # 新插入的页面索引应该是从 initial_page_count 到 initial_page_count + insert_pages_count - 1
+                inserted_page_indices = list(range(initial_page_count, initial_page_count + insert_pages_count))
+                logger.debug(f"插入的页面索引: {inserted_page_indices}, 当前总页数: {len(self.pdf_processor.fitz_document)}")
+            except Exception as insert_e:
+                logger.error(f"插入PDF页面时出错: {insert_e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                insert_doc.close()
+                return False, f"插入PDF页面失败: {str(insert_e)}"
+            finally:
+                # 立即关闭插入的PDF文档，避免在垃圾回收时出现问题
+                try:
+                    insert_doc.close()
+                except Exception as close_e:
+                    logger.debug(f"关闭insert_doc时出现警告: {close_e}")
+                insert_doc = None
+
+            if inserted_page_indices is None:
+                return False, "插入PDF页面失败"
+
+            # 将插入的页面移动到指定位置
+            try:
+                # 从后往前移动，避免索引混乱
+                # inserted_page_indices 是按插入顺序记录的，例如 [5, 6, 7]
+                # 我们需要从最后一个开始移动，避免索引变化
+                total_after_insert = len(self.pdf_processor.fitz_document)
+                logger.debug(f"移动前总页数: {total_after_insert}, 插入位置: {insert_position}")
+
+                for i in range(len(inserted_page_indices) - 1, -1, -1):
+                    inserted_index = inserted_page_indices[i]
+                    # 第i个插入的页面应该移动到目标位置
+                    target_pos = insert_position + i
+                    # 移动页面
+                    if inserted_index != target_pos:
+                        logger.debug(f"移动页面从索引 {inserted_index} 到 {target_pos} (总页数: {len(self.pdf_processor.fitz_document)})")
+                        self.pdf_processor.fitz_document.move_page(inserted_index, target_pos)
+
+                logger.debug(f"移动后总页数: {len(self.pdf_processor.fitz_document)}")
+            except Exception as move_e:
+                logger.error(f"移动页面时出错: {move_e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                return False, f"移动PDF页面失败: {str(move_e)}"
 
             # 更新状态
             self.is_modified = True
@@ -771,23 +867,46 @@ class PageEditor(QObject):
                 return False, "无法获取当前PDF文件路径"
             
             current_file = self.pdf_processor.current_file
-            
-            # 使用PyPDF2提取页面
-            reader = PdfReader(current_file)
-            writer = PdfWriter()
-            
+
+            # 使用PyMuPDF提取页面
+            reader = fitz.open(current_file)
+            writer = fitz.open()
+
             # 添加指定页面到新文件
             for page_num in page_nums:
-                if 1 <= page_num <= len(reader.pages):
-                    writer.add_page(reader.pages[page_num - 1])  # page_num从1开始，索引从0开始
-            
+                if 1 <= page_num <= len(reader):
+                    writer.insert_pdf(reader, from_page=page_num - 1, to_page=page_num - 1)  # page_num从1开始，索引从0开始
+
             # 保存到输出文件
             try:
-                with open(output_path, 'wb') as output_file:
-                    writer.write(output_file)
+                writer.save(output_path, deflate=True, clean=True, garbage=1)
+                reader.close()
+                writer.close()
                 return True, f"已成功提取 {len(page_nums)} 页到 {os.path.basename(output_path)}"
             except Exception as e:
                 return False, f"保存提取页面失败: {str(e)}"
                 
         except Exception as e:
             return False, f"提取页面失败: {str(e)}"
+
+    def get_operation_summary(self):
+        """获取操作摘要"""
+        if not self.history:
+            return "没有操作记录"
+        return f"共有 {len(self.history)} 条操作记录，可撤销: {self.can_undo()}，可重做: {self.can_redo()}"
+
+    def undo(self):
+        """撤销操作"""
+        return self.undo_operation()
+
+    def redo(self):
+        """重做操作"""
+        return self.redo_operation()
+
+    def save(self):
+        """保存更改"""
+        return self.save_changes()
+
+    def discard(self):
+        """放弃更改"""
+        return self.discard_changes()

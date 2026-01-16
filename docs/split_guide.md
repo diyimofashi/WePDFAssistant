@@ -141,7 +141,6 @@
 - **SplitWorker**: 后台拆分线程
 
 ### 依赖库
-- `PyPDF2`: PDF文件操作
 - `PyMuPDF`: 书签读取和高级解析
 - `PyQt5`: 用户界面
 

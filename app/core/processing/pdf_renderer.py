@@ -2,6 +2,7 @@
 
 import os
 import time
+import tempfile
 import fitz  # PyMuPDF - 用于PDF页面渲染
 import sys
 
@@ -19,18 +20,68 @@ from PyQt5.QtCore import QObject, pyqtSignal
 from PyQt5.QtCore import Qt as QtCore
 
 # 导入新的异步加载器和缓存管理器
-from .async_loader import AsyncThumbnailLoader, AsyncPageRenderer
+# from .async_loader import AsyncThumbnailLoader, AsyncPageRenderer  # TODO: 恢复或重新实现异步加载器
 from ..performance.cache_manager import RenderCache, DiskCache
 
-class PDFRenderer:
+# 简化的异步加载器占位类
+class AsyncPageRenderer:
+    """简化版异步页面渲染器占位"""
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def isRunning(self):
+        return False
+
+    def cancel(self):
+        pass
+
+    def wait(self):
+        pass
+
+    def start(self):
+        pass
+
+class AsyncThumbnailLoader:
+    """简化版异步缩略图加载器占位"""
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def isRunning(self):
+        return False
+
+    def cancel(self):
+        pass
+
+    def wait(self):
+        pass
+
+    def start(self):
+        pass
+
+
+class PDFRenderer(QObject):
     """PDF渲染器 - 专门处理页面渲染和缓存功能"""
-    
-    def __init__(self):
-        # 注意：信号需要在主QObject子类中定义
+
+    # 信号定义
+    loading_progress = pyqtSignal(int, str)  # 加载进度 (百分比, 消息)
+    loading_finished = pyqtSignal(bool, str)  # 加载完成 (成功标志, 消息)
+    page_loaded = pyqtSignal()  # 页面加载完成
+    page_rendered = pyqtSignal(object)  # 页面渲染完成
+    thumbnail_ready = pyqtSignal(int, object)  # 缩略图准备完成 (页码, 图片)
+    operation_history_changed = pyqtSignal()  # 操作历史改变
+    page_changed = pyqtSignal(int)  # 页面改变
+    zoom_changed = pyqtSignal(float)  # 缩放改变
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
         # fitz_document 由 PDFProcessor 统一管理，不在子模块中初始化
+        self.fitz_document = None  # PyMuPDF 文档对象
+        self.pdf_document = None  # 别名，用于向后兼容
         self.current_page = 0  # 当前页码（从0开始）
+        self.current_file = None  # 当前文件路径
         self.zoom_factor = 2.0  # 缩放因子（设置为2.0，即200%作为新的100%基准）
         self.base_zoom = 2.0  # 基准缩放因子（用户看到的100%实际是200%基准）
+        self.page_editor = None  # 页面编辑器
 
         # 异步加载器
         self.thumbnail_loader = None
@@ -58,18 +109,18 @@ class PDFRenderer:
         return len(self.fitz_document) if self.fitz_document else 0
 
     def set_zoom(self, zoom_factor):
-        """设置缩放比例 - 基于新的基准缩放（用户看到的100%实际是300%）"""
+        """设置缩放比例"""
         # 将用户的缩放值转换为实际缩放值
         actual_zoom = zoom_factor * self.base_zoom
-        
-        # 限制实际缩放范围在75%-1200%（对应用户看到的25%-400%）
-        if 0.25 <= zoom_factor <= 4.0:
+
+        # 限制实际缩放范围在8%-6400%（对应用户看到的8%-6400%）
+        if 0.08 <= zoom_factor <= 64.0:
             self.zoom_factor = actual_zoom
             # 清除渲染缓存，因为缩放级别已更改
             self.clear_render_cache()
             return True, f"缩放比例已设置为{int(zoom_factor * 100)}%"
         else:
-            return False, "缩放比例必须在25%-400%之间"
+            return False, "缩放比例必须在8%-6400%之间"
     
     def get_zoom(self):
         """获取当前缩放比例（返回用户看到的相对值）"""
@@ -671,9 +722,638 @@ class PDFRenderer:
             img_data = pix.tobytes("png")
             
             return img_data
-            
+
         except Exception as e:
             logger.error(f"获取页面图像数据时出错: {e}")
             import traceback
             logger.error(traceback.format_exc())
             return None
+
+    # ========== PDFProcessor 兼容方法 ==========
+
+    def has_unsaved_changes(self):
+        """检查是否有未保存的更改"""
+        if self.page_editor:
+            return self.page_editor.has_unsaved_changes()
+        return False
+
+    def undo_operation(self):
+        """撤销操作"""
+        if self.page_editor:
+            return self.page_editor.undo()
+        return False, "没有可撤销的操作"
+
+    def redo_operation(self):
+        """重做操作"""
+        if self.page_editor:
+            return self.page_editor.redo()
+        return False, "没有可重做的操作"
+
+    def delete_page(self, page_num):
+        """删除指定页面"""
+        if self.page_editor:
+            return self.page_editor.delete_page(page_num)
+        return False, "页面编辑器未初始化"
+
+    def rotate_page(self, page_num, angle):
+        """旋转指定页面"""
+        if self.page_editor:
+            return self.page_editor.rotate_page(page_num, angle)
+        return False, "页面编辑器未初始化"
+
+    def convert_pdf_to_images(self, *args, **kwargs):
+        """PDF转图片（待实现）"""
+        return False, "PDF转图片功能待实现"
+
+    def get_supported_image_formats(self):
+        """获取支持的图片格式"""
+        return ['png', 'jpg', 'jpeg', 'bmp', 'tiff', 'tif', 'gif', 'webp', 'ico']
+
+    def get_supported_image_formats_filter(self) -> str:
+        """获取文件选择对话框的格式过滤器"""
+        formats = [
+            "所有图片文件 (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif *.webp *.ico *.svg)",
+            "PNG 图片 (*.png)",
+            "JPEG 图片 (*.jpg *.jpeg)",
+            "BMP 图片 (*.bmp)",
+            "TIFF 图片 (*.tiff *.tif)",
+            "GIF 图片 (*.gif)",
+            "WebP 图片 (*.webp)",
+            "ICO 图标 (*.ico)",
+            "SVG 矢量图 (*.svg)"
+        ]
+        return ";;".join(formats) + ";;所有文件 (*.*)"
+
+    def get_recommended_dpi(self):
+        """获取推荐的DPI"""
+        return 200
+
+    def import_images(self, image_paths: list, insert_after_page: int = -1) -> tuple[bool, str]:
+        """导入图片到PDF
+
+        Args:
+            image_paths: 图片文件路径列表
+            insert_after_page: 插入位置（0-based，-1表示末尾）
+
+        Returns:
+            (success, message) 元组
+        """
+        try:
+            from .pdf_conversion import PDFConversion
+            from ..editing.page_editor import PageEditor
+
+            # 保存 is_from_image 状态
+            was_from_image = hasattr(self, 'is_from_image') and self.is_from_image
+            original_image_path = getattr(self, 'original_image_path', None)
+
+            conversion = PDFConversion()
+            conversion.fitz_document = self.fitz_document
+            conversion.current_file = self.current_file
+            conversion.current_page = self.current_page
+
+            # 如果有 page_editor，也传递给 conversion
+            if self.page_editor:
+                conversion.page_editor = self.page_editor
+
+            success, message = conversion.import_images(image_paths, insert_after_page)
+
+            if success:
+                self.fitz_document = conversion.fitz_document
+                self.pdf_document = self.fitz_document
+                self.current_page = conversion.current_page
+
+                # 如果之前是从图片打开的，仍然保持 is_from_image 状态
+                if was_from_image:
+                    self.current_file = None
+                    self.is_from_image = True
+                    self.original_image_path = original_image_path
+                else:
+                    self.current_file = conversion.current_file
+                    self.is_from_image = False
+                    self.original_image_path = None
+
+                # 如果文档被替换（从图片创建新PDF），需要重新初始化 page_editor
+                if self.page_editor:
+                    new_page_editor = PageEditor(self)
+                    self.page_editor = new_page_editor
+
+            return success, message
+
+        except Exception as e:
+            logger.error(f"导入图片时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False, f"导入图片失败: {str(e)}"
+
+    def get_operation_summary(self):
+        """获取操作摘要"""
+        if self.page_editor:
+            return self.page_editor.get_operation_summary()
+        return "没有操作记录"
+
+    def save_changes(self):
+        """保存更改"""
+        if self.page_editor:
+            return self.page_editor.save()
+        return False, "页面编辑器未初始化"
+
+    def discard_changes(self):
+        """放弃更改"""
+        if self.page_editor:
+            return self.page_editor.discard()
+        return False, "页面编辑器未初始化"
+
+    def encrypt_pdf(self, password, output_path):
+        """加密PDF文件"""
+        try:
+            from .pdf_operations import PDFOperations
+
+            operations = PDFOperations()
+            operations.fitz_document = self.fitz_document
+            operations.current_file = self.current_file
+            if hasattr(self, 'is_new_document'):
+                operations.is_new_document = self.is_new_document
+
+            success, message = operations.encrypt_pdf(password, output_path)
+
+            if success:
+                return True, message
+            else:
+                return False, message
+
+        except Exception as e:
+            logger.error(f"加密PDF时出错: {e}")
+            return False, f"加密失败: {str(e)}"
+
+    def _is_image_file(self, file_path):
+        """判断是否为图片文件"""
+        if not file_path:
+            return False
+        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
+        file_ext = os.path.splitext(file_path)[1].lower()
+        return file_ext in image_extensions
+
+    def open_pdf(self, file_path, async_mode=False, password=None):
+        """打开PDF文件或图片文件"""
+        try:
+            if not os.path.exists(file_path):
+                self.loading_finished.emit(False, f"文件不存在: {file_path}")
+                return False, f"文件不存在: {file_path}"
+
+            # 判断是否为图片文件
+            is_image = self._is_image_file(file_path)
+
+            # 关闭现有文档
+            if self.fitz_document:
+                self.fitz_document.close()
+
+            # 如果是图片文件，创建临时PDF
+            if is_image:
+                from .pdf_conversion import PDFConversion
+
+                # 创建新的PDF文档，使用A4纸规格
+                new_doc = fitz.open()
+                try:
+                    # A4纸规格：210mm x 297mm，在点单位下为 595 x 842
+                    a4_width = 595
+                    a4_height = 842
+                    padding = 40  # 左右padding（点）
+
+                    # 创建A4规格的新页面
+                    page = new_doc.new_page(width=a4_width, height=a4_height)
+
+                    # 计算图片插入区域（去除左右padding）
+                    image_rect = fitz.Rect(
+                        padding,
+                        0,
+                        a4_width - padding,
+                        a4_height
+                    )
+
+                    # 插入图片到指定区域（自动适应）
+                    page.insert_image(image_rect, filename=file_path)
+
+                    # 设置为新文档
+                    self.fitz_document = new_doc
+                    self.pdf_document = self.fitz_document
+                    self.current_page = 0
+
+                    # 标记为从图片打开的文档
+                    self.is_from_image = True
+                    self.original_image_path = file_path
+                    self.current_file = None  # 图片文件不设为当前文件，待用户保存时选择
+
+                    self.loading_finished.emit(True, f"成功打开文件: {os.path.basename(file_path)}")
+                    return True, f"成功打开文件: {os.path.basename(file_path)}"
+
+                except Exception as e:
+                    new_doc.close()
+                    logger.error(f"从图片创建PDF失败: {e}")
+                    self.loading_finished.emit(False, f"打开图片失败: {str(e)}")
+                    return False, f"打开图片失败: {str(e)}"
+            else:
+                # PDF文件，直接打开
+                self.fitz_document = fitz.open(file_path)
+                self.pdf_document = self.fitz_document  # 同步更新别名
+                self.current_file = file_path
+                self.current_page = 0
+
+                # 标记为PDF文件
+                self.is_from_image = False
+                self.original_image_path = None
+
+                # 处理密码
+                if password and self.fitz_document:
+                    if not self.fitz_document.authenticate(password):
+                        self.loading_finished.emit(False, "密码错误")
+                        return False, "密码错误"
+
+                self.loading_finished.emit(True, f"成功打开文件: {os.path.basename(file_path)}")
+                return True, f"成功打开文件: {os.path.basename(file_path)}"
+
+        except Exception as e:
+            logger.error(f"打开PDF文件时出错: {e}")
+            self.loading_finished.emit(False, f"打开文件失败: {str(e)}")
+            return False, f"打开文件失败: {str(e)}"
+
+    def open_multiple_images(self, image_paths, async_mode=False, source_directory=None):
+        """打开多个图片文件，创建多页PDF"""
+        try:
+            if not image_paths:
+                return False, "未选择图片文件"
+
+            # 创建新的PDF文档，使用A4纸规格
+            new_doc = fitz.open()
+            a4_width = 595
+            a4_height = 842
+            padding = 40
+
+            # 插入图片的数量
+            success_count = 0
+
+            for image_path in image_paths:
+                try:
+                    # 创建A4规格的新页面
+                    page = new_doc.new_page(width=a4_width, height=a4_height)
+
+                    # 计算图片插入区域（去除左右padding）
+                    image_rect = fitz.Rect(
+                        padding,
+                        0,
+                        a4_width - padding,
+                        a4_height
+                    )
+
+                    # 插入图片到指定区域（自动适应）
+                    page.insert_image(image_rect, filename=image_path)
+
+                    success_count += 1
+                    logger.debug(f"成功添加图片: {image_path}")
+
+                except Exception as inner_e:
+                    logger.error(f"添加图片失败 {image_path}: {inner_e}")
+
+            if success_count == 0:
+                new_doc.close()
+                return False, "所有图片都无法添加到PDF"
+
+            # 关闭当前文档（如果有）
+            if self.fitz_document:
+                self.fitz_document.close()
+
+            # 设置新文档
+            self.fitz_document = new_doc
+            self.pdf_document = self.fitz_document
+            self.current_page = 0
+
+            # 标记为从图片打开的文档
+            self.is_from_image = True
+            self.original_image_path = None
+            self.current_file = None  # 多图片文件不设为当前文件，待用户保存时选择
+
+            self.loading_finished.emit(True, f"成功打开{success_count}张图片")
+            return True, f"成功打开{success_count}张图片"
+
+        except Exception as e:
+            logger.error(f"打开多图片文件时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            self.loading_finished.emit(False, f"打开多图片文件失败: {str(e)}")
+            return False, f"打开多图片文件失败: {str(e)}"
+
+    def open_images_from_directory(self, directory_path, async_mode=False):
+        """从目录打开图片"""
+        return False, "目录图片打开功能待实现"
+
+    def go_to_page(self, page_number):
+        """跳转到指定页面"""
+        try:
+            if not self.fitz_document:
+                return False, "没有打开的文档"
+
+            # 检查页面范围
+            if page_number < 1 or page_number > len(self.fitz_document):
+                return False, f"页码超出范围: {page_number}"
+
+            # 跳转页面（转换为0-based索引）
+            self.current_page = page_number - 1
+            self.page_changed.emit(self.current_page)
+            return True, f"已跳转到第 {page_number} 页"
+
+        except Exception as e:
+            logger.error(f"跳转页面时出错: {e}")
+            return False, f"跳转失败: {str(e)}"
+
+    def fit_to_width(self, container_width):
+        """适应宽度"""
+        try:
+            if not self.fitz_document or self.current_page < 0 or self.current_page >= len(self.fitz_document):
+                return False, "没有打开的文档"
+
+            # 获取当前页面尺寸
+            page = self.fitz_document[self.current_page]
+            rect = page.rect
+            page_width = rect.width
+
+            # 计算需要的缩放比例
+            if page_width > 0:
+                new_zoom = container_width / page_width
+                self.set_zoom(new_zoom / self.base_zoom)
+                return True, f"已适应宽度，缩放比例为 {int(new_zoom / self.base_zoom * 100)}%"
+
+            return False, "页面宽度无效"
+
+        except Exception as e:
+            logger.error(f"适应宽度时出错: {e}")
+            return False, f"适应宽度失败: {str(e)}"
+
+    def _is_file_locked(self, filepath, timeout=2):
+        """检查文件是否被锁定"""
+        import time
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                with open(filepath, 'a+'):
+                    pass
+                return False
+            except (IOError, OSError):
+                time.sleep(0.1)
+        return True
+
+    def save_pdf(self, file_path=None):
+        """保存PDF文件"""
+        temp_path = None
+        try:
+            if not self.fitz_document:
+                return False, "没有打开的文档"
+
+            # 如果是从图片打开的文档且没有指定保存路径，需要用户选择
+            if not file_path and hasattr(self, 'is_from_image') and self.is_from_image:
+                return False, "is_from_image_save_required"
+
+            file_path = file_path or self.current_file
+            if not file_path:
+                return False, "没有指定保存路径"
+
+            temp_fd, temp_path = tempfile.mkstemp(suffix='.pdf', prefix='pypdf_save_')
+            os.close(temp_fd)
+
+            save_args = {
+                'deflate': True,
+                'clean': True,
+                'garbage': 1
+            }
+            self.fitz_document.save(temp_path, **save_args)
+
+            if self._is_file_locked(file_path):
+                logger.warning("目标文件被锁定，无法保存")
+                return False, "文件正在被其他程序使用，请关闭后再试"
+
+            import shutil
+            shutil.copy2(temp_path, file_path)
+
+            if self.page_editor:
+                self.page_editor.is_modified = False
+
+            # 保存成功后，更新状态
+            if hasattr(self, 'is_from_image') and self.is_from_image:
+                self.is_from_image = False
+                self.original_image_path = None
+                self.current_file = file_path
+
+            return True, f"文件已保存: {os.path.basename(file_path)}"
+
+        except Exception as e:
+            logger.error(f"保存PDF时出错: {e}")
+            return False, f"保存失败: {str(e)}"
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+
+    def search_text(self, search_text, match_case=False, whole_word=False,
+                   search_backwards=False, start_page=None):
+        """
+        在PDF中搜索文本
+
+        Args:
+            search_text: 要搜索的文本
+            match_case: 是否区分大小写
+            whole_word: 是否全词匹配
+            search_backwards: 是否向后搜索
+            start_page: 开始搜索的页面（None表示从当前页开始）
+
+        Returns:
+            (success, result_info) 元组
+        """
+        logger.debug(f"PDFRenderer.search_text: 开始搜索文本 '{search_text}', 区分大小写: {match_case}, 全词匹配: {whole_word}")
+
+        if not self.fitz_document:
+            logger.debug("PDFRenderer.search_text: 未打开PDF文件")
+            return False, "请先打开PDF文件"
+
+        if not search_text.strip():
+            logger.debug("PDFRenderer.search_text: 搜索文本为空")
+            return False, "请输入搜索内容"
+
+        try:
+            # 确定开始搜索的页面
+            if start_page is None:
+                start_page = self.current_page
+
+            total_pages = len(self.fitz_document)
+
+            # 搜索结果列表
+            search_results = []
+
+            # 搜索范围（向前或向后）
+            if search_backwards:
+                # 向后搜索：从当前页向前搜索到第1页
+                pages_to_search = list(range(start_page, -1, -1))
+            else:
+                # 向前搜索：从当前页向后搜索到最后一页
+                pages_to_search = list(range(start_page, total_pages))
+
+            # 搜索标志
+            search_flags = 0
+            if match_case:
+                search_flags |= fitz.TEXT_PRESERVE_LIGATURES
+            if whole_word:
+                search_flags |= fitz.TEXT_PRESERVE_WHITESPACE
+
+            # 执行搜索
+            total_found = 0
+            for page_num in pages_to_search:
+                page = self.fitz_document[page_num]
+
+                # 搜索当前页
+                text_instances = page.search_for(
+                    search_text,
+                    flags=search_flags,
+                    hit_max=1000
+                )
+
+                logger.debug(f"在页面 {page_num+1} 中找到 {len(text_instances)} 个匹配项")
+
+                # 记录搜索结果
+                for rect in text_instances:
+                    search_results.append({
+                        'page': page_num + 1,  # 转换为用户页码
+                        'page_index': page_num,
+                        'rect': rect,
+                        'text': search_text,
+                        'position': {
+                            'x': rect.x0,
+                            'y': rect.y0,
+                            'width': rect.width,
+                            'height': rect.height
+                        }
+                    })
+
+                total_found += len(text_instances)
+
+            logger.debug(f"总共找到 {total_found} 个匹配项，搜索文本: '{search_text}'")
+
+            # 处理搜索结果
+            if search_results:
+                logger.debug(f"搜索成功，找到 {len(search_results)} 个匹配项")
+                # 如果有搜索结果，跳转到第一个匹配项
+                first_result = search_results[0]
+                self.current_page = first_result['page_index']
+
+                return True, {
+                    'total_matches': len(search_results),
+                    'current_match': 1,
+                    'results': search_results,
+                    'message': f"找到 {len(search_results)} 个匹配项"
+                }
+            else:
+                logger.debug(f"搜索完成，未找到匹配的文本: '{search_text}'")
+                return False, "未找到匹配的文本"
+
+        except Exception as e:
+            logger.error(f"搜索失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False, f"搜索失败: {str(e)}"
+
+    def search_next(self, search_text, match_case=False, whole_word=False):
+        """搜索下一个匹配项"""
+        if not self.fitz_document:
+            return False, "请先打开PDF文件"
+
+        try:
+            # 从当前页的下一个位置开始搜索
+            start_page = self.current_page + 1
+
+            return self.search_text(search_text, match_case, whole_word,
+                                  search_backwards=False, start_page=start_page)
+        except Exception as e:
+            return False, f"搜索失败: {str(e)}"
+
+    def search_previous(self, search_text, match_case=False, whole_word=False):
+        """搜索上一个匹配项"""
+        if not self.fitz_document:
+            return False, "请先打开PDF文件"
+
+        try:
+            # 从当前页的前一个位置开始搜索
+            start_page = self.current_page - 1
+
+            return self.search_text(search_text, match_case, whole_word,
+                                  search_backwards=True, start_page=start_page)
+        except Exception as e:
+            return False, f"搜索失败: {str(e)}"
+
+    def highlight_search_result(self, page_num, rect, color=(1, 1, 0, 0.4)):
+        """高亮显示搜索结果（黄色半透明背景）"""
+        if not self.fitz_document:
+            return False
+
+        try:
+            # 获取页面
+            page = self.fitz_document[page_num]
+
+            # 添加高亮注释
+            highlight = page.add_highlight_annot(rect)
+
+            # 设置高亮颜色（黄色）
+            highlight.set_colors(stroke=(1.0, 1.0, 0.0), fill=(1.0, 1.0, 0.0))
+            highlight.set_opacity(0.3)
+            highlight.update()
+
+            # 设置注释内容，便于识别为搜索高亮
+            highlight.set_info(content="Search Highlight", title="SearchHighlight")
+
+            logger.debug(f"已添加高亮：页面{page_num+1}，位置{rect}")
+            return True
+        except Exception as e:
+            logger.error(f"高亮失败: {e}")
+            return False
+
+    def clear_highlights(self, page_num=None):
+        """清除高亮标记"""
+        if not self.fitz_document:
+            return False
+
+        try:
+            if page_num is not None:
+                # 清除指定页面的高亮
+                page = self.fitz_document[page_num]
+                # 删除所有高亮注释（类型8）和带有搜索高亮标记的注释
+                annotations_to_delete = []
+                for annot in page.annots():
+                    if annot.type[0] == 8:  # 高亮注释类型
+                        # 检查是否是搜索高亮（通过内容或标题判断）
+                        info = annot.info
+                        if 'Search Highlight' in info.get('content', ''):
+                            annotations_to_delete.append(annot)
+                # 删除收集到的注释
+                for annot in annotations_to_delete:
+                    page.delete_annot(annot)
+            else:
+                # 清除所有页面的高亮
+                for page_num in range(len(self.fitz_document)):
+                    page = self.fitz_document[page_num]
+                    annotations_to_delete = []
+                    for annot in page.annots():
+                        if annot.type[0] == 8:  # 高亮注释类型
+                            # 检查是否是搜索高亮（通过内容或标题判断）
+                            info = annot.info
+                            if 'Search Highlight' in info.get('content', ''):
+                                annotations_to_delete.append(annot)
+                    # 删除收集到的注释
+                    for annot in annotations_to_delete:
+                        page.delete_annot(annot)
+
+            return True
+        except Exception as e:
+            logger.error(f"清除高亮失败: {e}")
+            return False
+
+
+
+
+

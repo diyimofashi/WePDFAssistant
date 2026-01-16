@@ -2,14 +2,14 @@
 
 import os
 import threading
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, 
-                             QPushButton, QTableWidget, QTableWidgetItem, 
+from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
+                             QPushButton, QTableWidget, QTableWidgetItem,
                              QHeaderView, QProgressBar, QFileDialog, QGroupBox,
                              QLabel, QLineEdit, QCheckBox, QFormLayout, QFrame,
                              QToolButton)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QIcon
-import PyPDF2
+import fitz  # PyMuPDF
 from app.utils.logger import get_logger
 
 logger = get_logger('batch_crypto_dialog')
@@ -77,39 +77,43 @@ class BatchCryptoWorker(QThread):
         """加密单个文件"""
         try:
             # 读取原文件
-            with open(file_path, 'rb') as file:
-                reader = PyPDF2.PdfReader(file)
-                
-                # 创建写入器
-                writer = PyPDF2.PdfWriter()
-                
-                # 复制所有页面
-                for page in reader.pages:
-                    writer.add_page(page)
-                
-                # 设置密码
-                writer.encrypt(self.password)
-                
-                # 确定输出路径
-                if self.overwrite:
-                    output_path = file_path
+            doc = fitz.open(file_path)
+
+            # 确定输出路径
+            if self.overwrite:
+                output_path = file_path
+            else:
+                if self.output_dir:
+                    filename = os.path.basename(file_path)
+                    name, ext = os.path.splitext(filename)
+                    output_path = os.path.join(self.output_dir, f"{name}_encrypted{ext}")
                 else:
-                    if self.output_dir:
-                        filename = os.path.basename(file_path)
-                        name, ext = os.path.splitext(filename)
-                        output_path = os.path.join(self.output_dir, f"{name}_encrypted{ext}")
-                    else:
-                        output_path = file_path.replace('.pdf', '_encrypted.pdf')
-                
-                # 写入加密文件
-                with open(output_path, 'wb') as output_file:
-                    writer.write(output_file)
-                
-                # 如果需要删除原文件
-                if self.delete_original and not self.overwrite and file_path != output_path:
-                    os.remove(file_path)
-                
-                return True, output_path
+                    output_path = file_path.replace('.pdf', '_encrypted.pdf')
+
+            # 设置密码并保存加密文件
+            if self.password:
+                doc.save(
+                    output_path,
+                    encryption=fitz.PDF_ENCRYPT_AES_256,
+                    user_pw=self.password,
+                    deflate=True,
+                    clean=True,
+                    garbage=1
+                )
+            else:
+                doc.save(
+                    output_path,
+                    deflate=True,
+                    clean=True,
+                    garbage=1
+                )
+            doc.close()
+
+            # 如果需要删除原文件
+            if self.delete_original and not self.overwrite and file_path != output_path:
+                os.remove(file_path)
+
+            return True, output_path
         except Exception as e:
             return False, str(e)
 
@@ -117,44 +121,43 @@ class BatchCryptoWorker(QThread):
         """解密单个文件"""
         try:
             # 读取加密文件
-            with open(file_path, 'rb') as file:
-                reader = PyPDF2.PdfReader(file)
-                
-                # 检查是否加密
-                if not reader.is_encrypted:
-                    return False, "文件未加密"
-                
-                # 尝试解密
-                if reader.decrypt(self.password) == 0:
-                    return False, "密码错误"
-                
-                # 创建写入器
-                writer = PyPDF2.PdfWriter()
-                
-                # 复制所有页面
-                for page in reader.pages:
-                    writer.add_page(page)
-                
-                # 确定输出路径
-                if self.overwrite:
-                    output_path = file_path
+            doc = fitz.open(file_path)
+
+            # 检查是否加密
+            if not doc.needs_pass:
+                doc.close()
+                return False, "文件未加密"
+
+            # 尝试解密
+            if not doc.authenticate(self.password):
+                doc.close()
+                return False, "密码错误"
+
+            # 确定输出路径
+            if self.overwrite:
+                output_path = file_path
+            else:
+                if self.output_dir:
+                    filename = os.path.basename(file_path)
+                    name, ext = os.path.splitext(filename)
+                    output_path = os.path.join(self.output_dir, f"{name}_decrypted{ext}")
                 else:
-                    if self.output_dir:
-                        filename = os.path.basename(file_path)
-                        name, ext = os.path.splitext(filename)
-                        output_path = os.path.join(self.output_dir, f"{name}_decrypted{ext}")
-                    else:
-                        output_path = file_path.replace('.pdf', '_decrypted.pdf')
-                
-                # 写入解密文件
-                with open(output_path, 'wb') as output_file:
-                    writer.write(output_file)
-                
-                # 如果需要删除原文件
-                if self.delete_original and not self.overwrite and file_path != output_path:
-                    os.remove(file_path)
-                
-                return True, output_path
+                    output_path = file_path.replace('.pdf', '_decrypted.pdf')
+
+            # 保存解密文件
+            doc.save(
+                output_path,
+                deflate=True,
+                clean=True,
+                garbage=1
+            )
+            doc.close()
+
+            # 如果需要删除原文件
+            if self.delete_original and not self.overwrite and file_path != output_path:
+                os.remove(file_path)
+
+            return True, output_path
         except Exception as e:
             return False, str(e)
 

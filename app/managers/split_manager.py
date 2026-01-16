@@ -3,6 +3,7 @@
 import os
 import re
 from typing import List, Dict, Tuple, Optional
+import fitz  # PyMuPDF
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                             QPushButton, QSpinBox, QCheckBox, QRadioButton,
                             QButtonGroup, QTextEdit, QProgressBar, QMessageBox,
@@ -60,22 +61,21 @@ class SplitWorker(QThread):
     
     def _split_single_pages(self, base_name: str):
         """单页拆分"""
-        total_pages = len(self.pdf_processor.pdf_document.pages)
-        
+        total_pages = self.pdf_processor.pdf_document.page_count
+
         for i in range(total_pages):
             progress = int((i / total_pages) * 100)
             self.progress_updated.emit(progress, f"正在拆分第 {i+1}/{total_pages} 页...")
-            
+
             # 创建新的PDF文档
-            from PyPDF2 import PdfWriter
-            writer = PdfWriter()
-            writer.add_page(self.pdf_processor.pdf_document.pages[i])
-            
+            new_doc = fitz.open()
+            new_doc.insert_pdf(self.pdf_processor.pdf_document, from_page=i, to_page=i)
+
             # 保存文件
             output_path = os.path.join(self.output_dir, f"{base_name}_page_{i+1:04d}.pdf")
-            with open(output_path, 'wb') as f:
-                writer.write(f)
-            
+            new_doc.save(output_path, deflate=True, clean=True, garbage=1)
+            new_doc.close()
+
             self.output_files.append(output_path)
     
     def _split_by_ranges(self, base_name: str, ranges: List[str]):
@@ -83,30 +83,29 @@ class SplitWorker(QThread):
         for idx, range_str in enumerate(ranges):
             progress = int((idx / len(ranges)) * 100)
             self.progress_updated.emit(progress, f"正在拆分范围: {range_str}")
-            
+
             # 解析页面范围
             pages = self._parse_page_range(range_str)
             if not pages:
                 continue
-            
+
             # 创建新的PDF文档
-            from PyPDF2 import PdfWriter
-            writer = PdfWriter()
-            
+            new_doc = fitz.open()
+
             for page_num in pages:
-                if 0 <= page_num < len(self.pdf_processor.pdf_document.pages):
-                    writer.add_page(self.pdf_processor.pdf_document.pages[page_num])
-            
+                if 0 <= page_num < self.pdf_processor.pdf_document.page_count:
+                    new_doc.insert_pdf(self.pdf_processor.pdf_document, from_page=page_num, to_page=page_num)
+
             # 保存文件
             output_path = os.path.join(self.output_dir, f"{base_name}_range_{idx+1:02d}_({range_str}).pdf")
-            with open(output_path, 'wb') as f:
-                writer.write(f)
-            
+            new_doc.save(output_path, deflate=True, clean=True, garbage=1)
+            new_doc.close()
+
             self.output_files.append(output_path)
     
     def _split_by_groups(self, base_name: str, group_size: int):
         """按分组拆分"""
-        total_pages = len(self.pdf_processor.pdf_document.pages)
+        total_pages = self.pdf_processor.pdf_document.page_count
         group_count = (total_pages + group_size - 1) // group_size
         
         for group_idx in range(group_count):
@@ -117,17 +116,16 @@ class SplitWorker(QThread):
             end_page = min(start_page + group_size, total_pages)
             
             # 创建新的PDF文档
-            from PyPDF2 import PdfWriter
-            writer = PdfWriter()
-            
+            new_doc = fitz.open()
+
             for page_num in range(start_page, end_page):
-                writer.add_page(self.pdf_processor.pdf_document.pages[page_num])
-            
+                new_doc.insert_pdf(self.pdf_processor.pdf_document, from_page=page_num, to_page=page_num)
+
             # 保存文件
             output_path = os.path.join(self.output_dir, f"{base_name}_group_{group_idx+1:02d}_({start_page+1}-{end_page}).pdf")
-            with open(output_path, 'wb') as f:
-                writer.write(f)
-            
+            new_doc.save(output_path, deflate=True, clean=True, garbage=1)
+            new_doc.close()
+
             self.output_files.append(output_path)
     
     def _split_by_bookmarks(self, base_name: str):
@@ -135,43 +133,44 @@ class SplitWorker(QThread):
         if not self.pdf_processor.fitz_document:
             self.error_occurred.emit("需要PyMuPDF支持才能按书签拆分")
             return
-        
+
         # 获取书签信息
         bookmarks = self.pdf_processor.fitz_document.get_toc()
         if not bookmarks:
             self.error_occurred.emit("PDF中没有找到书签")
             return
-        
+
         total_sections = len(bookmarks)
-        
+
         for idx, bookmark in enumerate(bookmarks):
             progress = int((idx / total_sections) * 100)
             title = bookmark[1]  # 书签标题
             start_page = bookmark[2] - 1  # 书签所在页码（转换为0-based）
-            
+
             # 确定结束页码
             if idx < total_sections - 1:
                 end_page = bookmarks[idx + 1][2] - 2  # 下一个书签前一页
             else:
-                end_page = len(self.pdf_processor.pdf_document.pages) - 1
-            
+                end_page = self.pdf_processor.fitz_document.page_count - 1
+
             self.progress_updated.emit(progress, f"正在拆分章节: {title}")
-            
+
             # 创建新的PDF文档
-            from PyPDF2 import PdfWriter
-            writer = PdfWriter()
-            
+            new_doc = fitz.open()
+
+            # 插入指定范围的页面
             for page_num in range(start_page, end_page + 1):
-                if 0 <= page_num < len(self.pdf_processor.pdf_document.pages):
-                    writer.add_page(self.pdf_processor.pdf_document.pages[page_num])
-            
+                if 0 <= page_num < self.pdf_processor.fitz_document.page_count:
+                    new_doc.insert_pdf(self.pdf_processor.fitz_document,
+                                      from_page=page_num, to_page=page_num)
+
             # 清理文件名中的特殊字符
             safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)
             output_path = os.path.join(self.output_dir, f"{base_name}_{safe_title}.pdf")
-            
-            with open(output_path, 'wb') as f:
-                writer.write(f)
-            
+
+            new_doc.save(output_path, deflate=True, clean=True, garbage=1)
+            new_doc.close()
+
             self.output_files.append(output_path)
     
     def _parse_page_range(self, range_str: str) -> List[int]:

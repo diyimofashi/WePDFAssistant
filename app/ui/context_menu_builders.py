@@ -666,6 +666,10 @@ class ContextMenuBuilder:
                 if success:
                     self.main_window.show_message(message)
                     self.main_window.update_preview()
+                    self.main_window.load_thumbnails()
+                    # 清除虚拟滚动缓存
+                    if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
+                        self.main_window.virtual_scroll.clear_cache()
                 else:
                     self.main_window.show_message(f"❌ {message}")
             else:
@@ -707,6 +711,10 @@ class ContextMenuBuilder:
             if success:
                 self.main_window.show_message(message)
                 self.main_window.update_preview()
+                self.main_window.load_thumbnails()
+                # 清除虚拟滚动缓存
+                if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
+                    self.main_window.virtual_scroll.clear_cache()
             else:
                 self.main_window.show_message(f"❌ {message}")
         else:
@@ -718,6 +726,10 @@ class ContextMenuBuilder:
                 if success:
                     self.main_window.show_message(message)
                     self.main_window.update_preview()
+                    self.main_window.load_thumbnails()
+                    # 清除虚拟滚动缓存
+                    if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
+                        self.main_window.virtual_scroll.clear_cache()
                 else:
                     self.main_window.show_message(f"❌ {message}")
             else:

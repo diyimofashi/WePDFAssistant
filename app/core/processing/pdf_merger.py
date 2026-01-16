@@ -2,8 +2,7 @@
 
 import os
 from typing import List, Dict, Tuple, Optional
-from PyPDF2 import PdfReader, PdfWriter
-from PyPDF2.generic import Destination
+import fitz  # PyMuPDF
 from app.utils.logger import get_logger
 
 logger = get_logger('pdf_merger')
@@ -34,7 +33,6 @@ class PDFMerger:
 
             output_name = merge_config.get('output_name', 'merged.pdf')
             output_dir = merge_config.get('output_dir', '')
-            preserve_page_numbers = merge_config.get('preserve_page_numbers', False)
             encrypt = merge_config.get('encrypt', False)
             password = merge_config.get('password', '')
 
@@ -54,8 +52,8 @@ class PDFMerger:
             if not valid_files:
                 return False, "没有有效的PDF文件", None
 
-            # 创建写入器
-            writer = PdfWriter()
+            # 创建合并文档
+            merged_doc = fitz.open()
 
             # 合并文件
             total_files = len(valid_files)
@@ -67,22 +65,23 @@ class PDFMerger:
                     progress = int((idx / total_files) * 90)  # 保留10%用于最后保存
                     progress_callback.emit(progress, f"正在合并文件 {idx+1}/{total_files}: {os.path.basename(file_path)}")
 
-                reader = PdfReader(file_path)
+                src_doc = fitz.open(file_path)
                 file_name = os.path.basename(file_path)
 
                 # 获取页面范围
                 page_range = merge_config.get('page_ranges', {}).get(file_path, 'all')
-                pages = self._parse_page_range(page_range, len(reader.pages))
+                pages = self._parse_page_range(page_range, len(src_doc))
 
                 # 添加页面
                 for page_num in pages:
-                    if page_num < len(reader.pages):
-                        page = reader.pages[page_num]
-                        writer.add_page(page)
+                    if page_num < len(src_doc):
+                        merged_doc.insert_pdf(src_doc, from_page=page_num, to_page=page_num)
 
-                # 保留元数据
+                # 保留元数据（第一个文件的元数据）
                 if idx == 0:
-                    writer.metadata = reader.metadata
+                    merged_doc.metadata = src_doc.metadata
+
+                src_doc.close()
 
             # 更新进度 - 准备保存
             if progress_callback:
@@ -90,14 +89,28 @@ class PDFMerger:
 
             # 加密
             if encrypt and password:
-                writer.encrypt(password)
+                save_args = {
+                    'deflate': True,
+                    'clean': True,
+                    'garbage': 1
+                }
+                if password:
+                    save_args['encryption'] = fitz.PDF_ENCRYPT_AES_256
+                    save_args['user_pw'] = password
+            else:
+                save_args = {
+                    'deflate': True,
+                    'clean': True,
+                    'garbage': 1
+                }
 
             # 保存文件
-            with open(output_path, 'wb') as f:
-                writer.write(f)
+            merged_doc.save(output_path, **save_args)
+            page_count = merged_doc.page_count
+            merged_doc.close()
 
             logger.info(f"合并完成: {output_path}")
-            return True, f"合并成功! 共合并 {len(valid_files)} 个文件, 生成 {len(writer.pages)} 页", output_path
+            return True, f"合并成功! 共合并 {len(valid_files)} 个文件, 生成 {page_count} 页", output_path
 
         except Exception as e:
             logger.error(f"合并过程中出错: {e}")
@@ -166,13 +179,15 @@ class PDFMerger:
         try:
             if not os.path.exists(file_path):
                 return False
-                
+
             if not file_path.lower().endswith('.pdf'):
                 return False
-                
-            reader = PdfReader(file_path)
-            return len(reader.pages) > 0
-            
+
+            doc = fitz.open(file_path)
+            page_count = len(doc)
+            doc.close()
+            return page_count > 0
+
         except Exception as e:
             logger.error(f"验证PDF文件失败 {file_path}: {e}")
             return False
@@ -210,60 +225,32 @@ class PDFMerger:
         # 过滤无效页码并去重
         pages = [p for p in sorted(set(pages)) if 0 <= p < total_pages]
         return pages
-    
-    def _add_bookmarks(self, writer: PdfWriter, bookmarks: List[Dict]):
-        """
-        添加书签到PDF
 
-        Args:
-            writer: PDF写入器
-            bookmarks: 书签列表, [{'title': '文件名', 'page_obj': 页面对象}, ...]
-        """
-        for bookmark in bookmarks:
-            title = bookmark['title']
-            page_obj = bookmark['page_obj']
 
-            try:
-                # 添加书签，确保标题不为空
-                if not title or title.strip() == '':
-                    title = '未命名'
-
-                # 使用页面对象添加书签
-                writer.add_outline_item(
-                    title=title,
-                    page=page_obj,
-                    parent=None,
-                    color=None,
-                    bold=False,
-                    italic=False
-                )
-                logger.debug(f"添加书签成功: {title}")
-
-            except Exception as e:
-                logger.error(f"添加书签失败 {title}: {e}")
-    
     def get_file_info(self, file_path: str) -> Dict:
         """
         获取PDF文件信息
-        
+
         Args:
             file_path: PDF文件路径
-            
+
         Returns:
             文件信息字典
         """
         try:
-            reader = PdfReader(file_path)
+            doc = fitz.open(file_path)
             file_size = os.path.getsize(file_path)
-            
+            page_count = len(doc)
+            doc.close()
+
             return {
                 'path': file_path,
                 'name': os.path.basename(file_path),
-                'pages': len(reader.pages),
+                'pages': page_count,
                 'size': file_size,
                 'size_mb': file_size / (1024 * 1024)
             }
-            
+
         except Exception as e:
             logger.error(f"获取文件信息失败 {file_path}: {e}")
             return None
