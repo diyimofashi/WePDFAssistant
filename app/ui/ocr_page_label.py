@@ -266,16 +266,6 @@ class OCRPageLabel(QWidget):
             adjusted_rect = QRect(rect.x(), rect.y(), rect.width(), rect.height())
             text_block.setGeometry(adjusted_rect)
 
-            # 调试日志：输出位置信息
-            if len(self.text_blocks) < 3:  # 只记录前3个文本块
-                fm = QFontMetrics(font)
-                ascent = fm.ascent()
-                descent = fm.descent()
-                logger.debug(f"[OCRPageLabel._create_text_block] 文本='{text[:10]}...', "
-                           f"rect=({rect.x()}, {rect.y()}, {rect.width()}, {rect.height()}), "
-                           f"text_height={text_height}, font_size={font_size}, "
-                           f"ascent={ascent}, descent={descent}")
-
             # 设置样式
             if self.debug_mode:
                 # 调试模式：灰色背景，透明度0.3 (0.3 * 255 ≈ 77)

@@ -41,7 +41,7 @@ class VirtualScrollArea(QScrollArea):
         self.page_positions = []  # 每页的起始位置
 
         # 性能优化参数
-        self.buffer_size = 1  # 可见区域上下各预渲染的页数
+        self.buffer_size = 2  # 可见区域上下各预渲染的页数
         self.render_delay = 200  # 增加渲染延迟到200ms
 
         # 延迟渲染定时器
@@ -440,7 +440,16 @@ class VirtualScrollArea(QScrollArea):
                 break
                 
         # 扩展可见范围（包含缓冲区）
-        buffer_size = getattr(self, 'buffer_size', 1)  # 减小缓冲区到1页
+        buffer_size = getattr(self, 'buffer_size', 2)  # 减小缓冲区到1页
+        current_zoom = self.get_current_zoom()
+        logger.debug(f"当前缩放: {current_zoom}")
+        if current_zoom < 0.3:  # 小缩放时使用更大的缓冲区
+            buffer_size = 8
+        elif current_zoom < 0.5:  # 中缩放时使用较小的缓冲区
+            buffer_size = 4
+        else:
+            buffer_size = 2
+        logger.debug(f"缓冲区大小: {buffer_size}")
         start_page = max(0, start_page - buffer_size)
         end_page = min(len(self.pages_data) - 1, end_page + buffer_size)
         
@@ -1052,3 +1061,14 @@ class VirtualScrollArea(QScrollArea):
         
         # 如果没有按下Ctrl键，执行默认的滚轮事件处理
         super().wheelEvent(event)
+
+    def get_current_zoom(self):
+        """获取当前缩放级别"""
+        parent = self.parent()
+        while parent and not hasattr(parent, 'pdf_processor'):
+            parent = parent.parent()
+        
+        if parent and hasattr(parent, 'pdf_processor'):
+            return parent.pdf_processor.zoom_factor
+        else:
+            return 2.0
