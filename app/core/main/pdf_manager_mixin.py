@@ -51,27 +51,28 @@ class PDFManagerMixin:
                     total_pages = self.pdf_processor.get_total_pages()
                     pages_data = []
                     for page_num in range(total_pages):
-                        # 获取页面尺寸
-                        page_dimensions = self.pdf_processor.get_page_dimensions(page_num)
+                        # 获取页面尺寸（应用自动缩放，但不乘zoom_factor）
+                        page_dimensions = self.pdf_processor.get_page_dimensions(page_num, apply_auto_scaling=True)
                         if page_dimensions:
-                            width = int(page_dimensions['width'] * self.pdf_processor.zoom_factor)
-                            height = int(page_dimensions['height'] * self.pdf_processor.zoom_factor)
+                            # 存储应用了自动缩放后的尺寸，render_page_at会乘以zoom_factor
+                            width = int(page_dimensions['width'])
+                            height = int(page_dimensions['height'])
                         else:
                             width = 800  # 默认宽度
                             height = 1100  # 默认高度
-                            
+
                         pages_data.append({
                             'page_num': page_num,
                             'width': width,
                             'height': height,
                             'zoom_factor': self.pdf_processor.zoom_factor
                         })
-                    
+
                     self.virtual_scroll.set_pages_data(pages_data)
-                    
+
                     # 触发虚拟滚动区域更新和渲染（update_content内部会延迟渲染）
                     self.virtual_scroll.update_content()
-                    
+
                     # 延迟滚动到第一页
                     from PyQt5.QtCore import QTimer
                     QTimer.singleShot(200, lambda: self.virtual_scroll.scroll_to_page(0) if hasattr(self.virtual_scroll, 'scroll_to_page') else None)

@@ -130,50 +130,84 @@ class PDFRenderer(QObject):
         """渲染当前页面为高质量图像 - 优化显示效果和性能"""
         if not self.fitz_document:
             return None
-        
+
         try:
             # 获取页面实际尺寸
-            page_rect = self.fitz_document[self.current_page].rect
-            render_width = int(page_rect.width * self.zoom_factor)
-            render_height = int(page_rect.height * self.zoom_factor)
-            
+            page = self.fitz_document[self.current_page]
+            page_rect = page.rect
+            page_width = page_rect.width
+            page_height = page_rect.height
+
+            # A4纸标准尺寸（点）
+            A4_WIDTH = 595
+
+            # 计算缩放因子：如果页面宽度超过A4宽度，自动缩放到A4宽度
+            zoom = self.zoom_factor
+            if page_width > A4_WIDTH:
+                zoom = zoom * (A4_WIDTH / page_width)
+
+            render_width = int(page_width * zoom)
+            render_height = int(page_height * zoom)
+
             # 首先检查内存缓存
             cached_pixmap = self.render_cache.get_rendered_page(
-                self.current_page, self.zoom_factor, (render_width, render_height)
+                self.current_page, zoom, (render_width, render_height)
             )
             if cached_pixmap:
                 return cached_pixmap
-            
+
             # 检查磁盘缓存
-            disk_key = f"page_{self.current_page}_zoom_{self.zoom_factor:.2f}_size_{render_width}x{render_height}"
+            disk_key = f"page_{self.current_page}_zoom_{zoom:.2f}_size_{render_width}x{render_height}"
             disk_pixmap = self.disk_cache.get(disk_key)
             if disk_pixmap:
                 # 将磁盘缓存的内容放入内存缓存
                 self.render_cache.put_rendered_page(
-                    self.current_page, self.zoom_factor, (render_width, render_height), disk_pixmap
+                    self.current_page, zoom, (render_width, render_height), disk_pixmap
                 )
                 return disk_pixmap
-            
+
             # 缓存未命中，进行渲染
-            return self._render_page_sync(self.current_page, width, height)
-            
+            # 传递计算后的渲染尺寸，而不是固定的 width 和 height 参数
+            return self._render_page_sync(self.current_page, render_width, render_height)
+
         except Exception as e:
             logger.error(f"渲染页面失败: {e}")
             return False
     
-    def _render_page_sync(self, page_num, width=800, height=1000):
-        """同步渲染指定页面"""
+    def _render_page_sync(self, page_num, render_width=800, render_height=1000):
+        """同步渲染指定页面
+
+        Args:
+            page_num: 页码
+            render_width: 渲染宽度（如果为None，则根据页面尺寸和缩放因子计算）
+            render_height: 渲染高度（如果为None，则根据页面尺寸和缩放因子计算）
+        """
         try:
             # 获取页面
             page = self.fitz_document[page_num]
-            
+
             # 获取页面实际尺寸
             page_rect = page.rect
-            render_width = int(page_rect.width * self.zoom_factor)
-            render_height = int(page_rect.height * self.zoom_factor)
-            
+            page_width = page_rect.width
+            page_height = page_rect.height
+
+            # A4纸标准尺寸（点）
+            A4_WIDTH = 595
+
+            # 计算缩放因子：如果页面宽度超过A4宽度，自动缩放到A4宽度
+            zoom = self.zoom_factor
+            if page_width > A4_WIDTH:
+                zoom = zoom * (A4_WIDTH / page_width)
+                logger.debug(f"页面{page_num}宽度({page_width:.1f})超过A4，自动缩放因子: {zoom:.2f}")
+
+            # 如果没有传入渲染尺寸，则根据页面尺寸和缩放因子计算
+            if render_width == 800 and render_height == 1000:
+                # 使用默认值，说明需要计算
+                render_width = int(page_width * zoom)
+                render_height = int(page_height * zoom)
+
             # 创建变换矩阵进行缩放
-            mat = fitz.Matrix(self.zoom_factor, self.zoom_factor)
+            mat = fitz.Matrix(zoom, zoom)
             
             # 渲染页面为图像 - 使用优化的渲染参数
             pix = page.get_pixmap(
@@ -207,12 +241,12 @@ class PDFRenderer(QObject):
             
             # 缓存结果到内存缓存
             self.render_cache.put_rendered_page(
-                page_num, self.zoom_factor, (render_width, render_height), pixmap
+                page_num, zoom, (render_width, render_height), pixmap
             )
-            
+
             # 缓存到磁盘（异步进行，不阻塞）
             try:
-                disk_key = f"page_{page_num}_zoom_{self.zoom_factor:.2f}_size_{render_width}x{render_height}"
+                disk_key = f"page_{page_num}_zoom_{zoom:.2f}_size_{render_width}x{render_height}"
                 self.disk_cache.put(disk_key, pixmap)
             except:
                 pass  # 磁盘缓存失败不影响主流程
@@ -362,20 +396,36 @@ class PDFRenderer(QObject):
         self.continuous_mode = enabled
         self.pages_per_view = max(1, min(10, pages_per_view))  # 限制1-10页
 
-    def get_page_dimensions(self, page_num=None):
-        """获取指定页面的尺寸信息"""
+    def get_page_dimensions(self, page_num=None, apply_auto_scaling=True):
+        """获取指定页面的尺寸信息
+
+        Args:
+            page_num: 页码（默认当前页）
+            apply_auto_scaling: 是否应用自动缩放（统一缩放到A4宽度）
+        """
         if not self.fitz_document:
             return None
-            
+
         if page_num is None:
             page_num = self.current_page
-            
+
         try:
             page = self.fitz_document[page_num]
             rect = page.rect
+            width = rect.width
+            height = rect.height
+
+            # 如果需要应用自动缩放，统一缩放到A4宽度
+            if apply_auto_scaling:
+                A4_WIDTH = 595
+                # 计算缩放比例（所有页面都缩放到A4宽度）
+                scale = A4_WIDTH / width
+                width = A4_WIDTH
+                height = height * scale
+
             return {
-                'width': rect.width,
-                'height': rect.height,
+                'width': width,
+                'height': height,
                 'size': f"{rect.width:.1f} × {rect.height:.1f} 点"
             }
         except:
@@ -394,12 +444,16 @@ class PDFRenderer(QObject):
             logger.warning("文档未加载或页码无效")
             return None
 
+        # 初始化渲染尺寸，用于异常处理
+        render_width = width
+        render_height = height
+
         try:
             # 检查文档是否仍然有效
             if not self.fitz_document:
                 logger.warning("文档引用为空，无法渲染页面")
                 return None
-            
+
             # 尝试访问文档属性来检查是否仍然有效
             try:
                 _ = len(self.fitz_document)  # 尝试获取文档长度
@@ -408,7 +462,7 @@ class PDFRenderer(QObject):
                     logger.warning(f"文档已关闭或加密，无法访问: {e}")
                     return None
                 raise  # 重新抛出其他异常
-            
+
             # 获取页面
             page = self.fitz_document[page_num]
             logger.debug(f"获取页面对象成功: {page}")
@@ -419,19 +473,32 @@ class PDFRenderer(QObject):
             page_height = page_rect.height
             logger.debug(f"页面尺寸: {page_width} x {page_height}")
 
-            # 根据页面实际尺寸和缩放因子计算渲染尺寸
-            render_width = int(page_width * self.zoom_factor)
-            render_height = int(page_height * self.zoom_factor)
+
+
+            # A4纸标准尺寸（点）
+            A4_WIDTH = 595
+
+            # 所有页面统一缩放到A4宽度，然后应用zoom_factor
+            # 计算缩放到A4宽度的缩放比例
+            a4_scale = A4_WIDTH / page_width
+            # 计算最终的缩放因子：A4缩放比例 * zoom_factor
+            zoom = a4_scale * self.zoom_factor
+            logger.debug(f"页面{page_num}原始宽度({page_width:.1f})缩放到A4({A4_WIDTH})，缩放比例={a4_scale:.2f}，总zoom={zoom:.2f}")
+            # 渲染宽度 = A4宽度 * zoom_factor
+            render_width = int(A4_WIDTH * self.zoom_factor)
+            # 渲染高度 = 原始高度 * A4缩放比例 * zoom_factor
+            render_height = int(page_height * zoom)
+
             logger.debug(f"渲染尺寸: {render_width} x {render_height}")
 
             # 检查缓存
-            cache_pixmap = self.render_cache.get_rendered_page(page_num, self.zoom_factor, (render_width, render_height))
+            cache_pixmap = self.render_cache.get_rendered_page(page_num, zoom, (render_width, render_height))
             if cache_pixmap:
                 logger.debug("从缓存获取页面渲染结果")
                 return cache_pixmap
 
             # 创建变换矩阵进行缩放
-            mat = fitz.Matrix(self.zoom_factor, self.zoom_factor)
+            mat = fitz.Matrix(zoom, zoom)
             logger.debug(f"创建变换矩阵: {mat}")
 
             # 渲染页面为图像 - 使用优化的渲染参数
@@ -454,9 +521,9 @@ class PDFRenderer(QObject):
                 # 使用像素数据直接创建QImage然后转换为QPixmap
                 logger.debug("使用像素数据创建QImage...")
                 image = QImage(
-                    pix.samples, 
-                    img_width, 
-                    img_height, 
+                    pix.samples,
+                    img_width,
+                    img_height,
                     img_width * 3,  # RGB每个像素3字节
                     QImage.Format_RGB888
                 )
@@ -471,7 +538,7 @@ class PDFRenderer(QObject):
                 logger.debug(f"QPixmap创建成功: {pixmap.width()} x {pixmap.height()}")
 
             # 缓存结果到新的缓存系统
-            self.render_cache.put_rendered_page(page_num, self.zoom_factor, (render_width, render_height), pixmap)
+            self.render_cache.put_rendered_page(page_num, zoom, (render_width, render_height), pixmap)
             logger.debug("页面渲染结果已缓存")
 
             return pixmap
@@ -480,8 +547,8 @@ class PDFRenderer(QObject):
             logger.error(f"渲染页面失败: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            # 返回错误提示图像
-            error_pixmap = QPixmap(width, height)
+            # 返回错误提示图像，使用计算后的渲染尺寸
+            error_pixmap = QPixmap(render_width, render_height)
             error_pixmap.fill(QtCore.lightGray)
             return error_pixmap
 
@@ -538,10 +605,21 @@ class PDFRenderer(QObject):
         try:
             # 获取页面
             page = self.fitz_document[page_num]
-            
-            # 使用固定缩放比例生成缩略图
-            mat = fitz.Matrix(0.2, 0.2)  # 20%缩放
-            
+            page_rect = page.rect
+            page_width = page_rect.width
+
+            # A4纸标准尺寸（点）
+            A4_WIDTH = 595
+
+            # 计算缩放比例
+            scale = 0.2  # 基础缩放比例 20%
+            if page_width > A4_WIDTH:
+                # 如果页面宽度超过A4，调整缩放比例以保持缩略图的相对大小一致
+                scale = scale * (A4_WIDTH / page_width)
+
+            # 使用计算后的缩放比例生成缩略图
+            mat = fitz.Matrix(scale, scale)
+
             # 渲染页面为图像
             pix = page.get_pixmap(matrix=mat)
             

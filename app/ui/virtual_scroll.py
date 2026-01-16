@@ -99,32 +99,34 @@ class VirtualScrollArea(QScrollArea):
             while parent and not hasattr(parent, 'pdf_processor'):
                 parent = parent.parent()
                 
-            if parent and hasattr(parent, 'pdf_processor'):
-                pdf_processor = parent.pdf_processor
-                if pdf_processor and pdf_processor.fitz_document:
-                    # 构建页面数据
-                    total_pages = pdf_processor.get_total_pages()
-                    pages_data = []
-                    for page_num in range(total_pages):
-                        # 获取页面尺寸
-                        page_dimensions = pdf_processor.get_page_dimensions(page_num)
-                        if page_dimensions:
-                            width = int(page_dimensions['width'] * pdf_processor.zoom_factor)
-                            height = int(page_dimensions['height'] * pdf_processor.zoom_factor)
-                        else:
-                            width = 800  # 默认宽度
-                            height = 1100  # 默认高度
-                            
-                        pages_data.append({
-                            'page_num': page_num,
-                            'width': width,
-                            'height': height,
-                            'zoom_factor': pdf_processor.zoom_factor
-                        })
-                    
-                    self.set_pages_data(pages_data)
-                else:
-                    logger.warning("PDF处理器未准备好")
+                if parent and hasattr(parent, 'pdf_processor'):
+                    pdf_processor = parent.pdf_processor
+                    if pdf_processor and pdf_processor.fitz_document:
+                        # 构建页面数据
+                        total_pages = pdf_processor.get_total_pages()
+                        pages_data = []
+                        for page_num in range(total_pages):
+                            # 获取页面尺寸（应用自动缩放，但不乘zoom_factor）
+                            page_dimensions = pdf_processor.get_page_dimensions(page_num, apply_auto_scaling=True)
+                            if page_dimensions:
+                                # 存储应用了自动缩放后的尺寸，render_page_at会乘以zoom_factor
+                                width = int(page_dimensions['width'])
+                                height = int(page_dimensions['height'])
+                                logger.debug(f"[VirtualScroll] 页面{page_num+1}尺寸: {width}x{height}, zoom_factor={pdf_processor.zoom_factor}")
+                            else:
+                                width = 800  # 默认宽度
+                                height = 1100  # 默认高度
+
+                            pages_data.append({
+                                'page_num': page_num,
+                                'width': width,
+                                'height': height,
+                                'zoom_factor': pdf_processor.zoom_factor
+                            })
+
+                        self.set_pages_data(pages_data)
+                    else:
+                        logger.warning("PDF处理器未准备好")
             else:
                 logger.warning("父窗口没有PDF处理器")
                 
@@ -141,20 +143,23 @@ class VirtualScrollArea(QScrollArea):
         self.page_heights = []
         self.page_positions = []
         self.total_height = 0
-        
+
         # 预估页面高度（可以基于实际内容动态调整）
         default_height = 1100  # 默认页面高度
         page_spacing = 35  # 进一步增大页面间距到35像素，使页面之间有更明显的间隔
-        
+
         for i, page_data in enumerate(self.pages_data):
-            # 如果有实际高度则使用，否则使用默认高度
+            # 获取应用了自动缩放后的高度
             height = page_data.get('height', default_height)
-            
-            self.page_heights.append(height)
+            # 获取zoom_factor，计算实际渲染高度
+            zoom_factor = page_data.get('zoom_factor', 2.0)
+            actual_height = int(height * zoom_factor)
+
+            self.page_heights.append(actual_height)
             self.page_positions.append(self.total_height)
             # 计算页面位置时只增加页面高度和间距，不额外增加空间
-            self.total_height += height + page_spacing
-            
+            self.total_height += actual_height + page_spacing
+
         # 设置虚拟容器的高度，确保使用整数，并增加一些额外空间
         self.virtual_widget.setMinimumHeight(int(self.total_height + 60))  # 增加额外空间到60像素
         
@@ -634,11 +639,9 @@ class VirtualScrollArea(QScrollArea):
                 }
             """)
 
-            # 设置页面大小为固定大小，不设置最小大小以避免布局问题
-            height = self.page_heights[page_num] if page_num < len(self.page_heights) else 1100
-            adjusted_height = int(height + 30)
-            # 使用固定大小，确保页面不会被拉伸
-            page_label.setFixedSize(int(pixmap.width()), adjusted_height)
+            # 设置页面大小为固定大小，使用实际渲染的pixmap尺寸
+            # pixmap.width() 和 pixmap.height() 已经包含了zoom_factor
+            page_label.setFixedSize(int(pixmap.width()), int(pixmap.height()))
 
             # 获取页面容器
             if page_num < self.virtual_widget_layout.count():
