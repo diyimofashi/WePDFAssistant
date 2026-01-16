@@ -1,7 +1,5 @@
 """视图管理混入类 - 重构版"""
-
-import os
-from PyQt5.QtCore import QPoint
+from PyQt5.QtGui import QContextMenuEvent
 from app.utils.logger import get_logger
 
 logger = get_logger('main')
@@ -94,7 +92,6 @@ class ViewManagerMixin:
         """
         if hasattr(self, 'context_menu_manager'):
             # 创建一个模拟的鼠标事件
-            from PyQt5.QtGui import QContextMenuEvent
             global_pos = self.mapToGlobal(position)
             event = QContextMenuEvent(
                 QContextMenuEvent.Mouse,
