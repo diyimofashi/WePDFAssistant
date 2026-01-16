@@ -1,10 +1,18 @@
 """PDF管理混入类 - 重构版"""
 
 import os
+import traceback
+import subprocess
+import platform
 
-from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import QPoint
+from PyQt5.QtCore import QTimer, QThread, pyqtSignal
+from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+                                   QComboBox, QPushButton, QGroupBox,
+                                   QFileDialog, QProgressBar, QMessageBox,
+                                   QRadioButton, QLineEdit)
+from PyQt5.QtGui import QContextMenuEvent
 from app.utils.logger import get_logger
+from app.config.settings import AppSettings
 
 logger = get_logger('main')
 
@@ -27,7 +35,6 @@ class PDFManagerMixin:
                 self.thumbnail_list.set_pdf_processor(self.pdf_processor)
             
             if self.pdf_processor.current_file:
-                from app.config.settings import AppSettings
                 self.setWindowTitle(f"{AppSettings.APP_NAME} - {os.path.basename(self.pdf_processor.current_file)}")
             
             # 更新缩放信息（页面信息和缩放信息已移除，此调用保留兼容性）
@@ -74,11 +81,9 @@ class PDFManagerMixin:
                     self.virtual_scroll.update_content()
 
                     # 延迟滚动到第一页
-                    from PyQt5.QtCore import QTimer
                     QTimer.singleShot(200, lambda: self.virtual_scroll.scroll_to_page(0) if hasattr(self.virtual_scroll, 'scroll_to_page') else None)
                 except Exception as e:
                     logger.error(f"设置虚拟滚动页面数据失败: {e}")
-                    import traceback
                     traceback.print_exc()
             
             # 显示成功消息
@@ -139,7 +144,6 @@ class PDFManagerMixin:
                         self.virtual_scroll.on_page_rendered(current_page, pixmap)
         except Exception as e:
             logger.error(f"立即渲染当前页面失败: {e}")
-            import traceback
             traceback.print_exc()
             
     def _start_rendering_current_page(self):
@@ -188,7 +192,6 @@ class PDFManagerMixin:
                 self._setup_virtual_scroll_data()
                 
                 # 等待虚拟滚动区域数据设置完成
-                from PyQt5.QtCore import QTimer
                 QTimer.singleShot(150, self._retry_ensure_image_displayed)
                 return
             
@@ -204,7 +207,6 @@ class PDFManagerMixin:
                 logger.debug("已重新更新虚拟滚动内容")
                 
                 # 延迟触发渲染以确保布局完成
-                from PyQt5.QtCore import QTimer
                 QTimer.singleShot(100, self._force_render_current_page)
                 QTimer.singleShot(300, self._force_render_current_page)
                 
@@ -212,7 +214,6 @@ class PDFManagerMixin:
             
         except Exception as e:
             logger.error(f"确保图片显示时出错: {e}")
-            import traceback
             logger.error(traceback.format_exc())
     
     def _retry_ensure_image_displayed(self):
@@ -221,7 +222,6 @@ class PDFManagerMixin:
             logger.debug("重试图片显示检查...")
             if hasattr(self, 'virtual_scroll') and self.virtual_scroll.pages_data:
                 self.virtual_scroll.update_content()
-                from PyQt5.QtCore import QTimer
                 QTimer.singleShot(100, self._force_render_current_page)
                 logger.debug("重试图片显示完成")
             else:
@@ -272,14 +272,12 @@ class PDFManagerMixin:
                         logger.debug("直接强制渲染页面失败，返回空pixmap")
                         
                         # 尝试再次渲染
-                        from PyQt5.QtCore import QTimer
                         QTimer.singleShot(200, self._retry_force_render_current_page)
                 else:
                     logger.debug(f"无法获取页面{page_num}的尺寸信息")
             
         except Exception as e:
             logger.error(f"强制渲染当前页面失败: {e}")
-            import traceback
             logger.error(traceback.format_exc())
     
     def _retry_force_render_current_page(self):
@@ -328,7 +326,6 @@ class PDFManagerMixin:
                               self.pdf_processor.page_editor and 
                               self.pdf_processor.page_editor.has_unsaved_changes())
                 modified_indicator = " ●" if has_changes else ""
-                from app.config.settings import AppSettings
                 self.setWindowTitle(f"{AppSettings.APP_NAME} - {filename}{modified_indicator}")
             
             total_pages = self.pdf_processor.get_total_pages()
@@ -347,7 +344,6 @@ class PDFManagerMixin:
             logger.debug("预览更新完成")
         except Exception as e:
             logger.error(f"更新预览时出错: {e}")
-            import traceback
             logger.error(traceback.format_exc())
     
     def _setup_virtual_scroll_data(self):
@@ -392,16 +388,10 @@ class PDFManagerMixin:
             logger.debug("虚拟滚动数据设置完成")
         except Exception as e:
             logger.error(f"设置虚拟滚动数据失败: {e}")
-            import traceback
             logger.error(traceback.format_exc())
     
     def convert_pdf_to_images(self):
         """PDF转图片功能"""
-        from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                                   QComboBox, QSpinBox, QPushButton, QGroupBox,
-                                   QFileDialog, QProgressBar, QMessageBox,
-                                   QRadioButton, QLineEdit)
-        
         if not self.pdf_processor.fitz_document:
             QMessageBox.information(self, "提示", "📝 请先打开PDF文件")
             return
@@ -583,8 +573,6 @@ class PDFManagerMixin:
                 self.progress_bar.setRange(0, 0)
                 self._set_ui_enabled(False)
                 
-                from PyQt5.QtCore import QThread, pyqtSignal
-                
                 class ConversionThread(QThread):
                     finished = pyqtSignal(bool, str)
                     
@@ -628,8 +616,6 @@ class PDFManagerMixin:
                     msg_box.exec_()
                     
                     if msg_box.clickedButton() == open_dir_btn:
-                        import subprocess
-                        import platform
                         
                         try:
                             system = platform.system()
@@ -697,7 +683,6 @@ class PDFManagerMixin:
         """
         if hasattr(self, 'context_menu_manager'):
             # 创建一个模拟的鼠标事件
-            from PyQt5.QtGui import QContextMenuEvent
             global_pos = self.mapToGlobal(position)
             event = QContextMenuEvent(
                 QContextMenuEvent.Mouse,

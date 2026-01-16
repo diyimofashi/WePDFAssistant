@@ -16,7 +16,7 @@ logger = get_logger('ocr_page_label')
 from PyQt5.QtWidgets import QLabel, QWidget, QTextEdit, QApplication, QVBoxLayout, QHBoxLayout
 from PyQt5.QtGui import QPixmap, QFont, QFontMetrics
 from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QTimer
-
+import traceback
 
 class OCRPageLabel(QWidget):
     """支持OCR文本层的页面标签 - 双层架构"""
@@ -188,7 +188,6 @@ class OCRPageLabel(QWidget):
 
         except Exception as e:
             logger.error(f"更新文本层失败: {e}")
-            import traceback
             logger.error(traceback.format_exc())
 
     def _process_next_batch(self):

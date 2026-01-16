@@ -1,6 +1,10 @@
 """下载管理混入类 - 重构版"""
 
-import os
+from app.ui.download_file_dialog import show_download_file_dialog
+from app.config.download_plugin_config import download_config_manager
+from PyQt5.QtWidgets import QMessageBox
+from app.ui.download_settings_dialog import DownloadSettingsDialog
+
 from app.utils.logger import get_logger
 
 logger = get_logger('main')
@@ -11,9 +15,6 @@ class DownloadManagerMixin:
     def open_remote_file(self):
         """打开远程文件 - 使用下载插件下载并打开远程文件"""
         try:
-            from app.ui.download_file_dialog import show_download_file_dialog
-            from app.config.download_plugin_config import download_config_manager
-            from PyQt5.QtWidgets import QMessageBox
             
             # 检查是否有配置的下载插件
             current_plugin = download_config_manager.get_current_plugin()
@@ -54,10 +55,9 @@ class DownloadManagerMixin:
     def show_download_settings(self):
         """显示下载设置对话框"""
         try:
-            from app.ui.download_settings_dialog import DownloadSettingsDialog
+            
             dialog = DownloadSettingsDialog(self)
             dialog.exec_()
         except Exception as e:
             logger.error(f"显示下载设置对话框时出错: {e}")
-            from PyQt5.QtWidgets import QMessageBox
             QMessageBox.critical(self, "错误", f"无法打开下载设置: {str(e)}")

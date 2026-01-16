@@ -4,7 +4,6 @@
 
 import sys
 import os
-
 # 添加项目根目录到Python路径，解决模块导入问题
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
@@ -13,10 +12,11 @@ sys.path.insert(0, project_root)
 from app.utils.logger import get_logger
 logger = get_logger('virtual_scroll')
 
-from PyQt5.QtWidgets import QScrollArea, QWidget, QVBoxLayout, QLabel, QHBoxLayout
+from PyQt5.QtWidgets import QScrollArea, QWidget, QVBoxLayout, QLabel, QHBoxLayout, QMessageBox
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QPoint, QRect
-from PyQt5.QtGui import QContextMenuEvent
 from .ocr_page_label import OCRPageLabel
+import traceback
+from .screenshot_ocr_widget import ScreenshotOCRWidget
 
 
 class VirtualScrollArea(QScrollArea):
@@ -261,8 +261,6 @@ class VirtualScrollArea(QScrollArea):
     def _set_pdf_text_layer(self, page_num, page_label, pdf_processor, pixmap, actual_width, actual_height):
         """从PDF提取原生文本并创建文本层"""
         try:
-            import fitz
-
             # 获取PDF页面
             page = pdf_processor.fitz_document[page_num]
 
@@ -335,7 +333,6 @@ class VirtualScrollArea(QScrollArea):
 
         except Exception as e:
             logger.error(f"[VirtualScroll._set_pdf_text_layer] 提取PDF文本失败: {e}")
-            import traceback
             logger.error(traceback.format_exc())
 
     def _set_page_ocr_layer(self, page_num, page_label, ocr_result=None, page_scale=1.0):
@@ -407,7 +404,6 @@ class VirtualScrollArea(QScrollArea):
 
         except Exception as e:
             logger.error(f"设置第{page_num + 1}页OCR文本层失败: {e}")
-            import traceback
             logger.error(traceback.format_exc())
     
     def get_visible_range(self):
@@ -538,7 +534,6 @@ class VirtualScrollArea(QScrollArea):
             return None
         except Exception as e:
             logger.error(f"[VirtualScroll.get_page_at_position] 获取页码失败: {e}")
-            import traceback
             logger.error(traceback.format_exc())
             return None
 
@@ -875,7 +870,7 @@ class VirtualScrollArea(QScrollArea):
         logger.debug(f"[enable_screenshot_ocr_mode] 页面标签在视口中的位置: {page_geometry_in_viewport}")
 
         # 创建截图选区组件，覆盖整个虚拟滚动区域
-        from .screenshot_ocr_widget import ScreenshotOCRWidget
+        
         self.screenshot_widget = ScreenshotOCRWidget(self.viewport())
 
         # 设置选区组件覆盖整个视口（虚拟滚动区域的可见区域）
@@ -883,7 +878,6 @@ class VirtualScrollArea(QScrollArea):
         self.screenshot_widget.setGeometry(viewport_geometry)
 
         # 将选区组件添加到视口中
-        from PyQt5.QtWidgets import QVBoxLayout
         layout = QVBoxLayout(self.viewport())
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -1007,7 +1001,6 @@ class VirtualScrollArea(QScrollArea):
                     main_window.perform_screenshot_ocr(clamped_rect, page_index)
                 else:
                     logger.warning(f"[_on_selection_finished] 选区超出页面范围")
-                    from PyQt5.QtWidgets import QMessageBox
                     QMessageBox.warning(None, "提示", "选区超出页面范围，请重新选择")
             else:
                 logger.warning("[_on_selection_finished] 无法获取页面标签或几何信息")
@@ -1035,8 +1028,6 @@ class VirtualScrollArea(QScrollArea):
 
     def wheelEvent(self, event):
         """处理鼠标滚轮事件，支持Ctrl+滚轮缩放"""
-        from PyQt5.QtCore import Qt
-        
         # 检查是否按下了Ctrl键
         if event.modifiers() & Qt.ControlModifier:
             # 获取滚轮旋转的方向

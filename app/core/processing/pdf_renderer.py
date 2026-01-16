@@ -1,10 +1,11 @@
 """PDF渲染器 - 处理PDF页面渲染、缩略图生成和缓存管理功能"""
 
 import os
-import time
 import tempfile
 import fitz  # PyMuPDF - 用于PDF页面渲染
 import sys
+import time
+import shutil
 
 # 添加项目根目录到Python路径，解决模块导入问题
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,14 +15,18 @@ sys.path.insert(0, project_root)
 from app.utils.logger import get_logger
 logger = get_logger('pdf_renderer')
 
-from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor
 from PyQt5.QtCore import QObject, pyqtSignal
 from PyQt5.QtCore import Qt as QtCore
 
+import traceback
 # 导入新的异步加载器和缓存管理器
 # from .async_loader import AsyncThumbnailLoader, AsyncPageRenderer  # TODO: 恢复或重新实现异步加载器
 from ..performance.cache_manager import RenderCache, DiskCache
+from app.config.settings import AppSettings
+from .pdf_conversion import PDFConversion
+from ..editing.page_editor import PageEditor
+from .pdf_operations import PDFOperations
 
 # 简化的异步加载器占位类
 class AsyncPageRenderer:
@@ -84,7 +89,6 @@ class PDFRenderer(QObject):
         self.page_editor = None  # 页面编辑器
 
         # A4缩放设置
-        from app.config.settings import AppSettings
         self.use_a4_scaling = AppSettings.get_use_a4_scaling()  # 是否使用A4缩放
 
         # 异步加载器
@@ -128,7 +132,6 @@ class PDFRenderer(QObject):
 
     def set_use_a4_scaling(self, enabled):
         """设置是否使用A4缩放"""
-        from app.config.settings import AppSettings
         self.use_a4_scaling = bool(enabled)
         AppSettings.set_use_a4_scaling(enabled)
         # 清除渲染缓存，因为缩放方式已更改
@@ -568,7 +571,6 @@ class PDFRenderer(QObject):
 
         except Exception as e:
             logger.error(f"渲染页面失败: {e}")
-            import traceback
             logger.error(traceback.format_exc())
             # 返回错误提示图像，使用计算后的渲染尺寸
             error_pixmap = QPixmap(render_width, render_height)
@@ -826,7 +828,6 @@ class PDFRenderer(QObject):
 
         except Exception as e:
             logger.error(f"获取页面图像数据时出错: {e}")
-            import traceback
             logger.error(traceback.format_exc())
             return None
 
@@ -900,9 +901,6 @@ class PDFRenderer(QObject):
             (success, message) 元组
         """
         try:
-            from .pdf_conversion import PDFConversion
-            from ..editing.page_editor import PageEditor
-
             # 保存 is_from_image 状态
             was_from_image = hasattr(self, 'is_from_image') and self.is_from_image
             original_image_path = getattr(self, 'original_image_path', None)
@@ -942,7 +940,6 @@ class PDFRenderer(QObject):
 
         except Exception as e:
             logger.error(f"导入图片时出错: {e}")
-            import traceback
             logger.error(traceback.format_exc())
             return False, f"导入图片失败: {str(e)}"
 
@@ -967,8 +964,6 @@ class PDFRenderer(QObject):
     def encrypt_pdf(self, password, output_path):
         """加密PDF文件"""
         try:
-            from .pdf_operations import PDFOperations
-
             operations = PDFOperations()
             operations.fitz_document = self.fitz_document
             operations.current_file = self.current_file
@@ -1010,8 +1005,6 @@ class PDFRenderer(QObject):
 
             # 如果是图片文件，创建临时PDF
             if is_image:
-                from .pdf_conversion import PDFConversion
-
                 # 创建新的PDF文档，使用A4纸规格
                 new_doc = fitz.open()
                 try:
@@ -1137,7 +1130,6 @@ class PDFRenderer(QObject):
 
         except Exception as e:
             logger.error(f"打开多图片文件时出错: {e}")
-            import traceback
             logger.error(traceback.format_exc())
             self.loading_finished.emit(False, f"打开多图片文件失败: {str(e)}")
             return False, f"打开多图片文件失败: {str(e)}"
@@ -1190,7 +1182,6 @@ class PDFRenderer(QObject):
 
     def _is_file_locked(self, filepath, timeout=2):
         """检查文件是否被锁定"""
-        import time
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
@@ -1230,7 +1221,6 @@ class PDFRenderer(QObject):
                 logger.warning("目标文件被锁定，无法保存")
                 return False, "文件正在被其他程序使用，请关闭后再试"
 
-            import shutil
             shutil.copy2(temp_path, file_path)
 
             if self.page_editor:
@@ -1356,7 +1346,6 @@ class PDFRenderer(QObject):
 
         except Exception as e:
             logger.error(f"搜索失败: {e}")
-            import traceback
             logger.error(traceback.format_exc())
             return False, f"搜索失败: {str(e)}"
 

@@ -1,6 +1,7 @@
 """操作管理混入类 - 重构版"""
-
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QDialogButtonBox, QMessageBox
 from app.utils.logger import get_logger
+from app.ui.batch_crypto_dialog import BatchCryptoDialog
 
 logger = get_logger('main')
 
@@ -22,11 +23,9 @@ class OperationManagerMixin:
                 if "没有可撤销的操作" in message:
                     self.show_message(f"ℹ️ {message}")
                 else:
-                    from PyQt5.QtWidgets import QMessageBox
                     QMessageBox.warning(self, "撤销失败", message)
         except Exception as e:
             logger.error(f"撤销操作异常: {e}")
-            from PyQt5.QtWidgets import QMessageBox
             QMessageBox.critical(self, "撤销失败", f"撤销操作发生异常: {str(e)}")
 
     def redo_operation(self):
@@ -44,11 +43,9 @@ class OperationManagerMixin:
                 if "没有可重做的操作" in message:
                     self.show_message(f"ℹ️ {message}")
                 else:
-                    from PyQt5.QtWidgets import QMessageBox
                     QMessageBox.warning(self, "重做失败", message)
         except Exception as e:
             logger.error(f"重做操作异常: {e}")
-            from PyQt5.QtWidgets import QMessageBox
             QMessageBox.critical(self, "重做失败", f"重做操作发生异常: {str(e)}")
     
     def clear_cache(self):
@@ -74,14 +71,10 @@ class OperationManagerMixin:
         <p>🎯 设计理念: 简单易用，功能强大</p>
         <p>新增功能: PDF转图片转换器</p>
         """
-        
-        from PyQt5.QtWidgets import QMessageBox
         QMessageBox.about(self, "关于", about_text)
     
     def show_shortcuts(self):
         """显示快捷键说明"""
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QDialogButtonBox
-        
         dialog = QDialog(self)
         dialog.setWindowTitle("快捷键说明")
         dialog.resize(500, 600)
@@ -126,13 +119,11 @@ class OperationManagerMixin:
     def check_for_updates(self):
         """检查更新"""
         # 这里可以实现检查更新的逻辑
-        from PyQt5.QtWidgets import QMessageBox
         QMessageBox.information(self, "检查更新", "当前已是最新版本 v1.0.0")
     
     def show_batch_crypto_dialog(self):
         """显示批量加解密对话框"""
         try:
-            from app.ui.batch_crypto_dialog import BatchCryptoDialog
             # 检查是否已存在对话框实例，避免重复创建
             if not hasattr(self, 'batch_crypto_dialog') or self.batch_crypto_dialog is None:
                 self.batch_crypto_dialog = BatchCryptoDialog(self)
@@ -141,5 +132,4 @@ class OperationManagerMixin:
             self.batch_crypto_dialog.activateWindow()  # 激活对话框窗口
         except Exception as e:
             logger.error(f"显示批量加解密对话框时出错: {e}")
-            from PyQt5.QtWidgets import QMessageBox
             QMessageBox.critical(self, "错误", f"无法打开批量加解密功能: {str(e)}")

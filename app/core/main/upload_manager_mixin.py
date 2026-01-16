@@ -2,6 +2,10 @@
 
 import os
 from app.utils.logger import get_logger
+from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtWidgets import QApplication
+import traceback
+from app.ui.upload_settings_dialog import UploadSettingsDialog
 
 logger = get_logger('main')
 
@@ -11,9 +15,6 @@ class UploadManagerMixin:
     def upload_current_document(self):
         """上传当前打开的文档"""
         try:
-            from PyQt5.QtWidgets import QMessageBox
-            from PyQt5.QtWidgets import QApplication
-            
             # 检查是否有打开的PDF文档
             if not self.pdf_processor.current_file:
                 QMessageBox.warning(self, "警告", "请先打开PDF文件")
@@ -76,17 +77,15 @@ class UploadManagerMixin:
                 
         except Exception as e:
             logger.error(f"上传文档时出错: {e}")
-            import traceback
+            
             logger.error(traceback.format_exc())
             QMessageBox.critical(self, "错误", f"上传文档时发生异常: {str(e)}")
     
     def show_upload_settings(self):
         """显示上传设置对话框"""
         try:
-            from app.ui.upload_settings_dialog import UploadSettingsDialog
             dialog = UploadSettingsDialog(self)
             dialog.exec_()
         except Exception as e:
             logger.error(f"显示上传设置对话框时出错: {e}")
-            from PyQt5.QtWidgets import QMessageBox
             QMessageBox.critical(self, "错误", f"无法打开上传设置: {str(e)}")

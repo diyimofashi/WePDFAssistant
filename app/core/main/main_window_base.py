@@ -1,12 +1,12 @@
 """极灵PDF主窗口基础类 - 重构版"""
 
-import sys
-import os
+import traceback
+
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QHBoxLayout, 
-                             QWidget, QLabel, QStatusBar, QMessageBox,
-                             QDockWidget, QProgressDialog, QDialog)
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QPen
+                             QWidget, QLabel, QMessageBox,
+                             QDockWidget, QProgressDialog)
+from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QFont
 
 from app.config.settings import AppSettings
 from app.ui.styles import AppStyles
@@ -24,11 +24,11 @@ from app.managers.split_manager import SplitManager
 from app.managers.merge_manager import MergeManager
 from app.managers.ocr_plugin_manager import OCRPluginManager
 from app.config.ocr_plugin_config import ocr_config_manager
-from app.core.ocr.ocr_plugin_interface import OCRErrorCode
 from app.managers.upload_plugin_manager import UploadPluginManager
 from app.config.upload_plugin_config import upload_config_manager
 from app.managers.shortcut_manager import ShortcutManager
 from app.utils.logger import get_logger
+
 
 
 class MainWindowBase(QMainWindow):
@@ -136,7 +136,6 @@ class MainWindowBase(QMainWindow):
         """加载OCR高亮模式设置"""
         logger = get_logger('main')
         try:
-            from app.config.settings import AppSettings
             ocr_highlight_enabled = AppSettings.get_ocr_highlight_mode()
             
             # 设置内部状态
@@ -195,7 +194,6 @@ class MainWindowBase(QMainWindow):
         except Exception as e:
             logger = get_logger('main')
             logger.error(f"UI初始化过程中出现错误: {e}")
-            import traceback
             logger.error(traceback.format_exc())
     
     def create_statusbar(self):

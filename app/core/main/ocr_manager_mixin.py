@@ -6,7 +6,6 @@ import tempfile
 import uuid
 import subprocess
 from base64 import b64encode
-import shutil
 import fitz
 
 from PyQt5.QtWidgets import QMessageBox, QApplication, QFileDialog, QProgressDialog
@@ -18,6 +17,8 @@ from app.core.ocr.ocr_plugin_interface import OCRResult, OCRErrorCode
 from app.core.ocr.ocr_searchable_pdf import create_searchable_pdf
 from app.core.ocr.ocr_searchable_manager import OCRSearchablePDFHandler
 
+from app.config.settings import AppSettings
+from app.ui.screenshot_result_dialog import ScreenshotOCRResultDialog
 
 logger = get_logger('main')
 
@@ -48,7 +49,6 @@ class OCRManagerMixin:
             self.show_message(f"OCR文本层高亮模式已{mode_text}")
             
             # 保存设置到配置文件
-            from app.config.settings import AppSettings
             AppSettings.set_ocr_highlight_mode(self._ocr_debug_mode)
         except Exception as e:
             logger.error(f"切换OCR调试模式时出错: {e}")
@@ -899,7 +899,6 @@ class OCRManagerMixin:
                             logger.warning(f"清理临时文件时出错: {cleanup_error}")
 
                 # 显示OCR结果
-                from app.ui.screenshot_result_dialog import ScreenshotOCRResultDialog
                 dialog = ScreenshotOCRResultDialog(ocr_result, self)
                 dialog.exec_()
 
