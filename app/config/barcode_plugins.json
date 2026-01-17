@@ -4,7 +4,7 @@
     "advanced_barcode": {
       "split_position_rule": "first_page",
       "remove_barcode_pages": false,
-      "merge_same_barcode": false,
+      "merge_same_barcode": true,
       "min_length": 1,
       "max_length": 1000,
       "include_keywords": [

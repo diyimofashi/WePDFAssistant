@@ -266,8 +266,12 @@ def split_by_first_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo],
                     file_count = barcode_file_counts[barcode_value]
                     filename = f"{clean_barcode}_{file_count:03d}.pdf"
                 else:
-                    formatted_index = f"{file_index + 1:03d}"
-                    filename = f"{clean_barcode}_{formatted_index}.pdf"
+                    # 未合并时，每个条码值从1开始独立计数
+                    if barcode_value not in barcode_file_counts:
+                        barcode_file_counts[barcode_value] = 0
+                    barcode_file_counts[barcode_value] += 1
+                    file_count = barcode_file_counts[barcode_value]
+                    filename = f"{clean_barcode}_{file_count:03d}.pdf"
             else:
                 formatted_index = f"{file_index + 1:03d}"
                 filename = f"无条码_{formatted_index}.pdf"
@@ -373,8 +377,12 @@ def split_by_last_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo],
                     file_count = barcode_file_counts[barcode_value]
                     filename = f"{clean_barcode}_{file_count:03d}.pdf"
                 else:
-                    formatted_index = f"{file_index + 1:03d}"
-                    filename = f"{clean_barcode}_{formatted_index}.pdf"
+                    # 未合并时，每个条码值从1开始独立计数
+                    if barcode_value not in barcode_file_counts:
+                        barcode_file_counts[barcode_value] = 0
+                    barcode_file_counts[barcode_value] += 1
+                    file_count = barcode_file_counts[barcode_value]
+                    filename = f"{clean_barcode}_{file_count:03d}.pdf"
             else:
                 formatted_index = f"{file_index + 1:03d}"
                 filename = f"无条码_{formatted_index}.pdf"
@@ -499,8 +507,12 @@ def split_by_separator_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo]
                     # 使用合并后的组内计数
                     filename = f"{clean_barcode}.pdf"
                 else:
-                    formatted_index = f"{file_index + 1:03d}"
-                    filename = f"{clean_barcode}_{formatted_index}.pdf"
+                    # 未合并时，每个条码值从1开始独立计数
+                    if barcode_value not in barcode_file_counts:
+                        barcode_file_counts[barcode_value] = 0
+                    barcode_file_counts[barcode_value] += 1
+                    file_count = barcode_file_counts[barcode_value]
+                    filename = f"{clean_barcode}_{file_count:03d}.pdf"
             else:
                 formatted_index = f"{file_index + 1:03d}"
                 filename = f"无条码_{formatted_index}.pdf"
@@ -573,7 +585,7 @@ def preview_first_page_rule(total_pages: int, barcodes: List[BarcodeInfo],
             })
 
         preview_groups = []
-        file_index = 0
+        barcode_file_counts = {}
 
         for group in groups:
             pages = group['pages']
@@ -581,10 +593,14 @@ def preview_first_page_rule(total_pages: int, barcodes: List[BarcodeInfo],
             clean_barcode = clean_filename_func(barcode_value) if barcode_value and clean_filename_func else barcode_value
 
             if barcode_value:
-                formatted_index = f"{file_index + 1:03d}"
-                filename = f"{clean_barcode}_{formatted_index}.pdf"
+                # 每个条码值从1开始独立计数
+                if barcode_value not in barcode_file_counts:
+                    barcode_file_counts[barcode_value] = 0
+                barcode_file_counts[barcode_value] += 1
+                file_count = barcode_file_counts[barcode_value]
+                filename = f"{clean_barcode}_{file_count:03d}.pdf"
             else:
-                formatted_index = f"{file_index + 1:03d}"
+                formatted_index = f"{len([g for g in preview_groups if g.get('barcode')]) + 1:03d}"
                 filename = f"无条码_{formatted_index}.pdf"
 
             preview_groups.append({
@@ -593,8 +609,6 @@ def preview_first_page_rule(total_pages: int, barcodes: List[BarcodeInfo],
                 "pages": [p + 1 for p in pages],
                 "page_count": len(pages)
             })
-
-            file_index += 1
 
         return preview_groups
     except Exception:
@@ -633,7 +647,7 @@ def preview_last_page_rule(total_pages: int, barcodes: List[BarcodeInfo],
             })
 
         preview_groups = []
-        file_index = 0
+        barcode_file_counts = {}
 
         for group in groups:
             pages = group['pages']
@@ -641,10 +655,14 @@ def preview_last_page_rule(total_pages: int, barcodes: List[BarcodeInfo],
             clean_barcode = clean_filename_func(barcode_value) if barcode_value and clean_filename_func else barcode_value
 
             if barcode_value:
-                formatted_index = f"{file_index + 1:03d}"
-                filename = f"{clean_barcode}_{formatted_index}.pdf"
+                # 每个条码值从1开始独立计数
+                if barcode_value not in barcode_file_counts:
+                    barcode_file_counts[barcode_value] = 0
+                barcode_file_counts[barcode_value] += 1
+                file_count = barcode_file_counts[barcode_value]
+                filename = f"{clean_barcode}_{file_count:03d}.pdf"
             else:
-                formatted_index = f"{file_index + 1:03d}"
+                formatted_index = f"{len([g for g in preview_groups if g.get('barcode')]) + 1:03d}"
                 filename = f"无条码_{formatted_index}.pdf"
 
             preview_groups.append({
@@ -653,8 +671,6 @@ def preview_last_page_rule(total_pages: int, barcodes: List[BarcodeInfo],
                 "pages": [p + 1 for p in pages],
                 "page_count": len(pages)
             })
-
-            file_index += 1
 
         return preview_groups
     except Exception:
@@ -715,7 +731,7 @@ def preview_separator_page_rule(total_pages: int, barcodes: List[BarcodeInfo],
             })
 
         preview_groups = []
-        file_index = 0
+        barcode_file_counts = {}
 
         for group in groups:
             pages = group['pages']
@@ -727,10 +743,14 @@ def preview_separator_page_rule(total_pages: int, barcodes: List[BarcodeInfo],
             clean_barcode = clean_filename_func(barcode_value) if barcode_value and clean_filename_func else barcode_value
 
             if barcode_value:
-                formatted_index = f"{file_index + 1:03d}"
-                filename = f"{clean_barcode}_{formatted_index}.pdf"
+                # 每个条码值从1开始独立计数
+                if barcode_value not in barcode_file_counts:
+                    barcode_file_counts[barcode_value] = 0
+                barcode_file_counts[barcode_value] += 1
+                file_count = barcode_file_counts[barcode_value]
+                filename = f"{clean_barcode}_{file_count:03d}.pdf"
             else:
-                formatted_index = f"{file_index + 1:03d}"
+                formatted_index = f"{len([g for g in preview_groups if g.get('barcode')]) + 1:03d}"
                 filename = f"无条码_{formatted_index}.pdf"
 
             preview_groups.append({
@@ -739,8 +759,6 @@ def preview_separator_page_rule(total_pages: int, barcodes: List[BarcodeInfo],
                 "pages": [p + 1 for p in pages],
                 "page_count": len(pages)
             })
-
-            file_index += 1
 
         return preview_groups
     except Exception:
