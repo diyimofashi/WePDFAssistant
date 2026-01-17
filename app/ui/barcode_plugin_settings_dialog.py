@@ -26,7 +26,8 @@ class BarcodeSettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("条码插件设置")
-        self.resize(800, 600)
+        self.resize(800, 900)  # 增加高度到750
+        self.setMinimumHeight(600)  # 设置最小高度
         self.setModal(False)  # 设置为非模态对话框
         
         # 初始化配置管理器
@@ -45,6 +46,23 @@ class BarcodeSettingsDialog(QDialog):
         self.setup_ui()
         self.create_plugin_settings_tabs()
         self.load_settings()
+
+        # 重新设置标签页样式，确保宽度生效
+        self.tab_widget.setStyleSheet("""
+            QTabWidget::tab-bar { alignment: left; }
+            QTabBar::tab {
+                min-width: 180px;
+                max-width: 250px;
+                padding: 8px 20px;
+                background: transparent;
+                border: none;
+            }
+            QTabBar::tab:selected {
+                background: transparent;
+                color: #0078d4;
+                font-weight: bold;
+            }
+        """)
     
     def setup_ui(self):
         """设置UI界面"""
@@ -63,8 +81,9 @@ class BarcodeSettingsDialog(QDialog):
         self.tab_widget.setStyleSheet("""
             QTabWidget::tab-bar { alignment: left; }
             QTabBar::tab {
-                min-width: 80px;
-                padding: 8px 12px;
+                min-width: 150px;
+                max-width: 200px;
+                padding: 8px 16px;
                 background: transparent;
                 border: none;
             }

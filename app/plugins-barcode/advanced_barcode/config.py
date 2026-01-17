@@ -15,14 +15,14 @@ PLUGIN_CONFIG_DEFINITIONS = [
         type_=ConfigItemType.ENUM,
         default="first_page",
         options_list=["first_page", "last_page", "separator_page"],
-        description="拆分位置规则：first_page(首页规则)、last_page(尾页规则)、separator_page(分隔页规则)"
+        description="拆分位置规则：首页规则(条码作为新文档第一页)、尾页规则(条码作为新文档最后一页)、分隔页规则(条码所在页作为分隔页)"
     ),
     ConfigItem(
         key="remove_barcode_pages",
         title="去除条码页",
         type_=ConfigItemType.BOOLEAN,
         default=False,
-        description="是否在结果中去除包含指定条码的页面（仅separator_page模式有效）"
+        description="是否在结果中去除包含指定条码的页面（仅[分隔页规则]模式有效）"
     ),
     ConfigItem(
         key="merge_same_barcode",
@@ -38,7 +38,7 @@ PLUGIN_CONFIG_DEFINITIONS = [
         title="启用的条码类型",
         type_=ConfigItemType.LIST,
         default=["ALL_TYPES"],
-        description="要检测的条码类型列表"
+        description="符合条码类型的才会被识别"
     ),
     
     # 条码内容过滤
@@ -49,7 +49,7 @@ PLUGIN_CONFIG_DEFINITIONS = [
         default=1,
         min_value=1,
         max_value=1000,
-        description="条码内容最小长度"
+        description="条码内容长度小于该值时，不进行识别"
     ),
     ConfigItem(
         key="max_length",
@@ -58,35 +58,35 @@ PLUGIN_CONFIG_DEFINITIONS = [
         default=1000,
         min_value=1,
         max_value=10000,
-        description="条码内容最大长度"
+        description="条码内容长度大于该值时，不进行识别"
     ),
     ConfigItem(
         key="include_keywords",
         title="包含关键词",
         type_=ConfigItemType.LIST,
         default=[],
-        description="条码内容必须包含的关键词列表"
+        description="条码内容包含该关键词时，才进行识别"
     ),
     ConfigItem(
         key="exclude_keywords",
         title="排除关键词",
         type_=ConfigItemType.LIST,
         default=[],
-        description="条码内容必须排除的关键词列表"
+        description="条码内容包含该关键词时，不进行识别"
     ),
     ConfigItem(
         key="include_regex",
         title="包含正则表达式",
         type_=ConfigItemType.STRING,
         default="",
-        description="条码内容必须匹配的正则表达式"
+        description="条码内容匹配正则表达式，匹配成功才进行识别"
     ),
     ConfigItem(
         key="exclude_regex",
         title="排除正则表达式",
         type_=ConfigItemType.STRING,
         default="",
-        description="条码内容必须排除的正则表达式"
+        description="条码内容匹配正则表达式，匹配成功时不进行识别"
     ),
     
     # 方向/区域过滤
