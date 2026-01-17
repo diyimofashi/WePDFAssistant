@@ -30,7 +30,9 @@ class ThumbnailManagerMixin:
     def show_barcode_settings(self):
         """显示条码设置对话框"""
         try:
-            dialog = BarcodeSettingsDialog(self)
+            # 获取当前文件路径
+            current_file_path = getattr(self.pdf_processor, 'current_file', None)
+            dialog = BarcodeSettingsDialog(self, current_file_path)
             dialog.exec_()
         except Exception as e:
             logger.error(f"显示条码设置对话框时出错: {e}")

@@ -8,7 +8,7 @@ from .api import AdvancedBarcodePlugin
 # 插件信息定义
 PluginInfo = {
     "name": "advanced_barcode",
-    "title": "高级条码拆分插件",
+    "title": "高级条码拆分",
     "version": "1.0.0",
     "author": "Aurora PDF",
     "description": "支持首页规则、尾页规则、分隔页规则的高级条码拆分插件，包含条码类型过滤、区域过滤、正则过滤等高级功能",

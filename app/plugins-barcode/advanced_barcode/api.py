@@ -121,7 +121,7 @@ class AdvancedBarcodePlugin(BarcodePluginInterface):
     def get_supported_types(self) -> List[str]:
         return ['CODE128', 'CODE39', 'CODE93', 'CODABAR', 'EAN13', 'EAN8', 'UPCA', 'UPCE', 'I25', 'PDF417', 'QR']
 
-    def detect_from_pdf(self, doc: 'fitz.Document', config: Optional[Dict[str, Any]] = None) -> BarcodeResult:
+    def detect_from_pdf(self, doc: 'fitz.Document', config: Optional[Dict[str, Any]] = None, progress_callback=None) -> BarcodeResult:
         from .split_logic import detect_barcodes_enhanced, filter_barcodes
 
         try:
@@ -131,7 +131,7 @@ class AdvancedBarcodePlugin(BarcodePluginInterface):
             if config is None:
                 config = self.config.copy()
 
-            all_barcodes = detect_barcodes_enhanced(doc, config)
+            all_barcodes = detect_barcodes_enhanced(doc, config, progress_callback)
             filtered_barcodes = filter_barcodes(all_barcodes, config)
 
             results = []

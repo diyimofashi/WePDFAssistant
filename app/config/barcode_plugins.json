@@ -2,13 +2,17 @@
   "global": {},
   "plugins": {
     "advanced_barcode": {
-      "split_position_rule": "separator_page",
-      "remove_barcode_pages": true,
-      "merge_same_barcode": true,
+      "split_position_rule": "first_page",
+      "remove_barcode_pages": false,
+      "merge_same_barcode": false,
       "min_length": 1,
       "max_length": 1000,
-      "include_keywords": [],
-      "exclude_keywords": [],
+      "include_keywords": [
+        "hk"
+      ],
+      "exclude_keywords": [
+        "FNP"
+      ],
       "include_regex": "",
       "exclude_regex": "",
       "horizontal_only": false,

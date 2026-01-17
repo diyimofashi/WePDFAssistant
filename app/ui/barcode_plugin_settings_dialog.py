@@ -6,13 +6,13 @@
 import json
 import fitz  # PyMuPDF
 import os
-import json
 from typing import Dict, Any
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFileDialog,
                             QPushButton, QLineEdit, QProgressDialog, QCheckBox,
                             QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget,
                             QMessageBox, QLabel, QComboBox, QScrollArea,
-                            QSizePolicy, QWidget, QLayout, QGridLayout, QApplication)
+                            QSizePolicy, QWidget, QLayout, QGridLayout, QApplication,
+                            QTextEdit)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from app.managers.barcode_plugin_manager import barcode_plugin_manager
@@ -22,20 +22,25 @@ from app.utils.logger import get_logger
 
 class BarcodeSettingsDialog(QDialog):
     """条码插件设置对话框"""
-    
-    def __init__(self, parent=None):
+
+    def __init__(self, parent=None, current_file_path=None):
         super().__init__(parent)
         self.setWindowTitle("条码插件设置")
-        self.resize(800, 900)  # 增加高度到750
+        self.resize(800, 920)  # 增加高度到750
         self.setMinimumHeight(600)  # 设置最小高度
         self.setModal(False)  # 设置为非模态对话框
-        
+
+        # 初始化当前文件路径
+        self.current_file_path = current_file_path
+
         # 初始化配置管理器
         self.plugin_manager = barcode_plugin_manager
         self.config_manager = barcode_config_manager
-        
+
         # 存储控件引用
         self.plugin_widgets = {}
+        # 存储显示名称到插件名称的映射
+        self.display_name_to_plugin_name = {}
         
         # 自动加载插件
         try:
@@ -47,20 +52,62 @@ class BarcodeSettingsDialog(QDialog):
         self.create_plugin_settings_tabs()
         self.load_settings()
 
-        # 重新设置标签页样式，确保宽度生效
+        # 设置标签页样式，与OCR引擎设置保持一致
         self.tab_widget.setStyleSheet("""
-            QTabWidget::tab-bar { alignment: left; }
-            QTabBar::tab {
-                min-width: 180px;
-                max-width: 250px;
-                padding: 8px 20px;
+            QTabWidget::pane { 
+                border: 1px solid #CCCCCC; 
+                border-top: none;  /* 移去顶部边框避免重叠 */
+                border-radius: 4px; 
+                top: -1px; 
                 background: transparent;
-                border: none;
             }
-            QTabBar::tab:selected {
-                background: transparent;
-                color: #0078d4;
+            QTabBar::tab { 
+                background: #F0F0F0;
+                border: 1px solid #CCCCCC;
+                border-bottom: none;  /* 移去底部边框避免重叠 */
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                min-width: 8ex;
+                padding: 6px 12px;
+                margin: 0px;
+                alignment: left;
+            }
+            QTabBar::tab:selected { 
+                background: #FFFFFF;
+                border-color: #9B9B9B;
+                border-bottom-color: #FFFFFF;
                 font-weight: bold;
+            }
+            QTabBar::tab:!selected { 
+                margin-top: 2px; /* 未选中的标签稍微下沉 */
+            }
+            /* 确保标签栏靠左对齐 */
+            QTabBar { 
+                alignment: left;
+                qproperty-drawBase: 0;
+            }
+            /* 强制标签栏内容左对齐 */
+            QTabWidget QTabBar::tab-bar {
+                alignment: left;
+                left: 0px;
+            }
+            /* 确保标签页容器左对齐 */
+            QTabWidget::tab-bar {
+                alignment: left;
+                left: 0;
+            }
+            /* 强制标签栏左对齐 */
+            QTabBar::tab-bar {
+                alignment: left;
+                left: 0;
+            }
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #CCCCCC;
+                border-radius: 4px;
+                margin-top: 1ex;
+                padding-top: 8px;
+                background: transparent;
             }
         """)
     
@@ -77,65 +124,98 @@ class BarcodeSettingsDialog(QDialog):
         self.tab_widget = QTabWidget()
         # 设置标签页位置为北（顶部），并设置标签对齐方式为左对齐
         self.tab_widget.setTabPosition(QTabWidget.North)
-        # 设置标签页的样式，使其左对齐，去掉选中背景色
-        self.tab_widget.setStyleSheet("""
-            QTabWidget::tab-bar { alignment: left; }
-            QTabBar::tab {
-                min-width: 150px;
-                max-width: 200px;
-                padding: 8px 16px;
-                background: transparent;
-                border: none;
-            }
-            QTabBar::tab:selected {
-                background: transparent;
-                color: #0078d4;
-                font-weight: bold;
-            }
-        """)
+        # 强制设置标签栏左对齐
+        self.tab_widget.tabBar().setStyleSheet("alignment: left;")
+        # 设置标签栏扩展策略以确保左对齐
+        self.tab_widget.tabBar().setExpanding(False)
         
         # 添加插件设置标签页
         layout.addWidget(self.tab_widget)
         
+        # 文件选择区域
+        file_group = QGroupBox("文件选择")
+        file_layout = QVBoxLayout()
+
+        file_path_layout = QHBoxLayout()
+        file_path_label = QLabel("PDF文件:")
+        file_path_label.setStyleSheet("QLabel { font-weight: bold; }")
+        self.file_path_edit = QLineEdit()
+        self.file_path_edit.setPlaceholderText("选择要处理的PDF文件")
+        self.file_path_edit.setFixedHeight(30)
+        self.file_path_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.file_path_edit.setStyleSheet("QLineEdit { padding: 4px; font-size: 11pt; }")
+
+        # 如果有传入的当前文件路径，自动填充
+        if self.current_file_path and os.path.exists(self.current_file_path):
+            self.file_path_edit.setText(self.current_file_path)
+
+        self.browse_file_btn = QPushButton("📂 浏览")
+        self.browse_file_btn.setFixedHeight(30)
+        self.browse_file_btn.clicked.connect(self.browse_file)
+
+        file_path_layout.addWidget(file_path_label)
+        file_path_layout.addWidget(self.file_path_edit)
+        file_path_layout.addWidget(self.browse_file_btn)
+
+        file_layout.addLayout(file_path_layout)
+        file_group.setLayout(file_layout)
+        layout.addWidget(file_group)
+
         # 按钮布局
         button_layout = QHBoxLayout()
-        
+
         self.save_btn = QPushButton("💾 保存设置")
         self.save_btn.clicked.connect(self.save_settings)
         button_layout.addWidget(self.save_btn)
-        
+
         self.reset_btn = QPushButton("🔄 重置")
         self.reset_btn.clicked.connect(self.reset_settings)
         button_layout.addWidget(self.reset_btn)
-        
+
         button_layout.addStretch()
-        
+
         # 测试检测按钮
         self.test_detection_btn = QPushButton("🔍 测试检测")
         self.test_detection_btn.clicked.connect(self.test_detection)
         button_layout.addWidget(self.test_detection_btn)
-        
+
         # 开始拆分按钮
         self.start_split_btn = QPushButton("✂️ 开始拆分")
         self.start_split_btn.setStyleSheet('''
-            QPushButton { 
-                background-color: #4CAF50; 
-                color: white; 
-                padding: 8px 16px; 
-                border: none; 
-                border-radius: 4px; 
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 4px;
                 font-weight: bold;
             }
         ''')
         self.start_split_btn.clicked.connect(self.start_split)
         button_layout.addWidget(self.start_split_btn)
-        
+
         self.close_btn = QPushButton("❌ 关闭")
         self.close_btn.clicked.connect(self.accept)  # 使用accept而不是close
         button_layout.addWidget(self.close_btn)
-        
+
         layout.addLayout(button_layout)
-    
+
+    def browse_file(self):
+        """浏览选择文件"""
+        # 获取初始目录
+        initial_dir = ""
+        current_text = self.file_path_edit.text().strip()
+        if current_text and os.path.exists(os.path.dirname(current_text)):
+            initial_dir = os.path.dirname(current_text)
+
+        # 打开文件选择对话框
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "选择PDF文件", initial_dir, "PDF文件 (*.pdf)"
+        )
+
+        if file_path:
+            self.file_path_edit.setText(file_path)
+
     def accept(self):
         """点击确定按钮时保存设置"""
         try:
@@ -189,53 +269,143 @@ class BarcodeSettingsDialog(QDialog):
     def test_detection(self):
         """测试检测功能"""
         try:
+            # 获取文件路径
+            file_path = self.file_path_edit.text().strip()
+            if not file_path:
+                QMessageBox.warning(self, "警告", "请先选择文件")
+                return
+
+            if not os.path.exists(file_path):
+                QMessageBox.warning(self, "警告", f"文件不存在: {file_path}")
+                return
+
             # 获取当前选中的插件
             current_tab_index = self.tab_widget.currentIndex()
             if current_tab_index < 0:
                 QMessageBox.warning(self, "警告", "没有选中的插件")
                 return
-            
-            plugin_name = self.tab_widget.tabText(current_tab_index)
+
+            display_name = self.tab_widget.tabText(current_tab_index)
+            # 通过显示名称获取实际的插件名称
+            plugin_name = self.display_name_to_plugin_name.get(display_name, display_name)
             plugin = self.plugin_manager.get_plugin(plugin_name)
-            
+
             if not plugin:
                 QMessageBox.critical(self, "错误", f"无法获取插件: {plugin_name}")
                 return
-            
+
             # 获取插件配置
             config = self.get_plugin_config_for_saving(plugin_name)
-            
+
             # 初始化插件
             init_result = plugin.initialize(config)
             if not init_result.is_success():
                 QMessageBox.critical(self, "错误", f"插件初始化失败: {init_result.message}")
                 return
-            
-            # 选择测试文件
-            file_path, _ = QFileDialog.getOpenFileName(
-                self, "选择测试文件", "", "PDF文件 (*.pdf);;图片文件 (*.png *.jpg *.jpeg *.bmp *.tiff *.tif)"
-            )
-            
-            if not file_path:
-                return  # 用户取消了选择
-            
+
+            # 创建进度对话框
+            progress_dialog = QProgressDialog("正在检测条码...", "取消", 0, 100, self)
+            progress_dialog.setWindowTitle("检测进度")
+            progress_dialog.setWindowModality(Qt.WindowModal)
+            progress_dialog.setMinimumDuration(0)
+            progress_dialog.setValue(0)
+
+            # 显示进度对话框并处理事件
+            progress_dialog.show()
+            QApplication.processEvents()
+
             # 根据文件类型调用相应的检测方法
             if file_path.lower().endswith('.pdf'):
-                # 对于PDF文件，使用插件的PDF检测功能
+                # 对于PDF文件，打开文档并获取页数
                 doc = fitz.open(file_path)
+                total_pages = len(doc)
+
+                # 定义进度回调函数
+                def progress_callback(current, total, message=""):
+                    if progress_dialog.wasCanceled():
+                        return False
+                    progress_percent = int((current / total) * 100) if total > 0 else 0
+                    progress_dialog.setValue(progress_percent)
+                    if message:
+                        progress_dialog.setLabelText(message)
+                    else:
+                        progress_dialog.setLabelText(f"正在检测: {current}/{total}")
+                    QApplication.processEvents()
+                    return True
+
+                # 使用进度回调进行检测
                 try:
-                    result = plugin.detect_from_pdf(doc, config)
+                    progress_dialog.setLabelText(f"正在检测 PDF 文档 (共 {total_pages} 页)...")
+                    progress_dialog.setValue(0)
+                    QApplication.processEvents()
+
+                    # 传递进度回调
+                    result = plugin.detect_from_pdf(doc, config, progress_callback)
+
+                    # 更新进度到100%
+                    if not progress_dialog.wasCanceled():
+                        progress_dialog.setValue(100)
+                        QApplication.processEvents()
+
                 finally:
                     doc.close()
             else:
                 # 对于图片文件，直接检测
+                progress_dialog.setLabelText("正在检测图片文件...")
+                progress_dialog.setValue(50)
+                QApplication.processEvents()
                 result = plugin.detect_from_file(file_path)
-            
+                progress_dialog.setValue(100)
+                QApplication.processEvents()
+
+            # 关闭进度对话框
+            progress_dialog.close()
+
             if result.is_success():
-                QMessageBox.information(self, "测试检测结果", f"检测成功！\n{result.message}\n\n检测到的条码数据:\n{result.data}")
+                # 格式化检测结果
+                barcode_data = result.data
+                if isinstance(barcode_data, list) and barcode_data:
+                    result_text = f"检测成功！\n\n{result.message}\n\n检测到的条码数据:\n\n"
+                    for i, barcode in enumerate(barcode_data, 1):
+                        result_text += f"{i}. 条码类型: {barcode.get('type', 'Unknown')}\n"
+                        result_text += f"   条码数据: {barcode.get('data', 'N/A')}\n"
+                        result_text += f"   页码: {barcode.get('page_num', 'N/A') + 1}\n"
+                        bbox = barcode.get('bbox', [])
+                        if bbox:
+                            result_text += f"   位置: ({bbox[0]:.1f}, {bbox[1]:.1f}, {bbox[2]:.1f}, {bbox[3]:.1f})\n"
+                        result_text += "\n"
+                elif isinstance(barcode_data, list) and not barcode_data:
+                    result_text = f"{result.message}\n\n未检测到任何条码"
+                else:
+                    result_text = f"检测成功！\n\n{result.message}\n\n检测到的条码数据:\n{str(barcode_data)}"
+
+                # 直接弹出文本对话框
+                dialog = QDialog(self)
+                dialog.setWindowTitle("测试检测结果")
+                dialog.setMinimumWidth(600)
+                dialog.setMinimumHeight(400)
+
+                layout = QVBoxLayout()
+
+                # 创建文本编辑框
+                text_edit = QTextEdit()
+                text_edit.setReadOnly(True)
+                text_edit.setPlainText(result_text)
+                layout.addWidget(text_edit)
+
+                # 添加关闭按钮
+                btn_box = QHBoxLayout()
+                btn_box.addStretch()
+                close_btn = QPushButton("关闭")
+                close_btn.clicked.connect(dialog.accept)
+                btn_box.addWidget(close_btn)
+                layout.addLayout(btn_box)
+
+                dialog.setLayout(layout)
+                dialog.exec_()
             else:
                 QMessageBox.warning(self, "测试检测结果", f"检测失败:\n{result.message}")
-            
+
         except Exception as e:
             QMessageBox.critical(self, "错误", f"测试检测时出错: {str(e)}")
     
@@ -244,13 +414,29 @@ class BarcodeSettingsDialog(QDialog):
         try:
             logger = get_logger('barcode_settings_dialog')
 
+            # 获取文件路径
+            file_path = self.file_path_edit.text().strip()
+            if not file_path:
+                QMessageBox.warning(self, "警告", "请先选择PDF文件")
+                return
+
+            if not os.path.exists(file_path):
+                QMessageBox.warning(self, "警告", f"文件不存在: {file_path}")
+                return
+
+            if not file_path.lower().endswith('.pdf'):
+                QMessageBox.warning(self, "警告", "请选择PDF文件")
+                return
+
             # 获取当前选中的插件
             current_tab_index = self.tab_widget.currentIndex()
             if current_tab_index < 0:
                 QMessageBox.warning(self, "警告", "没有选中的插件")
                 return
 
-            plugin_name = self.tab_widget.tabText(current_tab_index)
+            display_name = self.tab_widget.tabText(current_tab_index)
+            # 通过显示名称获取实际的插件名称
+            plugin_name = self.display_name_to_plugin_name.get(display_name, display_name)
 
             plugin = self.plugin_manager.get_plugin(plugin_name)
 
@@ -266,14 +452,6 @@ class BarcodeSettingsDialog(QDialog):
             if not init_result.is_success():
                 QMessageBox.critical(self, "错误", f"插件初始化失败: {init_result.message}")
                 return
-
-            # 选择要拆分的PDF文件
-            file_path, _ = QFileDialog.getOpenFileName(
-                self, "选择PDF文件", "", "PDF文件 (*.pdf)"
-            )
-
-            if not file_path:
-                return  # 用户取消了选择
 
             # 如果没有配置输出目录，则使用PDF文件所在目录+文件名同名目录
             output_dir = config.get('output_dir', '')
@@ -398,7 +576,9 @@ class BarcodeSettingsDialog(QDialog):
         if current_tab_index < 0:
             return
 
-        plugin_name = self.tab_widget.tabText(current_tab_index)
+        display_name = self.tab_widget.tabText(current_tab_index)
+        # 通过显示名称获取实际的插件名称
+        plugin_name = self.display_name_to_plugin_name.get(display_name, display_name)
         if plugin_name in self.plugin_widgets:
             plugin_widgets = self.plugin_widgets[plugin_name]
             if 'barcode_type_checkboxes' in plugin_widgets:
@@ -481,7 +661,11 @@ class BarcodeSettingsDialog(QDialog):
             plugin_layout.addWidget(error_label)
             self.tab_widget.addTab(plugin_widget, plugin_name)
             return
-        
+
+        # 获取插件显示名称（从PluginInfo的title字段）
+        plugin_info = getattr(plugin, 'PluginInfo', {})
+        display_name = plugin_info.get('title', plugin_name)
+
         # 获取插件配置定义
         # 从配置管理器获取插件配置定义
         config_definitions = self.config_manager.config_definitions.get(plugin_name, [])
@@ -503,8 +687,10 @@ class BarcodeSettingsDialog(QDialog):
                 # 如果没有配置定义，创建默认配置界面
                 self.create_default_config_controls(plugin_name, plugin_widget, plugin)
         
-        # 添加标签页
-        self.tab_widget.addTab(plugin_widget, plugin_name)
+        # 添加标签页，使用插件的显示名称
+        self.tab_widget.addTab(plugin_widget, display_name)
+        # 建立显示名称到插件名称的映射
+        self.display_name_to_plugin_name[display_name] = plugin_name
     
     def create_config_controls(self, plugin_name, parent_widget, config_definitions):
         """根据配置定义创建控件"""
@@ -598,6 +784,7 @@ class BarcodeSettingsDialog(QDialog):
                 output_dir_edit = QLineEdit()
                 output_dir_edit.setPlaceholderText("点击右侧按钮选择输出目录")
                 output_dir_edit.setFixedHeight(30)
+                output_dir_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                 output_dir_edit.setStyleSheet("QLineEdit { padding: 4px; font-size: 11pt; }\n")
                 if config_item.default:
                     output_dir_edit.setText(str(config_item.default))
@@ -625,7 +812,8 @@ class BarcodeSettingsDialog(QDialog):
 
                     h_layout.addWidget(label)
                     h_layout.addWidget(widget)
-                    h_layout.addStretch()
+                    # 移除addStretch，让输入框能够铺满
+                    # h_layout.addStretch()
 
                     scroll_layout.addLayout(h_layout)
 
@@ -1081,6 +1269,7 @@ class BarcodeSettingsDialog(QDialog):
             if config_item.type == 'string':
                 widget = QLineEdit()
                 widget.setFixedHeight(30)
+                widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                 widget.setStyleSheet("QLineEdit { padding: 4px; font-size: 11pt; }")
                 if config_item.default:
                     widget.setText(str(config_item.default))
@@ -1089,6 +1278,7 @@ class BarcodeSettingsDialog(QDialog):
             elif config_item.type == 'integer':
                 widget = QSpinBox()
                 widget.setFixedHeight(30)
+                widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                 widget.setStyleSheet("QSpinBox { padding: 4px; font-size: 11pt; }")
                 min_val = config_item.min_value if config_item.min_value is not None else 0
                 max_val = config_item.max_value if config_item.max_value is not None else 999999
@@ -1098,6 +1288,7 @@ class BarcodeSettingsDialog(QDialog):
             elif config_item.type == 'float':
                 widget = QDoubleSpinBox()
                 widget.setFixedHeight(30)
+                widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                 widget.setStyleSheet("QDoubleSpinBox { padding: 4px; font-size: 11pt; }")
                 min_val = config_item.min_value if config_item.min_value is not None else 0.0
                 max_val = config_item.max_value if config_item.max_value is not None else 999999.0
@@ -1120,6 +1311,7 @@ class BarcodeSettingsDialog(QDialog):
             elif config_item.type == 'list':
                 widget = QLineEdit()
                 widget.setFixedHeight(30)
+                widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                 widget.setStyleSheet("QLineEdit { padding: 4px; font-size: 11pt; }")
                 if config_item.default:
                     widget.setText(','.join(map(str, config_item.default)))
@@ -1128,6 +1320,7 @@ class BarcodeSettingsDialog(QDialog):
             elif config_item.type == 'enum':  # ConfigItemType.ENUM 的值是 'enum'
                 widget = QComboBox()
                 widget.setFixedHeight(30)
+                widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                 widget.setStyleSheet('''
                     QComboBox {
                         padding: 4px;
@@ -1546,7 +1739,7 @@ class BarcodeSettingsDialog(QDialog):
                 QMessageBox.critical(self, "重置失败", f"重置设置时发生错误: {str(e)}")
 
 
-def show_barcode_settings_dialog(parent=None):
+def show_barcode_settings_dialog(parent=None, current_file_path=None):
     """显示条码设置对话框"""
-    dialog = BarcodeSettingsDialog(parent)
+    dialog = BarcodeSettingsDialog(parent, current_file_path)
     return dialog.exec_()

@@ -38,8 +38,8 @@ def detect_barcodes_enhanced(doc: fitz.Document, config: Dict[str, Any], progres
 
             # 更新进度
             if progress_callback:
-                progress = int((page_num / total_pages) * 40)  # 检测阶段占总进度的0-40%
-                progress_callback(progress, 100, f"正在检测条码: {page_num + 1}/{total_pages} 页")
+                progress = page_num + 1  # 当前页码（从1开始）
+                progress_callback(progress, total_pages, f"正在检测条码: {page_num + 1}/{total_pages} 页")
 
             # 检测嵌入图片
             image_list = page.get_images()
@@ -227,8 +227,23 @@ def split_by_first_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo],
                 'barcode': None
             })
 
-        # 为每个组创建文件
+        # 合并相同条码的分组
         merge_same = config.get('merge_same_barcode', False)
+        if merge_same:
+            merged_groups = {}
+            for group in groups:
+                barcode_value = group['barcode']
+                if barcode_value not in merged_groups:
+                    merged_groups[barcode_value] = {
+                        'pages': [],
+                        'barcode': barcode_value
+                    }
+                # 合并页面
+                merged_groups[barcode_value]['pages'].extend(group['pages'])
+            # 替换分组列表
+            groups = list(merged_groups.values())
+
+        # 为每个组创建文件
         barcode_file_counts = {}
         file_index = 0
 
@@ -245,6 +260,7 @@ def split_by_first_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo],
             clean_barcode = clean_filename_func(barcode_value) if barcode_value and clean_filename_func else barcode_value
 
             if barcode_value:
+                # 如果启用了合并相同条码，使用序号；否则使用索引
                 if merge_same:
                     if barcode_value not in barcode_file_counts:
                         barcode_file_counts[barcode_value] = 0
@@ -318,8 +334,23 @@ def split_by_last_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo],
                 'barcode': current_barcode
             })
 
-        # 为每个组创建文件
+        # 合并相同条码的分组
         merge_same = config.get('merge_same_barcode', False)
+        if merge_same:
+            merged_groups = {}
+            for group in groups:
+                barcode_value = group['barcode']
+                if barcode_value not in merged_groups:
+                    merged_groups[barcode_value] = {
+                        'pages': [],
+                        'barcode': barcode_value
+                    }
+                # 合并页面
+                merged_groups[barcode_value]['pages'].extend(group['pages'])
+            # 替换分组列表
+            groups = list(merged_groups.values())
+
+        # 为每个组创建文件
         barcode_file_counts = {}
         file_index = 0
 
@@ -336,6 +367,7 @@ def split_by_last_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo],
             clean_barcode = clean_filename_func(barcode_value) if barcode_value and clean_filename_func else barcode_value
 
             if barcode_value:
+                # 如果启用了合并相同条码，使用序号；否则使用索引
                 if merge_same:
                     if barcode_value not in barcode_file_counts:
                         barcode_file_counts[barcode_value] = 0
@@ -432,8 +464,21 @@ def split_by_separator_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo]
                 'barcode': current_barcode
             })
 
-        for i, group in enumerate(groups):
-            pages_display = [p + 1 for p in group['pages']]
+        # 合并相同条码的分组
+        merge_same = config.get('merge_same_barcode', False)
+        if merge_same:
+            merged_groups = {}
+            for group in groups:
+                barcode_value = group['barcode']
+                if barcode_value not in merged_groups:
+                    merged_groups[barcode_value] = {
+                        'pages': [],
+                        'barcode': barcode_value
+                    }
+                # 合并页面
+                merged_groups[barcode_value]['pages'].extend(group['pages'])
+            # 替换分组列表
+            groups = list(merged_groups.values())
 
         file_index = 0
 
@@ -451,8 +496,13 @@ def split_by_separator_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo]
             clean_barcode = clean_filename_func(barcode_value) if barcode_value and clean_filename_func else barcode_value
 
             if barcode_value:
-                formatted_index = f"{file_index + 1:03d}"
-                filename = f"{clean_barcode}_{formatted_index}.pdf"
+                # 如果启用了合并相同条码，使用序号；否则使用索引
+                if merge_same:
+                    # 使用合并后的组内计数
+                    filename = f"{clean_barcode}.pdf"
+                else:
+                    formatted_index = f"{file_index + 1:03d}"
+                    filename = f"{clean_barcode}_{formatted_index}.pdf"
             else:
                 formatted_index = f"{file_index + 1:03d}"
                 filename = f"无条码_{formatted_index}.pdf"
