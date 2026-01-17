@@ -17,49 +17,62 @@ class OCRSearchablePDF:
         self.ocr_plugin_manager = ocr_plugin_manager
         self.ocr_config_manager = ocr_config_manager
 
-    def pdf_to_searchable_pdf(self, pdf_path, output_path, show_text_boxes=False):
+    def pdf_to_searchable_pdf(self, pdf_path, output_path, show_text_boxes=False, progress_callback=None):
         """
         将PDF文件进行OCR处理，生成可搜索的PDF
-        
+
         :param pdf_path: 输入PDF文件路径
         :param output_path: 输出可搜索PDF文件路径
         :param show_text_boxes: 是否显示文本框背景色（用于调试）
+        :param progress_callback: 进度回调函数 (percent, message) -> None
         :return: 是否成功
         """
         try:
+            if progress_callback:
+                progress_callback(5, "正在打开PDF文件...")
+
             # 打开PDF文档
             doc = fitz.open(pdf_path)
-            
+            total_pages = len(doc)
+
             # 创建新的PDF文档用于输出
             output_doc = fitz.open()
-            
+
             # 用于存储每页的OCR结果
             ocr_results = {}
-            
+
             # 改用顺序处理，避免OCR插件并发冲突
-            logger.info(f"开始处理 {len(doc)} 页PDF，使用顺序OCR处理模式...")
-            
-            for page_num in range(len(doc)):
-                logger.info(f"开始处理第 {page_num + 1}/{len(doc)} 页...")
-                
+            logger.info(f"开始处理 {total_pages} 页PDF，使用顺序OCR处理模式...")
+
+            if progress_callback:
+                progress_callback(10, f"准备处理 {total_pages} 页...")
+
+            for page_num in range(total_pages):
+                page_percent = 10 + int((page_num / total_pages) * 70)  # 10%-80%
+                if progress_callback:
+                    progress_callback(page_percent, f"正在处理第 {page_num + 1}/{total_pages} 页...")
+
                 try:
                     # 获取当前页
                     page = doc[page_num]
-                    
+
                     # 将页面渲染为图像（使用较高的DPI以获得更好的OCR效果）
                     matrix = fitz.Matrix(2.0, 2.0)  # 2倍缩放
                     pix = page.get_pixmap(matrix=matrix)
-                    
+
                     # 将图像转换为bytes
                     img_data = pix.tobytes("png")
-                    
+
                     # 转换为base64
                     img_base64 = base64.b64encode(img_data).decode('utf-8')
-                    
+
                     # 进行OCR识别
-                    logger.info(f"正在对第 {page_num + 1} 页进行OCR识别...")
+                    ocr_percent = page_percent + int(10 / total_pages)  # 在页面处理内部增加一点进度
+                    if progress_callback:
+                        progress_callback(ocr_percent, f"正在对第 {page_num + 1}/{total_pages} 页进行OCR识别...")
+
                     ocr_result = self.call_ocr_api(img_base64)
-                    
+
                     # 保存结果
                     ocr_results[page_num] = {
                         'ocr_result': ocr_result,
@@ -67,16 +80,16 @@ class OCRSearchablePDF:
                         'img_data': img_data,
                         'pix': pix
                     }
-                    
+
                     if ocr_result:
                         logger.info(f"第 {page_num + 1} 页OCR处理完成")
                     else:
                         logger.warning(f"第 {page_num + 1} 页OCR识别返回空结果")
-                        
+
                 except Exception as e:
                     logger.error(f"第 {page_num + 1} 页OCR处理失败: {e}")
                     logger.error(traceback.format_exc())
-                    
+
                     # 即使失败也要保存页面信息，避免后续处理出错
                     if 'page' in locals() and 'img_data' in locals() and 'pix' in locals():
                         ocr_results[page_num] = {
@@ -89,37 +102,50 @@ class OCRSearchablePDF:
                         # 如果连页面信息都没获取到，创建一个空的占位符
                         logger.error(f"第 {page_num + 1} 页基础信息获取失败，跳过此页")
                         continue
+
+            if progress_callback:
+                progress_callback(85, "正在生成可搜索PDF...")
+
             # 按页码顺序处理结果并生成PDF
             for page_num in sorted(ocr_results.keys()):
-                logger.info(f"处理第 {page_num + 1}/{len(doc)} 页...")
-                
+                write_percent = 85 + int((len(ocr_results) - page_num - 1) / total_pages * 10)  # 85%-95%
+                if progress_callback:
+                    progress_callback(write_percent, f"正在写入第 {page_num + 1}/{total_pages} 页...")
+
                 result_info = ocr_results[page_num]
                 page = result_info['page']
                 img_data = result_info['img_data']
                 pix = result_info['pix']
                 ocr_result = result_info['ocr_result']
+
                 # 创建新页面（保持原始页面尺寸）
                 new_page = output_doc.new_page(width=page.rect.width, height=page.rect.height)
-                
+
                 # 将原始图像插入到新页面
                 new_page.insert_image(new_page.rect, stream=img_data)
-                
+
                 # 如果OCR成功，添加文本层
                 if ocr_result and ocr_result.get("code") == 100:
                     # 计算缩放比例
                     scale_x = new_page.rect.width / pix.width
                     scale_y = new_page.rect.height / pix.height
-                    
+
                     self.add_text_layer(new_page, ocr_result.get("data", []), scale_x, scale_y, show_text_boxes)
-            
+
+            if progress_callback:
+                progress_callback(98, "正在保存PDF文件...")
+
             # 保存输出PDF
             output_doc.save(output_path, garbage=4, deflate=True, clean=True)
             output_doc.close()
             doc.close()
-            
+
+            if progress_callback:
+                progress_callback(100, "可搜索PDF创建完成")
+
             logger.info(f"可搜索PDF已保存到: {output_path}")
             return True
-            
+
         except Exception as e:
             logger.error(f"生成可搜索PDF失败: {e}")
             return False
@@ -392,16 +418,17 @@ class OCRSearchablePDF:
                     logger.error(f"再次插入文本也失败: {text}, 错误: {e2}")
 
 
-def create_searchable_pdf(input_pdf_path, output_pdf_path, ocr_plugin_manager=None, ocr_config_manager=None, show_text_boxes=False):
+def create_searchable_pdf(input_pdf_path, output_pdf_path, ocr_plugin_manager=None, ocr_config_manager=None, show_text_boxes=False, progress_callback=None):
     """
     创建可搜索PDF的便捷函数
-    
+
     :param input_pdf_path: 输入PDF文件路径
     :param output_pdf_path: 输出PDF文件路径
     :param ocr_plugin_manager: OCR插件管理器
     :param ocr_config_manager: OCR配置管理器
     :param show_text_boxes: 是否显示文本框背景色（用于调试）
+    :param progress_callback: 进度回调函数 (percent, message) -> None
     :return: 是否成功
     """
     processor = OCRSearchablePDF(ocr_plugin_manager, ocr_config_manager)
-    return processor.pdf_to_searchable_pdf(input_pdf_path, output_pdf_path, show_text_boxes)
+    return processor.pdf_to_searchable_pdf(input_pdf_path, output_pdf_path, show_text_boxes, progress_callback)

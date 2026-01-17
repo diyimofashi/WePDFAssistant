@@ -527,32 +527,36 @@ class OCRManagerMixin:
         class SearchablePDFThread(QThread):
             progress_updated = pyqtSignal(int, str)
             finished = pyqtSignal(bool, str)
-            
+
             def __init__(self, input_file, output_file, ocr_plugin_manager, ocr_config_manager):
                 super().__init__()
                 self.input_file = input_file
                 self.output_file = output_file
                 self.ocr_plugin_manager = ocr_plugin_manager
                 self.ocr_config_manager = ocr_config_manager
-            
+
             def run(self):
                 try:
-                    self.progress_updated.emit(10, "正在初始化OCR引擎...")
-                    
+                    self.progress_updated.emit(5, "正在打开PDF文件...")
+
+                    def progress_callback(percent, message):
+                        self.progress_updated.emit(percent, message)
+
                     success = create_searchable_pdf(
                         self.input_file,
                         self.output_file,
                         self.ocr_plugin_manager,
                         self.ocr_config_manager,
-                        show_text_boxes=False
+                        show_text_boxes=False,
+                        progress_callback=progress_callback
                     )
-                    
+
                     if success:
                         self.progress_updated.emit(100, "可搜索PDF创建完成")
                         self.finished.emit(True, f"可搜索PDF已创建: {self.output_file}")
                     else:
                         self.finished.emit(False, "创建可搜索PDF失败")
-                        
+
                 except Exception as e:
                     self.finished.emit(False, f"创建过程中出错: {str(e)}")
         
