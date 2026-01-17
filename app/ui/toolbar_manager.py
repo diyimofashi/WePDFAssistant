@@ -70,22 +70,17 @@ class ToolbarManager(QObject):
     
     def _add_edit_actions(self, toolbar):
         """添加编辑操作按钮"""
-        # 撤销
-        self.parent.undo_btn = QAction("↩️ 撤销", self.parent)
-        self.parent.undo_btn.setToolTip("撤销上一步操作 (Ctrl+Z)")
-        self.parent.undo_btn.triggered.connect(self.parent.undo_operation)
-        self.parent.undo_btn.setEnabled(False)
-        toolbar.addAction(self.parent.undo_btn)
-
-        # 重做
-        self.parent.redo_btn = QAction("↪️ 重做", self.parent)
-        self.parent.redo_btn.setToolTip("重做上一步操作 (Ctrl+Y)")
-        self.parent.redo_btn.triggered.connect(self.parent.redo_operation)
-        self.parent.redo_btn.setEnabled(False)
-        toolbar.addAction(self.parent.redo_btn)
+        pass
 
     def _add_view_actions(self, toolbar):
         """添加视图控制按钮"""
+        # 缩略图切换
+        thumbnail_btn = QAction("🖼️ 缩略图", self.parent)
+        thumbnail_btn.setToolTip("显示/隐藏缩略图")
+        thumbnail_btn.setCheckable(True)
+        thumbnail_btn.triggered.connect(self.parent.toggle_thumbnails)
+        toolbar.addAction(thumbnail_btn)
+
         # 放大
         zoom_in_btn = QAction("➕ 放大", self.parent)
         zoom_in_btn.setToolTip("放大页面 (Ctrl++)")

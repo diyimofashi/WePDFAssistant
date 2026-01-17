@@ -66,7 +66,7 @@ class AppStyles:
         }}
         
         QMenuBar::item:selected {{
-            background-color: {colors['primary']};
+            background-color: rgba(75, 151, 244, 150);
         }}
         
         /* 工具栏样式 */
@@ -92,6 +92,22 @@ class AppStyles:
             background-color: {colors['primary']};
             color: #FFFFFF;
             border-color: {colors['primary']};
+        }}
+
+        /* 工具栏按钮样式 */
+        QToolButton {{
+            background-color: transparent;
+            border: none;
+            padding: 4px;
+            border-radius: 4px;
+        }}
+
+        QToolButton:hover {{
+            background-color: rgba(75, 151, 244, 100);
+        }}
+
+        QToolButton:pressed {{
+            background-color: rgba(75, 151, 244, 150);
         }}
         
         QPushButton:pressed {{

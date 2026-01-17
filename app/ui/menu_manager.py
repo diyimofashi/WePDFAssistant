@@ -142,26 +142,6 @@ class MenuManager(QObject):
             zoom_action.triggered.connect(lambda checked=False, l=level: self.parent.set_zoom_level(l))
             zoom_menu.addAction(zoom_action)
         
-        # 页面布局子菜单
-        view_menu.addSeparator()
-        layout_menu = view_menu.addMenu("📄 页面布局")
-
-        single_page_action = QAction("📖 单页显示", self.parent)
-        single_page_action.setCheckable(True)
-        single_page_action.setChecked(True)
-        # 假设父窗口有相关方法
-        layout_menu.addAction(single_page_action)
-
-        double_page_action = QAction("📚 双页显示", self.parent)
-        double_page_action.setCheckable(True)
-        # 假设父窗口有相关方法
-        layout_menu.addAction(double_page_action)
-
-        continuous_action = QAction("📜 连续模式", self.parent)
-        continuous_action.setCheckable(True)
-        # 假设父窗口有相关方法
-        layout_menu.addAction(continuous_action)
-
     def _create_settings_menu(self, menubar):
         """创建设置菜单"""
         settings_menu = menubar.addMenu("⚙️ 设置")
