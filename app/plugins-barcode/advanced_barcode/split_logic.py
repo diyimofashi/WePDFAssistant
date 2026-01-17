@@ -179,52 +179,50 @@ def split_by_first_page_rule(doc: fitz.Document, barcodes: List[BarcodeInfo],
                               config: Dict[str, Any], output_dir: str,
                               progress_callback=None, clean_filename_func=None) -> List[str]:
     """
-    首页规则：只要读到条码就把该页作为新文档的第1页，后续无条码页依次归入，直到再遇到下一个条码为止。
+    首页规则：遇到条码就开始新文档，条码页当作新文档的第一页。
     """
     try:
         files_created = []
         total_pages = len(doc)
 
+        # 构建页码到条码的映射（每页只取第一个条码）
         page_barcode_map = {}
         for barcode in barcodes:
             if barcode.page_num not in page_barcode_map:
-                page_barcode_map[barcode.page_num] = []
-            page_barcode_map[barcode.page_num].append(barcode)
+                page_barcode_map[barcode.page_num] = barcode.data
 
         groups = []
-        current_group = []
-        current_barcode = None
+        current_group_pages = []
+        current_group_barcode = None
+        has_encountered_barcode = False
 
         for page_num in range(total_pages):
-            if page_num in page_barcode_map and page_barcode_map[page_num]:
-                if current_group:
-                    groups.append({
-                        'pages': current_group.copy(),
-                        'barcode': current_barcode
-                    })
-                    current_group = []
+            # 如果当前页有条码，开始新分组
+            if page_num in page_barcode_map:
+                has_encountered_barcode = True
 
-                barcode_list = page_barcode_map[page_num]
-                for barcode in barcode_list:
+                # 保存之前的分组（如果有）
+                if current_group_pages:
                     groups.append({
-                        'pages': [page_num],
-                        'barcode': barcode.data
+                        'pages': current_group_pages.copy(),
+                        'barcode': current_group_barcode
                     })
-                    current_barcode = barcode.data
+                    current_group_pages = []
+
+                # 以当前条码页开始新分组
+                current_group_barcode = page_barcode_map[page_num]
+                current_group_pages = [page_num]
             else:
-                if current_barcode is not None:
-                    current_group.append(page_num)
+                # 如果已经有分组（即遇到过条码），将无条码页加入当前分组
+                if current_group_barcode is not None:
+                    current_group_pages.append(page_num)
+                # 如果还没遇到过条码，跳过（不创建无条码文档）
 
-        # 处理开头未分组的有条码页面
-        assigned_pages = set()
-        for group in groups:
-            assigned_pages.update(group['pages'])
-
-        unassigned_pages = [p for p in range(total_pages) if p not in assigned_pages]
-        if unassigned_pages:
+        # 保存最后一个分组
+        if current_group_pages:
             groups.append({
-                'pages': unassigned_pages,
-                'barcode': None
+                'pages': current_group_pages,
+                'barcode': current_group_barcode
             })
 
         # 合并相同条码的分组
