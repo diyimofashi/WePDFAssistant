@@ -590,29 +590,38 @@ class OCRManagerMixin:
             msg_box.setWindowTitle("完成")
             msg_box.setText(f"✅ {message}")
             msg_box.setIcon(QMessageBox.Information)
-            
-            open_file_btn = msg_box.addButton("📂 打开文件", QMessageBox.ActionRole)
-            open_dir_btn = msg_box.addButton("📁 打开目录", QMessageBox.ActionRole)
+
+            open_in_app_btn = msg_box.addButton("打开", QMessageBox.ActionRole)
+            open_dir_btn = msg_box.addButton("打开目录", QMessageBox.ActionRole)
             msg_box.addButton("确定", QMessageBox.AcceptRole)
-            
+
             msg_box.exec_()
-            
-            if msg_box.clickedButton() == open_file_btn:
-                # 打开生成的可搜索PDF文件
+
+            if msg_box.clickedButton() == open_in_app_btn:
+                # 在程序中打开生成的可搜索PDF文件
                 try:
                     if os.path.exists(output_file):
-                        os.startfile(output_file)
+                        success, message = self.pdf_processor.open_pdf(output_file, async_mode=True)
+                        if not success:
+                            QMessageBox.warning(self, "警告", f"打开文件失败: {message}")
                     else:
                         QMessageBox.warning(self, "警告", "文件不存在")
                 except Exception as e:
-                    logger.error(f"打开文件失败: {e}")
-                    QMessageBox.warning(self, "警告", f"无法打开文件: {str(e)}")
-                    
+                    logger.error(f"在程序中打开文件失败: {e}")
+                    QMessageBox.warning(self, "警告", f"无法在程序中打开文件: {str(e)}")
+
             elif msg_box.clickedButton() == open_dir_btn:
                 # 打开文件所在目录
                 try:
                     output_dir = os.path.dirname(output_file)
-                    subprocess.Popen(['explorer', output_dir])
+                    output_dir = os.path.abspath(output_dir)
+                    logger.info(f"打开目录: output_file={output_file}, output_dir={output_dir}")
+
+                    if os.path.exists(output_file):
+                        # 关键：/select, 与路径连成同一个参数
+                        subprocess.Popen(['explorer', '/select,' + os.path.normpath(output_file)])
+                    else:
+                        subprocess.Popen(['explorer', output_dir])
                 except Exception as e:
                     logger.error(f"打开目录失败: {e}")
                     QMessageBox.warning(self, "警告", f"无法打开目录: {str(e)}")

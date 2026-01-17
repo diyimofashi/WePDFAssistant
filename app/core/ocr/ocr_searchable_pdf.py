@@ -135,6 +135,13 @@ class OCRSearchablePDF:
             if progress_callback:
                 progress_callback(98, "正在保存PDF文件...")
 
+            # 如果输出文件已存在，先删除（避免被占用）
+            if os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                except Exception as remove_error:
+                    logger.warning(f"删除旧文件失败: {remove_error}")
+
             # 保存输出PDF
             output_doc.save(output_path, garbage=4, deflate=True, clean=True)
             output_doc.close()

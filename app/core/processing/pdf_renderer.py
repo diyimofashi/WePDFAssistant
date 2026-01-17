@@ -1441,6 +1441,24 @@ class PDFRenderer(QObject):
             logger.error(f"清除高亮失败: {e}")
             return False
 
+    def force_cleanup(self):
+        """强制清理资源"""
+        try:
+            # 清理缓存
+            if hasattr(self, 'render_cache'):
+                self.render_cache.clear_all()
+
+            # 关闭PDF文档
+            if hasattr(self, 'fitz_document') and self.fitz_document:
+                try:
+                    self.fitz_document.close()
+                except Exception as e:
+                    logger.error(f"关闭PDF文档失败: {e}")
+
+            logger.info("强制清理完成")
+        except Exception as e:
+            logger.error(f"强制清理失败: {e}")
+
 
 
 
