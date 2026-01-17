@@ -270,11 +270,6 @@ class MenuManager(QObject):
         barcode_settings_action.triggered.connect(self.parent.show_barcode_settings)
         barcode_menu.addAction(barcode_settings_action)
         
-        # 检测条码
-        detect_barcode_action = QAction("🔍 检测条码", self.parent)
-        # 假设父窗口有相关方法
-        barcode_menu.addAction(detect_barcode_action)
-        
         # 批量处理工具
         tools_menu.addSeparator()
         batch_menu = tools_menu.addMenu("🔄 批量处理")
