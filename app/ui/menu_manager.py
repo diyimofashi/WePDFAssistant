@@ -109,53 +109,59 @@ class MenuManager(QObject):
         # 缩放子菜单
         view_menu.addSeparator()
         zoom_menu = view_menu.addMenu("🔍 缩放")
-        
+
         # 基本缩放操作
         zoom_in_action = QAction("➕ 放大", self.parent)
         zoom_in_action.setShortcut("Ctrl++")
         zoom_in_action.triggered.connect(self.parent.zoom_in)
         zoom_menu.addAction(zoom_in_action)
-        
+
         zoom_out_action = QAction("➖ 缩小", self.parent)
         zoom_out_action.setShortcut("Ctrl+-")
         zoom_out_action.triggered.connect(self.parent.zoom_out)
         zoom_menu.addAction(zoom_out_action)
-        
+
         fit_width_action = QAction("↔️ 适应宽度", self.parent)
         fit_width_action.triggered.connect(lambda: self.parent.fit_to_width())
         zoom_menu.addAction(fit_width_action)
-        
+
         fit_height_action = QAction("↕️ 适应高度", self.parent)
         fit_height_action.triggered.connect(lambda: self.parent.fit_to_height())
         zoom_menu.addAction(fit_height_action)
-        
+
         actual_size_action = QAction("1:1 原始尺寸", self.parent)
         actual_size_action.triggered.connect(lambda: self.parent.set_actual_size())
         zoom_menu.addAction(actual_size_action)
-        
+
         zoom_menu.addSeparator()
-        
+
         # 预设缩放比例
         zoom_levels = [25, 50, 75, 100, 125, 150, 200]
         for level in zoom_levels:
             zoom_action = QAction(f"{level}%", self.parent)
             zoom_action.triggered.connect(lambda checked=False, l=level: self.parent.set_zoom_level(l))
             zoom_menu.addAction(zoom_action)
+
+        # 实际大小选项
+        view_menu.addSeparator()
+        actual_size_action = QAction("📏 实际大小", self.parent)
+        actual_size_action.setCheckable(True)
+        actual_size_action.setChecked(not AppSettings.get_use_a4_scaling())
+        actual_size_action.triggered.connect(self.parent.toggle_actual_size)
+        view_menu.addAction(actual_size_action)
+        self.parent.actual_size_action = actual_size_action
         
     def _create_settings_menu(self, menubar):
         """创建设置菜单"""
         settings_menu = menubar.addMenu("⚙️ 设置")
 
-        # 实际大小选项
-        actual_size_action = QAction("📏 实际大小", self.parent)
-        actual_size_action.setCheckable(True)
-        actual_size_action.setChecked(not AppSettings.get_use_a4_scaling())  # 默认不选中
-        actual_size_action.triggered.connect(self.parent.toggle_actual_size)
-        settings_menu.addAction(actual_size_action)
-        self.parent.actual_size_action = actual_size_action  # 保存引用以便后续访问
+        # 快捷键设置
+        shortcut_settings_action = QAction("⌨️ 快捷键设置", self.parent)
+        shortcut_settings_action.setShortcut("Ctrl+K")
+        shortcut_settings_action.triggered.connect(self.parent.show_shortcut_settings)
+        settings_menu.addAction(shortcut_settings_action)
     
     def _create_tools_menu(self, menubar):
-        """创建工具菜单"""
         tools_menu = menubar.addMenu("🛠️ 工具")
         
         # PDF处理子菜单
@@ -254,13 +260,6 @@ class MenuManager(QObject):
         download_remote_action.triggered.connect(self.parent.open_remote_file)
         download_menu.addAction(download_remote_action)
 
-        # 快捷键设置
-        tools_menu.addSeparator()
-        shortcut_settings_action = QAction("⌨️ 快捷键设置", self.parent)
-        shortcut_settings_action.setShortcut("Ctrl+K")
-        shortcut_settings_action.triggered.connect(self.parent.show_shortcut_settings)
-        tools_menu.addAction(shortcut_settings_action)
-        
         # 条码工具子菜单
         tools_menu.addSeparator()
         barcode_menu = tools_menu.addMenu("📟 条码工具")
