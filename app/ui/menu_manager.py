@@ -266,14 +266,9 @@ class MenuManager(QObject):
         barcode_menu = tools_menu.addMenu("📟 条码工具")
         
         # 条码插件设置
-        barcode_settings_action = QAction("⚙️ 条码插件设置", self.parent)
+        barcode_settings_action = QAction("⚙️ 条码拆分", self.parent)
         barcode_settings_action.triggered.connect(self.parent.show_barcode_settings)
         barcode_menu.addAction(barcode_settings_action)
-        
-        # 条码拆分
-        barcode_split_action = QAction("📟 条码拆分", self.parent)
-        barcode_split_action.triggered.connect(self.parent.barcode_split_pdf)
-        barcode_menu.addAction(barcode_split_action)
         
         # 检测条码
         detect_barcode_action = QAction("🔍 检测条码", self.parent)

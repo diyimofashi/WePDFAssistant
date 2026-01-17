@@ -491,15 +491,6 @@ class BarcodeSettingsDialog(QDialog):
         """根据配置定义创建控件"""
         plugin_layout = parent_widget.layout()
 
-        # 插件说明标题
-        title_label = QLabel(f"{plugin_name} - 插件配置")
-        title_font = QFont()
-        title_font.setBold(True)
-        title_font.setPointSize(12)
-        title_label.setFont(title_font)
-        title_label.setWordWrap(True)
-        plugin_layout.addWidget(title_label)
-
         # 创建滚动区域以容纳设置
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)

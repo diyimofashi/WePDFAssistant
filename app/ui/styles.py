@@ -109,7 +109,16 @@ class AppStyles:
         QToolButton:pressed {{
             background-color: rgba(75, 151, 244, 150);
         }}
-        
+
+        /* 工具栏按钮箭头样式 */
+        QToolButton::menu-indicator {{
+            subcontrol-position: right center;
+            width: 10px;
+            height: 10px;
+            right: 0px;
+            margin-top: 0;
+        }}
+
         QPushButton:pressed {{
             background-color: {colors['accent']};
             color: #FFFFFF;

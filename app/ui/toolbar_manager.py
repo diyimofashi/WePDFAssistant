@@ -162,12 +162,6 @@ class ToolbarManager(QObject):
     
     def _add_convert_actions(self, toolbar):
         """添加转换工具按钮"""
-        # 条码拆分
-        barcode_split_btn = QAction("📟 条码拆分", self.parent)
-        barcode_split_btn.setToolTip("根据条码拆分PDF文档")
-        barcode_split_btn.triggered.connect(self.parent.barcode_split_pdf)
-        toolbar.addAction(barcode_split_btn)
-
         # 合并PDF
         merge_btn = QAction("📑 合并PDF", self.parent)
         merge_btn.setToolTip("合并多个PDF文件")
@@ -202,8 +196,14 @@ class ToolbarManager(QObject):
         create_searchable_action.triggered.connect(self.parent.create_searchable_pdf)
         ocr_menu.addAction(create_searchable_action)
 
-        # 创建下拉按钮
-        ocr_dropdown_btn = QAction("🔍 OCR工具", self.parent)
-        ocr_dropdown_btn.setMenu(ocr_menu)
-        ocr_dropdown_btn.setToolTip("OCR相关工具")
-        toolbar.addAction(ocr_dropdown_btn)
+        # 创建下拉按钮 - 使用QToolButton支持点击展开
+        from PyQt5.QtWidgets import QToolButton
+        from PyQt5.QtCore import Qt
+
+        ocr_tool_button = QToolButton(self.parent)
+        ocr_tool_button.setText("🔍 OCR工具")
+        ocr_tool_button.setMenu(ocr_menu)
+        ocr_tool_button.setPopupMode(QToolButton.InstantPopup)  # 立即弹出，点击任意位置都行
+        ocr_tool_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        ocr_tool_button.setToolTip("OCR相关工具")
+        toolbar.addWidget(ocr_tool_button)
