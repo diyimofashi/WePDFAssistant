@@ -2,10 +2,12 @@
 
 import os
 import fitz  # PyMuPDF
+import re
 from PyQt5.QtWidgets import QFileDialog, QMessageBox, QProgressDialog, QApplication
 from PyQt5.QtCore import Qt
 from app.utils.logger import get_logger
 from app.config.settings import AppSettings
+from app.ui.password_dialog import PasswordDialog
 
 logger = get_logger('file_manager')
 
@@ -166,7 +168,6 @@ class FileManager:
     def _open_pdf_file(self, file_path):
         """打开单个PDF文件"""
         # 检查是否加密
-        import fitz
         is_encrypted = False
         try:
             doc = fitz.open(file_path)
@@ -178,8 +179,6 @@ class FileManager:
         password = None
         if is_encrypted:
             # 弹出密码输入框，支持5次尝试
-            from app.ui.password_dialog import PasswordDialog
-
             for attempt in range(5):
                 password = PasswordDialog.get_user_password(self.parent, "请输入密码")
                 if password is None:
@@ -334,8 +333,6 @@ class FileManager:
 
     def save_with_encryption(self, file_path):
         """加密保存PDF文件"""
-        from app.ui.password_dialog import PasswordDialog
-
         # 检查是否是从图片打开的文档
         is_from_image_doc = (
             hasattr(self.parent.pdf_processor, 'is_from_image') and 
@@ -419,7 +416,6 @@ class FileManager:
                 if is_new_document:
                     if "多图片文档" in self.parent.pdf_processor.current_file:
                         # 从描述中提取图片数量
-                        import re
                         match = re.search(r'(\d+)张图片', self.parent.pdf_processor.current_file)
                         if match:
                             current_filename = f"merged_images_{match.group(1)}pages.pdf"
@@ -511,8 +507,6 @@ class FileManager:
             return
 
         # 输入密码
-        from app.ui.password_dialog import PasswordDialog
-
         password = PasswordDialog.get_user_password(self.parent, "请输入加密密码")
         if password is None:
             return

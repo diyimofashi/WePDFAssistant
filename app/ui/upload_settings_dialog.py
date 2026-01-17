@@ -6,8 +6,8 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, 
                              QWidget, QFormLayout, QLineEdit, QCheckBox, 
                              QSpinBox, QDoubleSpinBox, QComboBox, QPushButton,
-                             QLabel, QGroupBox, QTextEdit, QScrollArea,
-                             QMessageBox, QApplication, QLayout, QSizePolicy)
+                             QLabel, QGroupBox, QScrollArea,
+                             QMessageBox, QLayout, QSizePolicy)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from app.managers.upload_plugin_manager import upload_plugin_manager
@@ -742,14 +742,3 @@ def show_upload_settings_dialog(parent=None):
     """显示上传设置对话框"""
     dialog = UploadSettingsDialog(parent)
     return dialog.exec_()
-
-
-if __name__ == "__main__":
-    import sys
-    app = QApplication(sys.argv)
-    
-    # 创建测试对话框
-    dialog = UploadSettingsDialog()
-    dialog.show()
-    
-    sys.exit(app.exec_())

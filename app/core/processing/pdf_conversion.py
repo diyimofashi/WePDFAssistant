@@ -14,11 +14,6 @@ sys.path.insert(0, project_root)
 from app.utils.logger import get_logger
 logger = get_logger('pdf_conversion')
 
-from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor
-from PyQt5.QtCore import QObject, pyqtSignal
-from PyQt5.QtCore import Qt as QtCore
-
 class PDFConversion:
     """PDF转换器 - 专门处理PDF转换和导入功能"""
     
@@ -420,8 +415,6 @@ class PDFConversion:
             
             # 如果上面的方法失败，尝试使用PIL进行预处理并创建Pixmap
             try:
-                import io
-                
                 # 使用PIL打开图片并获取其字节
                 with Image.open(image_path) as img:
                     # 将图片转换为RGB模式（如果需要）

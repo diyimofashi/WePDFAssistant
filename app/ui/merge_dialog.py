@@ -11,6 +11,8 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
 from app.utils.logger import get_logger
 from app.config.settings import AppSettings
+from app.core.processing.pdf_merger import PDFMerger
+from app.ui.page_selection_dialog import PageSelectionDialog
 
 logger = get_logger('merge_dialog')
 
@@ -335,8 +337,6 @@ class MergeDialog(QDialog):
     
     def _add_files_to_list(self, files: List[str]):
         """添加文件到列表"""
-        from app.core.processing.pdf_merger import PDFMerger
-        
         if not self.merger:
             self.merger = PDFMerger()
             
@@ -437,7 +437,6 @@ class MergeDialog(QDialog):
             QMessageBox.warning(self, "提示", "请先选择要设置页面的文件")
             return
             
-        from app.ui.page_selection_dialog import PageSelectionDialog
         dialog = PageSelectionDialog(self)
         
         for item in selected_items:
@@ -458,7 +457,6 @@ class MergeDialog(QDialog):
         index = item.data(Qt.UserRole)
         info = self.files_info[index]
         
-        from app.ui.page_selection_dialog import PageSelectionDialog
         dialog = PageSelectionDialog(self)
         dialog.set_file_info(info)
         
@@ -519,7 +517,6 @@ class MergeDialog(QDialog):
         self.cancel_btn.setEnabled(False)
         
         # 启动合并线程
-        from app.core.processing.pdf_merger import PDFMerger
         self.merger = PDFMerger()
         self.merge_worker = MergeWorker(self.merger, self.file_list, merge_config)
         self.merge_worker.progress_updated.connect(self.update_progress)

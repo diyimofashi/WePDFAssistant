@@ -4,6 +4,9 @@ import os
 import fitz  # PyMuPDF
 import sys
 import tempfile
+import shutil
+import time
+import traceback
 
 # 添加项目根目录到Python路径，解决模块导入问题
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -13,10 +16,6 @@ sys.path.insert(0, project_root)
 from app.utils.logger import get_logger
 logger = get_logger('pdf_operations')
 
-from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor
-from PyQt5.QtCore import QObject, pyqtSignal
-from PyQt5.QtCore import Qt as QtCore
 
 class PDFOperations:
     """PDF操作器 - 专门处理PDF文件操作功能"""
@@ -36,7 +35,6 @@ class PDFOperations:
 
     def _is_file_locked(self, filepath, timeout=2):
         """检查文件是否被锁定"""
-        import time
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
@@ -137,7 +135,6 @@ class PDFOperations:
                 logger.warning("目标文件被锁定，无法保存")
                 return False, "文件正在被其他程序使用，请关闭后再试"
 
-            import shutil
             shutil.copy2(temp_path, file_path)
 
             if is_saving_to_original:
@@ -147,7 +144,6 @@ class PDFOperations:
 
         except Exception as e:
             logger.error(f"保存PDF文件失败: {str(e)}")
-            import traceback
             logger.error(traceback.format_exc())
             return False, f"保存失败: {str(e)}"
         finally:
@@ -242,8 +238,6 @@ class PDFOperations:
                     garbage=1
                 )
                 temp_doc.close()
-
-                import shutil
                 shutil.copy2(encrypted_temp_path, output_path)
             else:
                 # 保存到新文件
@@ -261,7 +255,6 @@ class PDFOperations:
 
         except Exception as e:
             logger.error(f"加密PDF文件失败: {str(e)}")
-            import traceback
             logger.error(traceback.format_exc())
             return False, f"加密失败: {str(e)}"
         finally:

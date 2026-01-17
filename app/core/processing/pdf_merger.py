@@ -3,6 +3,7 @@
 import os
 from typing import List, Dict, Tuple, Optional
 import fitz  # PyMuPDF
+import traceback
 from app.utils.logger import get_logger
 
 logger = get_logger('pdf_merger')
@@ -114,7 +115,6 @@ class PDFMerger:
 
         except Exception as e:
             logger.error(f"合并过程中出错: {e}")
-            import traceback
             logger.error(traceback.format_exc())
             return False, f"合并失败: {str(e)}", None
     

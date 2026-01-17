@@ -1,17 +1,21 @@
 """页面编辑功能模块
 提供PDF页面的插入、删除、复制、旋转等编辑功能"""
 
-from PyQt5.QtWidgets import QFileDialog, QMessageBox, QApplication
-from PyQt5.QtCore import Qt, QObject, pyqtSignal
+from PyQt5.QtWidgets import  QApplication
+from PyQt5.QtCore import QObject, pyqtSignal
 import os
 import tempfile
 import shutil
 import fitz  # PyMuPDF
+import traceback
 from PIL import Image
 from PIL.Image import Resampling
+from io import BytesIO
 import time
 import copy
 import logging
+# 导入密码对话框
+from app.ui.password_dialog import PasswordDialog
 
 logger = logging.getLogger(__name__)
 
@@ -385,7 +389,6 @@ class PageEditor(QObject):
             return True, "更改已保存到原始文件"
         except Exception as e:
             logger.error(f"应用更改失败: {str(e)}")
-            import traceback
             logger.error(traceback.format_exc())
             return False, f"保存失败: {str(e)}"
 
@@ -461,7 +464,6 @@ class PageEditor(QObject):
             return True, f"已在第{page_num}页后插入空白页"
         except Exception as e:
             logger.error(f"插入空白页失败: {str(e)}")
-            import traceback
             logger.error(f"插入空白页失败，堆栈信息: {traceback.format_exc()}")
             return False, f"插入空白页失败: {str(e)}"
     
@@ -523,7 +525,6 @@ class PageEditor(QObject):
             return True, f"已删除第{page_num}页"
         except Exception as e:
             logger.error(f"删除页面失败: {str(e)}")
-            import traceback
             logger.error(f"删除页面失败，堆栈信息: {traceback.format_exc()}")
             return False, f"删除页面失败: {str(e)}"
     
@@ -576,7 +577,6 @@ class PageEditor(QObject):
             return True, f"已将第{page_num}页旋转{rotation}度"
         except Exception as e:
             logger.error(f"旋转页面失败: {str(e)}")
-            import traceback
             logger.error(f"旋转页面失败，堆栈信息: {traceback.format_exc()}")
             return False, f"旋转页面失败: {str(e)}"
     
@@ -615,10 +615,6 @@ class PageEditor(QObject):
             except Exception as e:
                 # 如果打开失败或需要密码
                 password = None
-
-                # 导入密码对话框
-                from app.ui.password_dialog import PasswordDialog
-
                 # 获取主窗口作为对话框的父窗口
                 main_window = None
                 if hasattr(QApplication, 'activeWindow'):
@@ -681,7 +677,6 @@ class PageEditor(QObject):
                 logger.debug(f"插入的页面索引: {inserted_page_indices}, 当前总页数: {len(self.pdf_processor.fitz_document)}")
             except Exception as insert_e:
                 logger.error(f"插入PDF页面时出错: {insert_e}")
-                import traceback
                 logger.error(traceback.format_exc())
                 insert_doc.close()
                 return False, f"插入PDF页面失败: {str(insert_e)}"
@@ -716,8 +711,6 @@ class PageEditor(QObject):
                 logger.debug(f"移动后总页数: {len(self.pdf_processor.fitz_document)}")
             except Exception as move_e:
                 logger.error(f"移动页面时出错: {move_e}")
-                import traceback
-                logger.error(traceback.format_exc())
                 return False, f"移动PDF页面失败: {str(move_e)}"
 
             # 更新状态
@@ -730,16 +723,12 @@ class PageEditor(QObject):
             if hasattr(self.pdf_processor, 'clear_render_cache'):
                 self.pdf_processor.clear_render_cache()
 
-            # 注意：这里不立即保存到原始文件，只标记为已修改
-            # 用户点击保存时才会写入原始文件
-
             # 发出状态变化信号，通知界面更新按钮状态
             self._emit_state_changed()
 
             return True, f"已从{os.path.basename(pdf_path)}插入{insert_pages_count}页"
         except Exception as e:
             logger.error(f"插入PDF页面失败: {str(e)}")
-            import traceback
             logger.error(f"插入PDF页面失败，堆栈信息: {traceback.format_exc()}")
             return False, f"插入PDF页面失败: {str(e)}"
     
@@ -812,25 +801,21 @@ class PageEditor(QObject):
                 # 使用fitz在指定位置创建标准尺寸的新页面
                 new_page = self.pdf_processor.fitz_document.new_page(insert_position, width=page_width, height=page_height)
 
-                # 计算图片在页面中的居中位置，考虑边距
                 # 水平居中（在可用宽度内居中）
                 x_offset = margin_x + (available_width - img_width) / 2
                 # 垂直居中（在可用高度内居中）
                 y_offset = margin_y + (available_height - img_height) / 2
 
                 # 将图片数据转换为字节
-                from io import BytesIO
                 img_bytes = BytesIO()
                 image.save(img_bytes, format='PNG')
                 img_bytes.seek(0)
 
-                # 插入图片到页面的居中位置
                 # 直接使用文件路径插入图片，保持原始质量
                 img_rect = fitz.Rect(x_offset, y_offset, x_offset + img_width, y_offset + img_height)
                 new_page.insert_image(img_rect, filename=image_path)
 
             except Exception as e:
-                import traceback
                 logger.error(f"图片转换失败: {str(e)}\n{traceback.format_exc()}")
                 return False, f"图片转换失败: {str(e)}"
 
@@ -844,15 +829,11 @@ class PageEditor(QObject):
             if hasattr(self.pdf_processor, 'clear_render_cache'):
                 self.pdf_processor.clear_render_cache()
 
-            # 注意：这里不立即保存到原始文件，只标记为已修改
-            # 用户点击保存时才会写入原始文件
-
             # 发出状态变化信号，通知界面更新按钮状态
             self._emit_state_changed()
 
             return True, f"已从{os.path.basename(image_path)}插入图片页面"
         except Exception as e:
-            import traceback
             logger.error(f"插入图片页面失败: {str(e)}\n{traceback.format_exc()}")
             return False, f"插入图片页面失败: {str(e)}"
     

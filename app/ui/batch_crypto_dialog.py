@@ -1,14 +1,12 @@
 """批量PDF加解密处理对话框"""
 
 import os
-import threading
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
                              QPushButton, QTableWidget, QTableWidgetItem,
                              QHeaderView, QProgressBar, QFileDialog, QGroupBox,
-                             QLabel, QLineEdit, QCheckBox, QFormLayout, QFrame,
+                             QLabel, QLineEdit, QCheckBox, QFormLayout, QFrame, QMessageBox,
                              QToolButton)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont, QIcon
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 import fitz  # PyMuPDF
 from app.utils.logger import get_logger
 
@@ -515,7 +513,6 @@ class BatchCryptoDialog(QDialog):
             
         if current_table.rowCount() == 0:
             # 使用警告对话框而不是状态标签
-            from PyQt5.QtWidgets import QMessageBox
             QMessageBox.warning(self, "警告", "请先添加需要处理的文件")
             return
         
@@ -530,7 +527,6 @@ class BatchCryptoDialog(QDialog):
             password = self.decrypt_password_input.text()
         
         if not password:
-            from PyQt5.QtWidgets import QMessageBox
             QMessageBox.warning(self, "警告", "请输入密码")
             return
         

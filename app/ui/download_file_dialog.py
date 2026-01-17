@@ -2,16 +2,17 @@
 下载远程文件对话框
 允许用户输入URL并选择下载插件来下载文件
 """
-
+import os
+import tempfile
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
-                             QLabel, QLineEdit, QComboBox, QPushButton, 
-                             QProgressBar, QMessageBox, QWidget, QApplication)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+                             QLabel, QLineEdit,  QPushButton, 
+                             QProgressBar, QMessageBox)
+from PyQt5.QtCore import QThread, pyqtSignal
 from app.managers.download_plugin_manager import download_plugin_manager
 from app.config.download_plugin_config import download_config_manager
 from app.utils.logger import get_logger
-import os
-import tempfile
+
+from app.core.download.download_plugin_interface import DownloadResult, DownloadErrorCode
 
 
 logger = get_logger('download_file_dialog')
@@ -54,7 +55,6 @@ class DownloadWorker(QThread):
             self.download_finished.emit(result)
             
         except Exception as e:
-            from app.core.download.download_plugin_interface import DownloadResult, DownloadErrorCode
             error_result = DownloadResult(
                 code=DownloadErrorCode.DOWNLOAD_FAILED,
                 message=f"下载线程异常: {str(e)}",

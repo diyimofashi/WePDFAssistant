@@ -3,7 +3,7 @@
 from typing import Dict
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                             QPushButton, QRadioButton, QButtonGroup, 
-                            QLineEdit, QSpinBox, QMessageBox, QCheckBox,
+                            QLineEdit, QSpinBox,
                             QListWidget, QListWidgetItem, QGroupBox)
 from PyQt5.QtCore import Qt
 

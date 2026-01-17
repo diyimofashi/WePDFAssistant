@@ -6,8 +6,6 @@ OCR可搜索PDF管理器
 import os
 import tempfile
 import fitz
-import json
-import base64
 import traceback
 from typing import Dict, Optional, Tuple
 import threading
@@ -264,7 +262,6 @@ class OCRSearchablePDFHandler:
                         scale_y = new_page.rect.height / pix.height
                         
                         # 使用OCRSearchablePDF的add_text_layer方法
-                        from app.core.ocr.ocr_searchable_pdf import OCRSearchablePDF
                         processor = OCRSearchablePDF(
                             ocr_plugin_manager=self.ocr_searchable_manager.ocr_plugin_manager,
                             ocr_config_manager=self.ocr_searchable_manager.ocr_config_manager
@@ -398,7 +395,6 @@ class OCRSearchablePDFHandler:
                         scale_y = new_page.rect.height / pix.height
                         
                         # 使用OCRSearchablePDF的add_text_layer方法
-                        from app.core.ocr.ocr_searchable_pdf import OCRSearchablePDF
                         processor = OCRSearchablePDF(
                             ocr_plugin_manager=self.ocr_searchable_manager.ocr_plugin_manager,
                             ocr_config_manager=self.ocr_searchable_manager.ocr_config_manager
@@ -484,7 +480,6 @@ class OCRSearchablePDFHandler:
                         scale_y = new_page.rect.height / pix.height
                         
                         # 使用OCRSearchablePDF的add_text_layer方法
-                        from app.core.ocr.ocr_searchable_pdf import OCRSearchablePDF
                         processor = OCRSearchablePDF(
                             ocr_plugin_manager=self.ocr_searchable_manager.ocr_plugin_manager,
                             ocr_config_manager=self.ocr_searchable_manager.ocr_config_manager
@@ -497,7 +492,7 @@ class OCRSearchablePDFHandler:
                     scale_x = new_page.rect.width / pix.width
                     scale_y = new_page.rect.height / pix.height
                     
-                    from app.core.ocr.ocr_searchable_pdf import OCRSearchablePDF
+                    
                     processor = OCRSearchablePDF(
                         ocr_plugin_manager=self.ocr_searchable_manager.ocr_plugin_manager,
                         ocr_config_manager=self.ocr_searchable_manager.ocr_config_manager
@@ -579,7 +574,6 @@ class OCRSearchablePDFHandler:
                         scale_y = new_page.rect.height / pix.height
                         
                         # 使用OCRSearchablePDF的add_text_layer方法
-                        from app.core.ocr.ocr_searchable_pdf import OCRSearchablePDF
                         processor = OCRSearchablePDF(
                             ocr_plugin_manager=self.ocr_searchable_manager.ocr_plugin_manager,
                             ocr_config_manager=self.ocr_searchable_manager.ocr_config_manager
@@ -592,7 +586,6 @@ class OCRSearchablePDFHandler:
                     scale_x = new_page.rect.width / pix.width
                     scale_y = new_page.rect.height / pix.height
                     
-                    from app.core.ocr.ocr_searchable_pdf import OCRSearchablePDF
                     processor = OCRSearchablePDF(
                         ocr_plugin_manager=self.ocr_searchable_manager.ocr_plugin_manager,
                         ocr_config_manager=self.ocr_searchable_manager.ocr_config_manager

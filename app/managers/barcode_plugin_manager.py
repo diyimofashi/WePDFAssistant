@@ -7,10 +7,12 @@ import os
 import sys
 import importlib.util
 import traceback
+import inspect
 from typing import Dict, List, Any, Optional
 from app.core.barcode.barcode_plugin_interface import BarcodePluginInterface, BarcodeResult, BarcodeErrorCode
 from app.utils.logger import get_logger
 from app.config.barcode_plugin_config import barcode_config_manager
+
 
 logger = get_logger('barcode_plugin_manager')
 
@@ -113,7 +115,6 @@ class BarcodePluginManager:
             
             # 创建插件实例
             # 检查是否需要传递参数给构造函数
-            import inspect
             sig = inspect.signature(api_class.__init__)
             if len(sig.parameters) > 1:  # 除了self之外还有参数
                 # 对于需要参数的插件，传递默认的全局配置

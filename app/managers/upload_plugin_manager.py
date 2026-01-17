@@ -7,6 +7,7 @@ import os
 import sys
 import importlib.util
 import traceback
+import inspect
 from typing import Dict, List, Any, Optional
 from app.core.upload.upload_plugin_interface import UploadPluginInterface, UploadResult, UploadErrorCode
 from app.config.upload_plugin_config import upload_config_manager
@@ -104,7 +105,6 @@ class UploadPluginManager:
             
             # 创建插件实例
             # 检查是否需要传递参数给构造函数
-            import inspect
             sig = inspect.signature(api_class.__init__)
             if len(sig.parameters) > 1:  # 除了self之外还有参数
                 # 对于需要参数的插件，传递默认的全局配置

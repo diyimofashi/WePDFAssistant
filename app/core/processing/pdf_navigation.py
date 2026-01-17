@@ -13,10 +13,6 @@ sys.path.insert(0, project_root)
 from app.utils.logger import get_logger
 logger = get_logger('pdf_navigation')
 
-from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor
-from PyQt5.QtCore import QObject, pyqtSignal
-from PyQt5.QtCore import Qt as QtCore
 
 class PDFNavigation:
     """PDF导航器 - 专门处理页面导航和缩放功能"""

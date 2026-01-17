@@ -1,10 +1,9 @@
 import os
 import base64
-import requests
+import traceback
 import fitz  # PyMuPDF
-from io import BytesIO
+import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
 import json
 
 
@@ -76,7 +75,6 @@ class OCRSearchablePDF:
                         
                 except Exception as e:
                     logger.error(f"第 {page_num + 1} 页OCR处理失败: {e}")
-                    import traceback
                     logger.error(traceback.format_exc())
                     
                     # 即使失败也要保存页面信息，避免后续处理出错
@@ -100,9 +98,6 @@ class OCRSearchablePDF:
                 img_data = result_info['img_data']
                 pix = result_info['pix']
                 ocr_result = result_info['ocr_result']
-                with open(f"page_{page_num + 1}_ocr_result.json", "w", encoding="utf-8") as f:
-                    json.dump(ocr_result, f, ensure_ascii=False, indent=4, sort_keys=True)
-                
                 # 创建新页面（保持原始页面尺寸）
                 new_page = output_doc.new_page(width=page.rect.width, height=page.rect.height)
                 
@@ -193,7 +188,6 @@ class OCRSearchablePDF:
                 
         except Exception as e:
             logger.error(f"OCR插件调用失败: {e}")
-            import traceback
             logger.debug(f"详细错误信息: {traceback.format_exc()}")
             return None
 
@@ -213,7 +207,6 @@ class OCRSearchablePDF:
         # 为支持多语言文本搜索，在页面上插入通用字体
         try:
             # 首先尝试使用用户提供的字体文件
-            import os
             custom_font_path = os.path.join(os.path.dirname(__file__), "fonts", "msyh.ttf")
             logger.debug(f"正在尝试插入用户字体: {custom_font_path}")
             if os.path.exists(custom_font_path):
@@ -327,7 +320,6 @@ class OCRSearchablePDF:
                 rel_y = point.y - center_y
                 
                 # 根据旋转角度调整坐标
-                import math
                 rad = math.radians(-protation)  # 负号是因为我们需要反向旋转
                 cos_val = math.cos(rad)
                 sin_val = math.sin(rad)

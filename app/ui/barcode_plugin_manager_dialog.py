@@ -3,14 +3,13 @@
 提供GUI界面来管理条码插件
 """
 
-import os
-import sys
-from typing import Dict, Any
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, 
-                            QPushButton, QComboBox, QLabel, QGroupBox, 
-                            QTextEdit, QProgressBar, QFileDialog, QMessageBox,
-                            QListWidget, QListWidgetItem, QWidget, QFormLayout)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from typing import Dict
+import datetime
+from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, 
+                            QPushButton,  QLabel, QGroupBox, 
+                            QTextEdit,  QFileDialog, QMessageBox,
+                            QListWidget, QListWidgetItem, QFormLayout)
+from PyQt5.QtCore import Qt
 from app.managers.barcode_plugin_manager import barcode_plugin_manager
 from app.config.barcode_plugin_config import barcode_config_manager
 from app.core.barcode.barcode_integration import barcode_integration
@@ -302,6 +301,5 @@ class BarcodePluginManagerDialog(QDialog):
     
     def log_message(self, message: str):
         """记录日志消息"""
-        import datetime
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         self.log_output.append(f"[{timestamp}] {message}")

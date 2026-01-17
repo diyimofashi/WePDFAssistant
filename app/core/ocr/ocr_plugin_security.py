@@ -9,6 +9,7 @@ import threading
 import time
 import psutil
 import signal
+import re
 from typing import Dict, Any, List, Callable
 from functools import wraps
 from app.utils.logger import get_logger
@@ -283,7 +284,6 @@ class PluginSecurityManager:
                                 content = f.read()
                                 
                                 for pattern in suspicious_patterns:
-                                    import re
                                     if re.search(pattern, content):
                                         findings.append(f"{file_path}: 发现可疑模式 - {pattern}")
                                         

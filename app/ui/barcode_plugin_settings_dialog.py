@@ -5,16 +5,19 @@
 
 import json
 import fitz  # PyMuPDF
+import os
+import json
 from typing import Dict, Any
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
-                            QPushButton, QLineEdit, QTextEdit, QCheckBox,
+from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFileDialog,
+                            QPushButton, QLineEdit, QProgressDialog, QCheckBox,
                             QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget,
-                            QMessageBox, QLabel, QComboBox, QScrollArea, QButtonGroup, QRadioButton,
+                            QMessageBox, QLabel, QComboBox, QScrollArea,
                             QSizePolicy, QWidget, QLayout, QGridLayout, QApplication)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from app.managers.barcode_plugin_manager import barcode_plugin_manager
 from app.config.barcode_plugin_config import barcode_config_manager
+from app.utils.logger import get_logger
 
 
 class BarcodeSettingsDialog(QDialog):
@@ -148,7 +151,6 @@ class BarcodeSettingsDialog(QDialog):
                 errors = self.config_manager.set_plugin_config(plugin_name, config)
                 if errors:
                     # 显示验证错误
-                    from PyQt5.QtWidgets import QMessageBox
                     error_msg = "\n".join([f"{key}: {msg}" for key, msg in errors.items()])
                     QMessageBox.warning(self, "配置验证失败", 
                                       f"插件 {plugin_name} 配置验证失败:\n{error_msg}")
@@ -161,17 +163,13 @@ class BarcodeSettingsDialog(QDialog):
             super().accept()
             
         except Exception as e:
-            from app.utils.logger import get_logger
             logger = get_logger('barcode_settings_dialog')
             logger.error(f"保存配置时出错: {e}")
-            from PyQt5.QtWidgets import QMessageBox
             QMessageBox.critical(self, "保存失败", f"保存配置时发生错误: {str(e)}")
     
     def test_detection(self):
         """测试检测功能"""
         try:
-            from PyQt5.QtWidgets import QMessageBox, QFileDialog
-            
             # 获取当前选中的插件
             current_tab_index = self.tab_widget.currentIndex()
             if current_tab_index < 0:
@@ -205,7 +203,6 @@ class BarcodeSettingsDialog(QDialog):
             # 根据文件类型调用相应的检测方法
             if file_path.lower().endswith('.pdf'):
                 # 对于PDF文件，使用插件的PDF检测功能
-                import fitz
                 doc = fitz.open(file_path)
                 try:
                     result = plugin.detect_from_pdf(doc, config)
@@ -221,14 +218,11 @@ class BarcodeSettingsDialog(QDialog):
                 QMessageBox.warning(self, "测试检测结果", f"检测失败:\n{result.message}")
             
         except Exception as e:
-            from PyQt5.QtWidgets import QMessageBox
             QMessageBox.critical(self, "错误", f"测试检测时出错: {str(e)}")
     
     def start_split(self):
         """开始拆分功能"""
         try:
-            from PyQt5.QtWidgets import QMessageBox, QFileDialog
-            from app.utils.logger import get_logger
             logger = get_logger('barcode_settings_dialog')
 
             # 获取当前选中的插件
@@ -263,7 +257,6 @@ class BarcodeSettingsDialog(QDialog):
                 return  # 用户取消了选择
 
             # 如果没有配置输出目录，则使用PDF文件所在目录+文件名同名目录
-            import os
             output_dir = config.get('output_dir', '')
             if not output_dir:
                 file_dir = os.path.dirname(file_path)  # PDF文件所在目录
@@ -274,10 +267,6 @@ class BarcodeSettingsDialog(QDialog):
             
             # 调用插件的拆分功能
             doc = fitz.open(file_path)
-            
-            # 使用插件进行拆分，带进度反馈
-            from PyQt5.QtWidgets import QProgressDialog
-            from PyQt5.QtCore import Qt
             
             # 创建进度对话框
             progress_dialog = QProgressDialog("正在拆分文档...", "取消", 0, 100, self)
@@ -319,7 +308,6 @@ class BarcodeSettingsDialog(QDialog):
             doc.close()
             
         except Exception as e:
-            from PyQt5.QtWidgets import QMessageBox
             QMessageBox.critical(self, "错误", f"开始拆分时出错: {str(e)}")
     
     def get_plugin_config_for_saving(self, plugin_name):
@@ -348,7 +336,6 @@ class BarcodeSettingsDialog(QDialog):
                     ]
                 config[key] = enabled_types
             else:
-                from app.utils.logger import get_logger
                 logger = get_logger('barcode_settings_dialog')
                 logger.debug(f"获取配置项 {key}, widget类型={type(widget).__name__}")
                 value = self.get_widget_value(widget)
@@ -360,7 +347,6 @@ class BarcodeSettingsDialog(QDialog):
                 # 添加日志记录配置值
                 logger.debug(f"配置项 {key}: {value} (类型: {type(value).__name__})")
 
-        from app.utils.logger import get_logger
         logger = get_logger('barcode_settings_dialog')
         return config
     
@@ -433,7 +419,6 @@ class BarcodeSettingsDialog(QDialog):
     
     def _select_output_directory(self, line_edit):
         """选择输出目录"""
-        from PyQt5.QtWidgets import QFileDialog
         directory = QFileDialog.getExistingDirectory(
             self, "选择输出目录", line_edit.text() or ""
         )
@@ -1207,7 +1192,6 @@ class BarcodeSettingsDialog(QDialog):
     def load_settings(self):
         """加载设置"""
         try:
-            from app.utils.logger import get_logger
             logger = get_logger('barcode_settings_dialog')
             # 为每个插件加载配置（使用带默认值的加载方法）
             for plugin_name in self.plugin_manager.list_plugins():
@@ -1235,7 +1219,6 @@ class BarcodeSettingsDialog(QDialog):
     def _load_barcode_type_checkboxes(self, plugin_name, enabled_types):
         """加载条码类型复选框的状态"""
         try:
-            from app.utils.logger import get_logger
             logger = get_logger('barcode_settings_dialog')
 
             if plugin_name not in self.plugin_widgets:
@@ -1277,7 +1260,6 @@ class BarcodeSettingsDialog(QDialog):
     def set_widget_value(self, widget, value):
         """设置控件的值"""
         try:
-            from app.utils.logger import get_logger
             logger = get_logger('barcode_settings_dialog')
             logger.debug(f"set_widget_value: widget类型={type(widget).__name__}, value={value}, widget类={widget.__class__.__name__}")
 
@@ -1292,7 +1274,6 @@ class BarcodeSettingsDialog(QDialog):
                         for key, w in plugin_widgets.items():
                             if w is widget and key == 'filter_region':
                                 # filter_region用JSON格式显示
-                                import json
                                 widget.setText(json.dumps(value))
                                 break
                         else:
@@ -1355,7 +1336,6 @@ class BarcodeSettingsDialog(QDialog):
     def save_settings(self):
         """保存设置"""
         try:
-            from app.utils.logger import get_logger
             logger = get_logger('barcode_settings_dialog')
             success = True
             error_messages = []
@@ -1416,7 +1396,6 @@ class BarcodeSettingsDialog(QDialog):
     def get_widget_value(self, widget):
         """获取控件的值"""
         try:
-            from app.utils.logger import get_logger
             logger = get_logger('barcode_settings_dialog')
             print(f"[DEBUG] get_widget_value: widget类型={type(widget).__name__}, widget类={widget.__class__.__name__}")
 
@@ -1448,7 +1427,6 @@ class BarcodeSettingsDialog(QDialog):
                                     logger.debug("filter_region字段为空，返回[]")
                                     return []
                                 try:
-                                    import json
                                     result = json.loads(text)
                                     logger.debug(f"filter_region字段(JSON解析): {result}")
                                     return result
@@ -1532,7 +1510,6 @@ class BarcodeSettingsDialog(QDialog):
                 logger.debug(f"get_widget_value: 未知控件类型 {type(widget).__name__}")
                 return None
         except Exception as e:
-            from app.utils.logger import get_logger
             logger = get_logger('barcode_settings_dialog')
             logger.error(f"获取控件值时出错: {e}", exc_info=True)
             return None

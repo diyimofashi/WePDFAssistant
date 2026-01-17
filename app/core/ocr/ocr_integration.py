@@ -3,16 +3,16 @@ OCR系统与现有应用集成模块
 提供简单的API接口调用插件功能
 """
 
-import os
 import threading
 import time
-from typing import Dict, List, Any, Callable, Optional
+import json
+from typing import Dict, List, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.managers.ocr_plugin_manager import ocr_plugin_manager
 from app.config.ocr_plugin_config import ocr_config_manager
 from .ocr_plugin_interface import OCRResult, OCRErrorCode
 from .ocr_plugin_security import security_manager
-from .ocr_error_handler import error_handler, audit_logger
+from .ocr_error_handler import error_handler
 from app.utils.logger import get_logger
 
 logger = get_logger('ocr_integration')
@@ -412,7 +412,6 @@ class OCRIntegration:
         
         elif format_type == "json":
             # JSON格式
-            import json
             return json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
         
         elif format_type == "structured":

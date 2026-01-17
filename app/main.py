@@ -1,7 +1,8 @@
 
 import sys
 import os
-
+from PyQt5.QtGui import QPixmap, QPainter, QColor, QPen, QFont, QIcon
+from PyQt5.QtWidgets import QApplication
 # 添加项目根目录到Python路径
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
@@ -16,7 +17,7 @@ from app.core.main.upload_manager_mixin import UploadManagerMixin
 from app.core.main.download_manager_mixin import DownloadManagerMixin
 from app.core.main.operation_manager_mixin import OperationManagerMixin
 from app.core.main.shortcut_manager_mixin import ShortcutManagerMixin
-
+from app.config.settings import AppSettings
 
 class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailManagerMixin,
                   SearchManagerMixin, OCRManagerMixin, UploadManagerMixin,
@@ -140,9 +141,6 @@ class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailMana
 
 def get_app_icon():
     """获取应用程序图标，优先使用外部图标文件，否则使用内置生成的图标"""
-    import os
-    from PyQt5.QtGui import QIcon
-    
     # 尝试加载外部图标文件
     icon_paths = [
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app', 'assets', 'app_icon.ico'),
@@ -161,7 +159,6 @@ def get_app_icon():
 
 def create_builtin_icon():
     """创建内置应用程序图标"""
-    from PyQt5.QtGui import QPixmap, QPainter, QColor, QPen, QFont
     # 创建一个128x128像素的图标
     pixmap = QPixmap(128, 128)
     pixmap.fill(QColor(255, 255, 255))  # 白色背景
@@ -188,16 +185,11 @@ def create_builtin_icon():
     painter.drawText(45, 95, "A")
     
     painter.end()
-    
-    from PyQt5.QtGui import QIcon
     return QIcon(pixmap)
 
 
 def main():
     """主函数"""
-    from PyQt5.QtWidgets import QApplication
-    from app.config.settings import AppSettings
-    
     app = QApplication(sys.argv)
     
     app.setApplicationName(AppSettings.APP_NAME)

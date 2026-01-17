@@ -16,9 +16,10 @@ logger = get_logger('shortcut_settings_dialog')
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QLineEdit, QTableWidget,
                              QTableWidgetItem, QHeaderView, QMessageBox, QComboBox,
-                             QSplitter, QWidget, QAbstractItemView)
+                             QAbstractItemView)
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QKeySequence
+from app.config.shortcut_config import ShortcutConfig
 
 
 class ShortcutInputDialog(QDialog):
@@ -117,8 +118,6 @@ class ShortcutInputDialog(QDialog):
 
     def keyPressEvent(self, event):
         """处理键盘事件，捕获快捷键"""
-        from PyQt5.QtGui import QKeySequence
-
         # 忽略某些按键
         if event.key() in [Qt.Key_Escape, Qt.Key_Enter, Qt.Key_Return]:
             return
@@ -271,7 +270,6 @@ class ShortcutSettingsDialog(QDialog):
     def _load_shortcuts(self):
         """加载快捷键数据"""
         # 获取所有快捷键
-        from app.config.shortcut_config import ShortcutConfig
         self.all_shortcuts = ShortcutConfig.get_all_shortcuts()
 
         # 填充分类下拉框
@@ -339,8 +337,6 @@ class ShortcutSettingsDialog(QDialog):
 
     def _on_modify_clicked(self, action_id):
         """修改按钮点击事件"""
-        from app.config.shortcut_config import ShortcutConfig
-
         # 获取当前快捷键
         current_shortcut = ShortcutConfig.get_shortcut(action_id)
 

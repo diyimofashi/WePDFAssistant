@@ -4,16 +4,18 @@ import os
 import re
 from typing import List, Dict, Tuple, Optional
 import fitz  # PyMuPDF
+import subprocess
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                            QPushButton, QSpinBox, QCheckBox, QRadioButton,
+                            QPushButton, QSpinBox, QRadioButton,
                             QButtonGroup, QTextEdit, QProgressBar, QMessageBox,
-                            QGroupBox, QGridLayout, QComboBox, QLineEdit,
-                            QListWidget, QListWidgetItem, QSplitter, QWidget,
+                            QGroupBox, QLineEdit, QWidget,
                             QFileDialog)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QIcon, QFont, QPixmap
+from PyQt5.QtCore import QThread, pyqtSignal
+
 from app.utils.logger import get_logger
 from app.config.settings import AppSettings
+from app.ui.barcode_split_dialog import BarcodeSplitDialog
+from app.core.barcode.barcode_split_processor import BarcodeSplitThread
 
 logger = get_logger('split_manager')
 
@@ -544,9 +546,6 @@ class SplitDialog(QDialog):
     def start_barcode_split(self):
         """启动条码拆分"""
         try:
-            from app.ui.barcode_split_dialog import BarcodeSplitDialog
-            from app.core.barcode.barcode_split_processor import BarcodeSplitThread
-            
             current_file_path = self.pdf_processor.current_file
             if not current_file_path:
                 QMessageBox.warning(self, "警告", "请先打开PDF文件")
@@ -614,7 +613,6 @@ class SplitDialog(QDialog):
                         logger.info(f"尝试打开目录: {normalized_dir}")
                         
                         if os.path.exists(normalized_dir):
-                            import subprocess
                             subprocess.Popen(['explorer', normalized_dir])
                         else:
                             QMessageBox.warning(self, "目录不存在", f"指定的输出目录不存在：\n{normalized_dir}")
@@ -660,7 +658,6 @@ class SplitDialog(QDialog):
                         logger.info(f"尝试打开目录: {normalized_dir}")
                         
                         if os.path.exists(normalized_dir):
-                            import subprocess
                             subprocess.Popen(['explorer', normalized_dir])
                         else:
                             QMessageBox.warning(self, "目录不存在", f"指定的输出目录不存在：\n{normalized_dir}")

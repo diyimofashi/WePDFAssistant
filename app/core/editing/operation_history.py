@@ -5,6 +5,7 @@
 
 import os
 import sys
+import json
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from enum import Enum
@@ -215,8 +216,6 @@ class OperationHistory(QObject):
     def save_history(self, file_path: str) -> bool:
         """保存历史记录到文件"""
         try:
-            import json
-            
             history_data = {
                 'undo_stack': [op.to_dict() for op in self.undo_stack],
                 'redo_stack': [op.to_dict() for op in self.redo_stack],
@@ -236,8 +235,6 @@ class OperationHistory(QObject):
     def load_history(self, file_path: str) -> bool:
         """从文件加载历史记录"""
         try:
-            import json
-            
             if not os.path.exists(file_path):
                 logger.warning(f"历史记录文件不存在: {file_path}")
                 return False

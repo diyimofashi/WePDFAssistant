@@ -4,6 +4,7 @@ import fitz
 from PIL import Image, ImageEnhance, ImageFilter
 import io
 import base64
+import re
 from typing import List, Dict, Optional, Tuple, Callable
 from app.utils.logger import get_logger
 
@@ -198,7 +199,12 @@ class BarcodeDetector:
                 # 首先尝试使用pyzbar，针对启用的条码类型
                 pyzbar_success = False
                 try:
-                    from pyzbar.pyzbar import decode as pyzbar_decode, ZBarSymbol
+                    try:
+                        from pyzbar.pyzbar import decode as pyzbar_decode, ZBarSymbol
+                    except ImportError:
+                        pyzbar_decode = None
+                        ZBarSymbol = None
+                        raise
                     
                     # 如果启用了所有类型，则不指定符号类型
                     if "ALL_TYPES" in self.enabled_types or len(self.enabled_types) == len(self.BARCODE_TYPES):
@@ -394,7 +400,6 @@ class BarcodeDetector:
             
             # 适度的对比度增强（避免过度处理）
             try:
-                from PIL import ImageEnhance
                 # 增强对比度
                 enhancer = ImageEnhance.Contrast(gray_image)
                 contrast_image = enhancer.enhance(1.3)  # 增加30%对比度
@@ -456,14 +461,12 @@ class BarcodeDetector:
             
             if include_regex:
                 try:
-                    import re
                     include_pattern = re.compile(include_regex, re.IGNORECASE)
                 except Exception as e:
                     logger.warning(f"编译包含正则表达式失败: {e}")
             
             if exclude_regex:
                 try:
-                    import re
                     exclude_pattern = re.compile(exclude_regex, re.IGNORECASE)
                 except Exception as e:
                     logger.warning(f"编译排除正则表达式失败: {e}")

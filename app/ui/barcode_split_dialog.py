@@ -4,10 +4,10 @@ import os
 from typing import List
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, 
                            QCheckBox, QLineEdit, QSpinBox, QPushButton, QFileDialog,
-                           QRadioButton, QButtonGroup, QComboBox, QFrame, QScrollArea,
-                           QWidget, QGridLayout, QMessageBox, QProgressBar, QTextEdit,
+                           QRadioButton, QButtonGroup, QProgressDialog,  QScrollArea,
+                           QWidget, QGridLayout, QMessageBox,
                            QSizePolicy, QApplication, QLayout)
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QDateTime
 from app.utils.logger import get_logger
 from app.config.barcode_split_config import (
     BarcodeSplitConfig, BarcodeSplitConfigManager, 
@@ -15,6 +15,7 @@ from app.config.barcode_split_config import (
 )
 from app.core.barcode.barcode_detector import BarcodeDetector, BarcodeInfo
 from app.core.barcode.barcode_detection_thread import BarcodeDetectionThread
+from app.ui.barcode_result_dialog import BarcodeResultDialog
 
 logger = get_logger('barcode_split_dialog')
 
@@ -416,7 +417,6 @@ class BarcodeSplitDialog(QDialog):
                 enabled_types = list(detector.BARCODE_TYPES.keys())
             
             # 显示进度对话框
-            from PyQt5.QtWidgets import QProgressDialog
             self.progress_dialog = QProgressDialog("正在检测条码...", "取消", 0, 100, self)
             self.progress_dialog.setWindowModality(Qt.WindowModal)
             self.progress_dialog.setAutoReset(False)
@@ -476,7 +476,6 @@ class BarcodeSplitDialog(QDialog):
             
             # 保存检测结果到主窗口缓存
             if hasattr(self.parent(), 'last_barcode_detection_result'):
-                from PyQt5.QtCore import QDateTime
                 self.parent().last_barcode_detection_result = {
                     'file_path': self.current_file_path,
                     'config': config,
@@ -508,9 +507,6 @@ class BarcodeSplitDialog(QDialog):
     
     def _display_barcodes(self, barcodes):
         """显示检测到的条码"""
-        # 导入结果对话框
-        from app.ui.barcode_result_dialog import BarcodeResultDialog
-        
         # 创建并显示结果对话框
         result_dialog = BarcodeResultDialog(barcodes, self)
         result_dialog.exec_()

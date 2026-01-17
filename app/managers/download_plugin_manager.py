@@ -9,7 +9,6 @@ from typing import Dict, Any, List
 from app.core.download.download_plugin_interface import DownloadPluginInterface, DownloadResult, DownloadErrorCode
 from app.utils.logger import get_logger
 
-
 logger = get_logger('download_plugin_manager')
 
 
@@ -233,9 +232,6 @@ class DownloadPluginManager:
                 return getattr(plugin, 'PluginInfo', {})
             else:
                 # 如果插件没有PluginInfo，尝试从配置文件加载
-                import os
-                import importlib.util
-                
                 # 获取项目根目录
                 app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 plugin_dir = os.path.join(app_root, 'plugins-download', plugin_name)

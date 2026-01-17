@@ -1,10 +1,11 @@
 """右键菜单管理器"""
-
+import traceback
 from PyQt5.QtWidgets import QMenu
 from PyQt5.QtCore import Qt, QPoint
 from app.utils.logger import get_logger
 from app.ui.context_menu_styles import ContextMenuStyles
 from app.ui.context_menu_builders import ContextMenuBuilder, ContextType
+from app.config.settings import AppSettings
 
 logger = get_logger(__name__)
 
@@ -72,7 +73,6 @@ class ContextMenuManager:
             
         except Exception as e:
             logger.error(f"检测上下文失败: {e}")
-            import traceback
             logger.error(traceback.format_exc())
             return ContextType.GENERAL, {}
     
@@ -96,7 +96,6 @@ class ContextMenuManager:
             if hasattr(self.main_window, 'theme'):
                 menu.setStyleSheet(ContextMenuStyles.get_stylesheet(self.main_window.theme))
             else:
-                from app.config.settings import AppSettings
                 menu.setStyleSheet(ContextMenuStyles.get_stylesheet(AppSettings.THEME))
             
             logger.debug(f"构建{context_type}类型菜单成功")
@@ -104,7 +103,6 @@ class ContextMenuManager:
             
         except Exception as e:
             logger.error(f"构建菜单失败: {e}")
-            import traceback
             logger.error(traceback.format_exc())
             return QMenu(self.main_window)
     
@@ -133,7 +131,6 @@ class ContextMenuManager:
             
         except Exception as e:
             logger.error(f"显示菜单失败: {e}")
-            import traceback
             logger.error(traceback.format_exc())
     
     def _handle_menu_action(self, action):

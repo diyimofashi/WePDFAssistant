@@ -3,6 +3,7 @@
 import os
 import fitz  # PyMuPDF - 用于PDF页面渲染
 import sys
+import math
 
 # 添加项目根目录到Python路径，解决模块导入问题
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,10 +13,6 @@ sys.path.insert(0, project_root)
 from app.utils.logger import get_logger
 logger = get_logger('pdf_search')
 
-from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor
-from PyQt5.QtCore import QObject, pyqtSignal
-from PyQt5.QtCore import Qt as QtCore
 
 class PDFSearch:
     """PDF搜索器 - 专门处理文本搜索和高亮功能"""
@@ -55,7 +52,6 @@ class PDFSearch:
         ]
         
         # 计算旋转角度的三角函数值
-        import math
         rad = math.radians(-rotation)  # 负号是因为我们需要反向旋转
         cos_val = math.cos(rad)
         sin_val = math.sin(rad)

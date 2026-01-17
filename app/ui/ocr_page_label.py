@@ -13,8 +13,8 @@ if project_root not in sys.path:
 from app.utils.logger import get_logger
 logger = get_logger('ocr_page_label')
 
-from PyQt5.QtWidgets import QLabel, QWidget, QTextEdit, QApplication, QVBoxLayout, QHBoxLayout
-from PyQt5.QtGui import QPixmap, QFont, QFontMetrics
+from PyQt5.QtWidgets import QLabel, QWidget, QTextEdit, QVBoxLayout
+from PyQt5.QtGui import QFont, QFontMetrics
 from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QTimer
 import traceback
 

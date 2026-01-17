@@ -7,7 +7,7 @@ import os
 import time
 import pickle
 import sys
-
+import hashlib
 # 添加项目根目录到Python路径，解决模块导入问题
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
@@ -18,7 +18,7 @@ logger = get_logger('cache_manager')
 
 from collections import OrderedDict
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import QObject, QTimer, pyqtSignal
+from PyQt5.QtCore import QObject, QTimer, QByteArray, QBuffer, QIODevice
 
 
 class LRUCache:
@@ -227,7 +227,6 @@ class DiskCache:
     def _get_cache_path(self, key):
         """获取缓存文件路径"""
         # 对key进行哈希以避免文件名过长
-        import hashlib
         hash_key = hashlib.md5(str(key).encode()).hexdigest()
         return os.path.join(self.cache_dir, f"{hash_key}.cache")
         
@@ -244,7 +243,6 @@ class DiskCache:
                         if isinstance(data['value'], dict) and 'pixmap_data' in data['value']:
                             # 从字节数据重建QPixmap
                             try:
-                                from PyQt5.QtGui import QPixmap
                                 pixmap = QPixmap()
                                 pixmap_data = data['value']['pixmap_data']
                                 # 确保pixmap_data是bytes类型
@@ -257,7 +255,6 @@ class DiskCache:
                                     return pixmap
                                 else:
                                     # 如果loadFromData失败，尝试其他方法
-                                    from PyQt5.QtCore import QByteArray
                                     byte_array = QByteArray(pixmap_data)
                                     if pixmap.loadFromData(byte_array):
                                         return pixmap
@@ -286,7 +283,6 @@ class DiskCache:
                         value = {'pixmap_data': pixmap_data}
                     else:
                         # 如果saveToData失败，尝试其他方法
-                        from PyQt5.QtCore import QByteArray, QBuffer, QIODevice
                         byte_array = QByteArray()
                         buffer = QBuffer(byte_array)
                         buffer.open(QIODevice.WriteOnly)
@@ -295,7 +291,6 @@ class DiskCache:
                 except Exception as e:
                     # 如果上面的方法都失败了，使用另一种方法
                     try:
-                        from PyQt5.QtCore import QByteArray, QBuffer, QIODevice
                         byte_array = QByteArray()
                         buffer = QBuffer(byte_array)
                         buffer.open(QIODevice.WriteOnly)

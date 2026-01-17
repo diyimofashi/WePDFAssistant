@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTextEdit,
                            QPushButton, QLabel, QGroupBox, QApplication)
 from PyQt5.QtCore import Qt
 from app.utils.logger import get_logger
+from collections import defaultdict
 
 logger = get_logger('barcode_result_dialog')
 
@@ -86,7 +87,6 @@ class BarcodeResultDialog(QDialog):
         unique_barcodes = self._get_unique_barcodes()
         
         # 按页码分组条码
-        from collections import defaultdict
         page_barcodes = defaultdict(list)
         for barcode in unique_barcodes:
             page_barcodes[barcode.page_num].append(barcode)

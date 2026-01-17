@@ -203,7 +203,7 @@ class ToolbarManager(QObject):
         ocr_menu.addAction(perform_all_pages_ocr_action)
 
         # 创建可搜索PDF
-        create_searchable_action = QAction("📄 创建可搜索PDF", self.parent)
+        create_searchable_action = QAction("📄 生成可搜索PDF", self.parent)
         create_searchable_action.triggered.connect(self.parent.create_searchable_pdf)
         ocr_menu.addAction(create_searchable_action)
 

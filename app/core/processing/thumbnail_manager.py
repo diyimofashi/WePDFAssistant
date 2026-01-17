@@ -4,9 +4,8 @@
 """
 
 from PyQt5.QtWidgets import QListWidget, QListWidgetItem, QMenu, QAction, QFileDialog, QMessageBox
-from PyQt5.QtGui import QIcon, QPixmap, QContextMenuEvent
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QThread, QTimer, QPoint
-import os
+from PyQt5.QtGui import QIcon, QPixmap
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QThread, QTimer
 import logging
 
 # 导入页面编辑功能
@@ -401,7 +400,6 @@ class ThumbnailManager(QListWidget):
             self._notify_main_window_changes()
             logger.debug("_notify_main_window_changes方法调用完成")
             # 添加延迟更新，确保按钮状态正确更新
-            from PyQt5.QtCore import QTimer
             QTimer.singleShot(100, self._notify_main_window_changes)
         else:
             QMessageBox.critical(self, "错误", message)

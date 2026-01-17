@@ -20,8 +20,6 @@ from PyQt5.QtCore import QObject, pyqtSignal
 from PyQt5.QtCore import Qt as QtCore
 
 import traceback
-# 导入新的异步加载器和缓存管理器
-# from .async_loader import AsyncThumbnailLoader, AsyncPageRenderer  # TODO: 恢复或重新实现异步加载器
 from ..performance.cache_manager import RenderCache, DiskCache
 from app.config.settings import AppSettings
 from .pdf_conversion import PDFConversion

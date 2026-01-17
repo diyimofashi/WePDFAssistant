@@ -11,10 +11,6 @@ sys.path.insert(0, project_root)
 from app.utils.logger import get_logger
 logger = get_logger('pdf_history_manager')
 
-from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor
-from PyQt5.QtCore import QObject, pyqtSignal
-from PyQt5.QtCore import Qt as QtCore
 
 # 导入操作历史记录管理器
 from ..editing.operation_history import OperationHistory, OperationType, OperationFactory

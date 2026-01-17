@@ -1,8 +1,19 @@
 """右键菜单构建器"""
-
+import tempfile
+import uuid
+import os
+import traceback
 from PyQt5.QtWidgets import QMenu, QAction
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication, QFileDialog, QMessageBox
+from PyQt5.QtCore import QTimer
 from app.utils.logger import get_logger
+from app.core.editing.page_editor import PageEditor
+import fitz
+from app.core.ocr.ocr_plugin_interface import OCRResult
+from app.core.ocr.ocr_plugin_interface import OCRErrorCode
+from base64 import b64encode
+from app.ui.screenshot_result_dialog import ScreenshotOCRResultDialog
 
 logger = get_logger(__name__)
 
@@ -64,7 +75,6 @@ class ContextMenuBuilder:
         logger.debug("所有位置都没有找到page_editor，尝试创建新的PageEditor实例")
         if hasattr(self.main_window, 'pdf_processor'):
             logger.debug("使用pdf_processor创建新的PageEditor实例")
-            from app.core.editing.page_editor import PageEditor
             new_page_editor = PageEditor(self.main_window.pdf_processor)
             # 同时设置到pdf_processor和thumbnail_list，以便后续使用
             self.main_window.pdf_processor.page_editor = new_page_editor
@@ -417,7 +427,6 @@ class ContextMenuBuilder:
     
     def _copy_text(self, text):
         """复制文本到剪贴板"""
-        from PyQt5.QtWidgets import QApplication
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
         self.main_window.show_message("✅ 文本已复制到剪贴板")
@@ -480,7 +489,6 @@ class ContextMenuBuilder:
     
     def _export_page_as_image(self, page_num):
         """导出页面为图片"""
-        from PyQt5.QtWidgets import QFileDialog
         if hasattr(self.main_window, 'pdf_processor') and self.main_window.pdf_processor.fitz_document:
             try:
                 default_name = f"page_{page_num + 1}.png"
@@ -494,8 +502,6 @@ class ContextMenuBuilder:
                 if file_path:
                     page = self.main_window.pdf_processor.fitz_document.load_page(page_num)
                     pix = page.get_pixmap()
-
-                    import fitz
                     if file_path.lower().endswith('.jpg') or file_path.lower().endswith('.jpeg'):
                         pix.save(file_path, "JPEG")
                     else:
@@ -534,7 +540,6 @@ class ContextMenuBuilder:
                         return
 
                 # 获取整个页面的图像数据
-                import fitz
                 page = self.main_window.pdf_processor.fitz_document.load_page(page_num)
                 zoom_factor = self.main_window.pdf_processor.zoom_factor
 
@@ -544,18 +549,9 @@ class ContextMenuBuilder:
 
                 # 在状态栏显示加载信息
                 self.main_window.show_message("正在进行OCR识别...")
-                from PyQt5.QtWidgets import QApplication
                 QApplication.processEvents()
 
                 try:
-                    # 尝试不同的OCR识别方法
-                    from app.core.ocr.ocr_plugin_interface import OCRResult
-                    from app.core.ocr.ocr_plugin_interface import OCRErrorCode
-                    from base64 import b64encode
-                    import tempfile
-                    import uuid
-                    import os
-
                     # 方法1: 直接使用字节数据
                     ocr_result = plugin.recognize_from_bytes(image_data)
 
@@ -600,7 +596,6 @@ class ContextMenuBuilder:
                                 logger.warning(f"清理临时文件时出错: {cleanup_error}")
 
                     # 显示OCR结果
-                    from app.ui.screenshot_result_dialog import ScreenshotOCRResultDialog
                     dialog = ScreenshotOCRResultDialog(ocr_result, self.main_window)
                     dialog.setWindowTitle(f"第{page_num + 1}页 - OCR识别结果")
                     dialog.exec_()
@@ -615,7 +610,6 @@ class ContextMenuBuilder:
 
             except Exception as e:
                 logger.error(f"提取页面{page_num}文本失败: {e}")
-                import traceback
                 logger.error(traceback.format_exc())
                 self.main_window.show_message(f"❌ 提取文本失败: {str(e)}")
         else:
@@ -647,7 +641,6 @@ class ContextMenuBuilder:
 
     def _insert_pdf_page(self, page_num):
         """插入PDF文件"""
-        from PyQt5.QtWidgets import QFileDialog
         if not (hasattr(self.main_window, 'pdf_processor') and self.main_window.pdf_processor.fitz_document):
             self.main_window.show_message("❌ 未打开PDF文档")
             return
@@ -678,8 +671,6 @@ class ContextMenuBuilder:
 
     def _insert_image_page(self, page_num):
         """插入图片"""
-        from PyQt5.QtWidgets import QFileDialog
-
         logger.debug(f"开始插入图片，page_num={page_num}")
 
         # 检查是否打开了PDF文档或图片
@@ -740,7 +731,6 @@ class ContextMenuBuilder:
 
     def _delete_page(self, page_num):
         """删除页面"""
-        from PyQt5.QtWidgets import QMessageBox
         if not (hasattr(self.main_window, 'pdf_processor') and self.main_window.pdf_processor.fitz_document):
             self.main_window.show_message("❌ 未打开PDF文档")
             return
@@ -774,7 +764,6 @@ class ContextMenuBuilder:
                     self.main_window.update_preview()
                     self.main_window.load_thumbnails()
                     # 延迟一段时间，确保所有UI更新完成
-                    from PyQt5.QtCore import QTimer
                     QTimer.singleShot(200, self._force_scroll_to_current_page)
                 else:
                     self.main_window.show_message(f"❌ {message}")

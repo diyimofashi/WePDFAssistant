@@ -9,7 +9,7 @@ logger = get_logger('password_dialog')
 
 
 class PasswordDialog(QDialog):
-    """密码输入对话框 - 简洁版本"""
+    """密码输入对话框"""
 
     def __init__(self, parent=None, title="", max_attempts=5):
         super().__init__(parent)

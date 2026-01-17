@@ -13,10 +13,10 @@ if project_root not in sys.path:
 from app.utils.logger import get_logger
 logger = get_logger('screenshot_result_dialog')
 
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTextEdit,
+from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTextEdit,QApplication,
                              QPushButton, QLabel, QFileDialog, QMessageBox,
                              QCheckBox, QGroupBox)
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont
 
 
@@ -173,13 +173,11 @@ class ScreenshotOCRResultDialog(QDialog):
         """复制文本到剪贴板"""
         text = self.result_text.toPlainText()
         if text:
-            from PyQt5.QtWidgets import QApplication
             clipboard = QApplication.clipboard()
             clipboard.setText(text)
 
             # 显示提示
             self.copy_button.setText("已复制")
-            from PyQt5.QtCore import QTimer
             QTimer.singleShot(2000, lambda: self.copy_button.setText("复制文本"))
             logger.info("[_on_copy_clicked] 文本已复制到剪贴板")
 

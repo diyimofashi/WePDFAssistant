@@ -1,8 +1,9 @@
 """菜单管理器模块"""
 
-from PyQt5.QtWidgets import QMenuBar, QMenu, QAction
+from PyQt5.QtWidgets import QAction
 from PyQt5.QtCore import QObject
 from app.utils.logger import get_logger
+from app.config.settings import AppSettings
 
 logger = get_logger('menu_manager')
 
@@ -168,7 +169,6 @@ class MenuManager(QObject):
         # 实际大小选项
         actual_size_action = QAction("📏 实际大小", self.parent)
         actual_size_action.setCheckable(True)
-        from app.config.settings import AppSettings
         actual_size_action.setChecked(not AppSettings.get_use_a4_scaling())  # 默认不选中
         actual_size_action.triggered.connect(self.parent.toggle_actual_size)
         settings_menu.addAction(actual_size_action)
