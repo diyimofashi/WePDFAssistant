@@ -100,21 +100,8 @@ class ContextMenuBuilder:
     
     def build_text_menu(self, selected_text=None, **kwargs):
         """构建文本选中菜单"""
-        menu = QMenu(self.main_window)
-        menu.setObjectName("text_context_menu")
-        
-        if not selected_text:
-            return self.build_general_menu(**kwargs)
-        
-        # 文本操作子菜单
-        text_actions = self._create_text_actions(selected_text)
-        for action in text_actions:
-            if action is None:
-                menu.addSeparator()
-            else:
-                menu.addAction(action)
-        
-        return menu
+        # 文本选中时也显示页面操作菜单
+        return self.build_page_menu(**kwargs)
     
     def build_page_menu(self, page_num=None, **kwargs):
         """构建页面操作菜单"""
@@ -178,24 +165,7 @@ class ContextMenuBuilder:
     def _create_text_actions(self, selected_text):
         """创建文本操作动作"""
         actions = []
-        
-        # 复制文本
-        copy_action = QAction("复制文本", self.main_window)
-        copy_action.triggered.connect(lambda: self._copy_text(selected_text))
-        actions.append(copy_action)
-        
-        # 搜索文本
-        search_action = QAction("搜索文本", self.main_window)
-        search_action.triggered.connect(lambda: self._search_text(selected_text))
-        actions.append(search_action)
-        
-        actions.append(None)
-        
-        # OCR识别
-        ocr_action = QAction("OCR识别", self.main_window)
-        ocr_action.triggered.connect(lambda: self._ocr_text(selected_text))
-        actions.append(ocr_action)
-        
+
         return actions
     
     

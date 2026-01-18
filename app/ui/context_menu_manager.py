@@ -40,14 +40,7 @@ class ContextMenuManager:
                 'page_num': None
             }
             
-            # 检查是否有选中的文本
-            selected_text = self._get_selected_text()
-            if selected_text:
-                self.current_context_type = ContextType.TEXT
-                context_data['selected_text'] = selected_text
-                logger.debug(f"检测到文本选中上下文: {selected_text[:50]}...")
-                return ContextType.TEXT, context_data
-            
+            # 优先检查鼠标位置（位置优先于文本选中）
             # 检查鼠标是否在缩略图区域
             if self._is_on_thumbnail(event):
                 page_num = self._get_thumbnail_page(event)
@@ -61,10 +54,28 @@ class ContextMenuManager:
             if self._is_on_page(event):
                 page_num = self._get_current_page(event)
                 if page_num is not None:
-                    self.current_context_type = ContextType.PAGE
-                    context_data['page_num'] = page_num
-                    logger.debug(f"检测到页面上下文: 页面{page_num}")
-                    return ContextType.PAGE, context_data
+                    # 在页面上右键，再检查是否有选中文本
+                    selected_text = self._get_selected_text()
+                    if selected_text:
+                        self.current_context_type = ContextType.TEXT
+                        context_data['selected_text'] = selected_text
+                        context_data['page_num'] = page_num
+                        logger.debug(f"检测到页面上的文本选中上下文: {selected_text[:50]}...")
+                        return ContextType.TEXT, context_data
+                    else:
+                        # 页面上没有选中文本，显示页面菜单
+                        self.current_context_type = ContextType.PAGE
+                        context_data['page_num'] = page_num
+                        logger.debug(f"检测到页面上下文: 页面{page_num}")
+                        return ContextType.PAGE, context_data
+            
+            # 检查是否有选中的文本（不在页面上的情况）
+            selected_text = self._get_selected_text()
+            if selected_text:
+                self.current_context_type = ContextType.TEXT
+                context_data['selected_text'] = selected_text
+                logger.debug(f"检测到文本选中上下文: {selected_text[:50]}...")
+                return ContextType.TEXT, context_data
             
             # 默认为通用上下文
             self.current_context_type = ContextType.GENERAL
