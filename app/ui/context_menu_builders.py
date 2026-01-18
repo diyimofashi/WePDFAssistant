@@ -756,6 +756,14 @@ class ContextMenuBuilder:
                 page_num_1based = page_num + 1
                 success, message = page_editor.delete_page(page_num_1based)
                 if success:
+                    # 获取删除后应该跳转到的页面（0-based）
+                    total_pages_after = self.main_window.pdf_processor.get_total_pages()
+                    # 计算目标页面：如果删除的不是最后一页，就到当前页；如果是最后一页，就到新的最后一页
+                    if page_num_1based == total_pages_after + 1:
+                        target_page = max(0, total_pages_after - 1)
+                    else:
+                        target_page = min(page_num, total_pages_after - 1)
+                    
                     self.main_window.show_message(message)
                     # 删除页面后需要清除虚拟滚动的缓存
                     if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
@@ -763,24 +771,25 @@ class ContextMenuBuilder:
                     # 更新预览和缩略图
                     self.main_window.update_preview()
                     self.main_window.load_thumbnails()
-                    # 延迟一段时间，确保所有UI更新完成
-                    QTimer.singleShot(200, self._force_scroll_to_current_page)
+                    # 延迟一段时间，确保所有UI更新完成，然后滚动到目标页面
+                    QTimer.singleShot(500, lambda: self._force_scroll_to_page(target_page))
                 else:
                     self.main_window.show_message(f"❌ {message}")
             else:
                 self.main_window.show_message("❌ 页面编辑器未初始化")
         logger.debug(f"删除页面 {page_num + 1}")
 
-    def _force_scroll_to_current_page(self):
-        """强制滚动到当前页面"""
+    def _force_scroll_to_page(self, target_page):
+        """强制滚动到指定页面"""
         if not hasattr(self.main_window, 'pdf_processor'):
             return
 
-        current_page = self.main_window.pdf_processor.current_page
         if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
             virtual_scroll = self.main_window.virtual_scroll
             # 根据页面索引计算滚动位置
-            if hasattr(virtual_scroll, 'page_positions') and len(virtual_scroll.page_positions) > current_page:
-                target_scroll_pos = virtual_scroll.page_positions[current_page]
-                logger.debug(f"强制滚动到页面 {current_page}，位置: {target_scroll_pos}")
+            if hasattr(virtual_scroll, 'page_positions') and len(virtual_scroll.page_positions) > target_page:
+                target_scroll_pos = virtual_scroll.page_positions[target_page]
+                logger.debug(f"强制滚动到页面 {target_page}，位置: {target_scroll_pos}")
                 virtual_scroll.verticalScrollBar().setValue(target_scroll_pos)
+            else:
+                logger.warning(f"无法滚动到页面 {target_page}，page_positions长度: {len(virtual_scroll.page_positions) if hasattr(virtual_scroll, 'page_positions') else 0}")
