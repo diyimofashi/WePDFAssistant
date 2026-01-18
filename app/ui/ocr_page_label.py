@@ -350,4 +350,4 @@ class OCRPageLabel(QWidget):
         min_y = min(y_coords)
         max_y = max(y_coords)
 
-        return QRect(int(min_x), int(min_y + 7), int(max_x - min_x), int(max_y - min_y))
+        return QRect(int(min_x), int(min_y), int(max_x - min_x), int(max_y - min_y))
