@@ -285,11 +285,6 @@ class MenuManager(QObject):
         about_action.triggered.connect(self.parent.show_about)
         help_menu.addAction(about_action)
         
-        # 快捷键说明
-        shortcuts_action = QAction("⌨️ 快捷键说明", self.parent)
-        # 假设父窗口有相关方法
-        help_menu.addAction(shortcuts_action)
-        
         # 检查更新
         update_action = QAction("🔄 检查更新", self.parent)
         # 假设父窗口有相关方法
