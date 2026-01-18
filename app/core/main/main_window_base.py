@@ -438,13 +438,23 @@ class MainWindowBase(QMainWindow):
         logger = get_logger('main')
         
         logger.debug("开始处理窗口关闭事件")
-        
+
         if hasattr(self, 'update_actions_timer'):
             self.update_actions_timer.stop()
-        
+
         has_unsaved_changes = False
+        is_temp_document = False
         page_editor = None
-        
+
+        # 检查是否是临时文档（从图片打开或多文件合并）
+        if hasattr(self.pdf_processor, 'is_temp_merge') and self.pdf_processor.is_temp_merge:
+            is_temp_document = True
+            logger.debug("检测到临时合并文档，需要提示保存")
+        elif hasattr(self.pdf_processor, 'is_from_image') and self.pdf_processor.is_from_image:
+            is_temp_document = True
+            logger.debug("检测到从图片打开的文档，需要提示保存")
+
+        # 检查是否有未保存的编辑
         if hasattr(self.pdf_processor, 'page_editor') and self.pdf_processor.page_editor:
             page_editor = self.pdf_processor.page_editor
             has_unsaved_changes = page_editor.has_unsaved_changes()
@@ -457,29 +467,68 @@ class MainWindowBase(QMainWindow):
             logger.debug(f"是否有未保存的更改: {has_unsaved_changes}")
         else:
             logger.debug("页面编辑器不存在")
-        
-        if has_unsaved_changes:
-            logger.debug("检测到未保存的更改，显示确认对话框")
-            reply = QMessageBox.question(
-                self, 
-                "保存更改", 
-                "文档已被修改，是否保存更改？", 
-                QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel, 
-                QMessageBox.Save
-            )
-            
-            if reply == QMessageBox.Save:
-                logger.debug("用户选择保存更改")
-                success, message = page_editor.save_changes()
-                if not success:
-                    logger.error(f"保存失败: {message}")
-                    QMessageBox.critical(self, "保存失败", message)
+
+        # 如果有未保存的编辑或者是临时文档，都需要提示
+        if has_unsaved_changes or is_temp_document:
+            # 如果只是临时文档没有编辑，提示信息不同
+            if is_temp_document and not has_unsaved_changes:
+                logger.debug("临时文档无编辑，显示保存提示")
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle("保存文档")
+                msg_box.setText("当前文档尚未保存，是否保存？")
+                msg_box.setIcon(QMessageBox.Question)
+
+                save_btn = msg_box.addButton("保存", QMessageBox.AcceptRole)
+                discard_btn = msg_box.addButton("不保存", QMessageBox.DestructiveRole)
+                cancel_btn = msg_box.addButton("取消", QMessageBox.RejectRole)
+                msg_box.setDefaultButton(save_btn)
+
+                reply = msg_box.exec_()
+
+                if msg_box.clickedButton() == save_btn:
+                    logger.debug("用户选择保存")
+                    success, message = self.file_manager.save_as_file()
+                    if not success:
+                        logger.error(f"保存失败: {message}")
+                        QMessageBox.critical(self, "保存失败", message)
+                        event.ignore()
+                        return
+                elif msg_box.clickedButton() == discard_btn:
+                    logger.debug("用户选择不保存")
+                    pass
+                elif msg_box.clickedButton() == cancel_btn:
+                    logger.debug("用户取消关闭")
                     event.ignore()
                     return
-            elif reply == QMessageBox.Cancel:
-                logger.debug("用户取消关闭")
-                event.ignore()
-                return
+            else:
+                logger.debug("检测到未保存的更改，显示确认对话框")
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle("保存更改")
+                msg_box.setText("文档已被修改，是否保存更改？")
+                msg_box.setIcon(QMessageBox.Question)
+
+                save_btn = msg_box.addButton("保存", QMessageBox.AcceptRole)
+                discard_btn = msg_box.addButton("不保存", QMessageBox.DestructiveRole)
+                cancel_btn = msg_box.addButton("取消", QMessageBox.RejectRole)
+                msg_box.setDefaultButton(save_btn)
+
+                reply = msg_box.exec_()
+
+                if msg_box.clickedButton() == save_btn:
+                    logger.debug("用户选择保存更改")
+                    success, message = page_editor.save_changes()
+                    if not success:
+                        logger.error(f"保存失败: {message}")
+                        QMessageBox.critical(self, "保存失败", message)
+                        event.ignore()
+                        return
+                elif msg_box.clickedButton() == discard_btn:
+                    logger.debug("用户选择不保存")
+                    pass
+                elif msg_box.clickedButton() == cancel_btn:
+                    logger.debug("用户取消关闭")
+                    event.ignore()
+                    return
         else:
             logger.debug("没有未保存的更改")
         

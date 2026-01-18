@@ -99,219 +99,239 @@ class FileManager:
                 self._open_pdf_file(file_path)
                 AppSettings.set_last_open_dir(file_path)
 
-    def _open_multiple_files_as_temp_pdf(self, file_paths):
-        """打开多个文件，创建临时PDF供用户保存"""
-        from PyQt5.QtWidgets import QProgressDialog, QInputDialog
+    def _scan_and_classify_files(self, file_paths):
+        """扫描文件并分类：图片文件、PDF文件、加密PDF文件"""
+        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
+        pdf_files = []
+        image_files = []
+        encrypted_pdfs = []
+
+        for file_path in file_paths:
+            file_ext = os.path.splitext(file_path)[1].lower()
+            if file_ext in image_extensions:
+                image_files.append(file_path)
+            else:
+                pdf_files.append(file_path)
+                try:
+                    doc = fitz.open(file_path)
+                    if doc.needs_pass:
+                        encrypted_pdfs.append(file_path)
+                    doc.close()
+                except Exception as e:
+                    logger.warning(f"无法读取文件 {file_path}: {e}")
+
+        return pdf_files, image_files, encrypted_pdfs
+
+    def _ask_user_for_encrypted_files_action(self, encrypted_pdfs):
+        """询问用户如何处理加密PDF文件"""
+        encrypted_names = [os.path.basename(f) for f in encrypted_pdfs]
+        msg = f"发现 {len(encrypted_pdfs)} 个加密PDF文件：\n\n"
+        for name in encrypted_names[:5]:
+            msg += f"  • {name}\n"
+        if len(encrypted_names) > 5:
+            msg += f"  ... 还有 {len(encrypted_names) - 5} 个\n"
+        msg += "\n请选择处理方式："
+
+        msg_box = QMessageBox(self.parent)
+        msg_box.setWindowTitle("发现加密PDF")
+        msg_box.setText(msg)
+        msg_box.setIcon(QMessageBox.Question)
+
+        skip_btn = msg_box.addButton("跳过加密文件", QMessageBox.ActionRole)
+        input_btn = msg_box.addButton("为每个加密文件输入密码", QMessageBox.ActionRole)
+        cancel_btn = msg_box.addButton("取消操作", QMessageBox.RejectRole)
+
+        msg_box.exec_()
+
+        if msg_box.clickedButton() == skip_btn:
+            return 'skip'
+        elif msg_box.clickedButton() == cancel_btn:
+            return 'cancel'
+        else:
+            return 'input_password'
+
+    def _collect_passwords_for_encrypted_files(self, encrypted_pdfs):
+        """为加密文件收集密码（每个文件最多3次尝试）"""
+        passwords = {}
+
+        for encrypted_path in encrypted_pdfs:
+            filename = os.path.basename(encrypted_path)
+            password = None
+
+            for attempt in range(3):
+                password = PasswordDialog.get_user_password(
+                    self.parent,
+                    f"请输入 {filename} 的密码（剩余 {3 - attempt} 次机会）"
+                )
+
+                if password is None:
+                    logger.info(f"用户取消输入 {filename} 的密码")
+                    break
+
+                try:
+                    test_doc = fitz.open(encrypted_path)
+                    if test_doc.authenticate(password):
+                        logger.info(f"密码验证成功: {filename}")
+                        passwords[encrypted_path] = password
+                        test_doc.close()
+                        break
+                    else:
+                        logger.warning(f"密码错误，第 {attempt + 1} 次尝试失败: {filename}")
+                        test_doc.close()
+                        if attempt < 2:
+                            QMessageBox.warning(
+                                self.parent,
+                                "密码错误",
+                                f"密码错误，请重新输入\n剩余 {2 - attempt} 次机会"
+                            )
+                except Exception as e:
+                    logger.warning(f"密码验证时出错: {filename}, {e}")
+                    if attempt < 2:
+                        QMessageBox.warning(
+                            self.parent,
+                            "错误",
+                            f"密码验证时出错: {str(e)}\n剩余 {2 - attempt} 次机会"
+                        )
+
+        return passwords
+
+    def _merge_files_to_temp_pdf(self, all_valid_files, encrypted_pdfs, passwords):
+        """将所有有效文件合并到临时PDF"""
+        from PyQt5.QtWidgets import QProgressDialog
         import tempfile
 
+        temp_doc = fitz.open()
+        a4_width = 595
+        a4_height = 842
+        padding = 40
+
+        progress = QProgressDialog("正在合并文件...", "取消", 0, len(all_valid_files), self.parent)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+
+        processed_files = []
+
+        for i, file_path in enumerate(all_valid_files):
+            progress.setValue(i)
+            QApplication.processEvents()
+
+            if progress.wasCanceled():
+                temp_doc.close()
+                logger.info("用户取消了文件合并")
+                return None, None
+
+            success = self._add_file_to_temp_pdf(
+                temp_doc, file_path, encrypted_pdfs, passwords,
+                a4_width, a4_height, padding
+            )
+
+            if success:
+                processed_files.append(file_path)
+
+        progress.setValue(len(all_valid_files))
+        progress.close()
+
+        return temp_doc, processed_files
+
+    def _add_file_to_temp_pdf(self, temp_doc, file_path, encrypted_pdfs, passwords,
+                               a4_width, a4_height, padding):
+        """添加单个文件到临时PDF"""
+        file_ext = os.path.splitext(file_path)[1].lower()
         image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
 
         try:
-            # 第一步：扫描所有文件，检查是否有加密PDF
-            encrypted_pdfs = []
-            pdf_files = []
-            image_files = []
+            if file_ext in image_extensions:
+                page = temp_doc.new_page(width=a4_width, height=a4_height)
+                image_rect = fitz.Rect(padding, 0, a4_width - padding, a4_height)
+                page.insert_image(image_rect, filename=file_path)
+            else:
+                pdf_doc = fitz.open(file_path)
 
-            for file_path in file_paths:
-                file_ext = os.path.splitext(file_path)[1].lower()
-                if file_ext in image_extensions:
-                    image_files.append(file_path)
-                else:
-                    pdf_files.append(file_path)
-                    # 检查PDF是否加密
-                    try:
-                        doc = fitz.open(file_path)
-                        if doc.needs_pass:
-                            encrypted_pdfs.append(file_path)
-                        doc.close()
-                    except Exception as e:
-                        logger.warning(f"无法读取文件 {file_path}: {e}")
+                if file_path in encrypted_pdfs and passwords:
+                    password = passwords.get(file_path)
+                    if password:
+                        if not pdf_doc.authenticate(password):
+                            logger.warning(f"PDF密码错误或文件已损坏: {file_path}")
+                            pdf_doc.close()
+                            return False
 
-            # 第二步：如果有加密PDF，询问用户如何处理
-            if encrypted_pdfs:
-                encrypted_names = [os.path.basename(f) for f in encrypted_pdfs]
-                msg = f"发现 {len(encrypted_pdfs)} 个加密PDF文件：\n\n"
-                for name in encrypted_names[:5]:  # 最多显示5个
-                    msg += f"  • {name}\n"
-                if len(encrypted_names) > 5:
-                    msg += f"  ... 还有 {len(encrypted_names) - 5} 个\n"
-                msg += "\n请选择处理方式："
+                temp_doc.insert_pdf(pdf_doc)
+                pdf_doc.close()
 
-                msg_box = QMessageBox(self.parent)
-                msg_box.setWindowTitle("发现加密PDF")
-                msg_box.setText(msg)
-                msg_box.setIcon(QMessageBox.Question)
+            return True
+        except Exception as e:
+            logger.warning(f"无法加载文件 {file_path}: {e}")
+            return False
 
-                skip_btn = msg_box.addButton("跳过加密文件", QMessageBox.ActionRole)
-                input_btn = msg_box.addButton("为每个加密文件输入密码", QMessageBox.ActionRole)
-                cancel_btn = msg_box.addButton("取消操作", QMessageBox.RejectRole)
+    def _save_temp_pdf_and_open(self, temp_doc, processed_files, original_file_paths):
+        """保存临时PDF并打开"""
+        import tempfile
+        import uuid
 
-                msg_box.exec_()
+        temp_filename = f"temp_merge_{uuid.uuid4().hex[:8]}.pdf"
+        temp_path = os.path.join(tempfile.gettempdir(), temp_filename)
+        temp_doc.save(temp_path)
+        temp_doc.close()
 
-                if msg_box.clickedButton() == skip_btn:
-                    # 跳过加密文件
-                    pdf_files = [f for f in pdf_files if f not in encrypted_pdfs]
-                    logger.info(f"用户选择跳过 {len(encrypted_pdfs)} 个加密PDF文件")
-                elif msg_box.clickedButton() == cancel_btn:
-                    # 取消操作
-                    logger.info("用户取消操作")
-                    return
-                else:
-                    # 为每个加密文件输入密码（最多3次尝试）
-                    passwords = {}
-                    for encrypted_path in encrypted_pdfs:
-                        filename = os.path.basename(encrypted_path)
-                        password = None
+        success, message = self.parent.pdf_processor.open_pdf(temp_path, async_mode=True)
+        if success:
+            self.parent.pdf_processor.is_from_image = True
+            self.parent.pdf_processor.current_file = None
+            self.parent.pdf_processor.original_image_path = None
+            self.parent.pdf_processor.is_temp_merge = True
 
-                        # 最多3次尝试
-                        for attempt in range(3):
-                            password = PasswordDialog.get_user_password(
-                                self.parent,
-                                f"请输入 {filename} 的密码（剩余 {3 - attempt} 次机会）"
-                            )
+            AppSettings.set_last_open_dir(original_file_paths[0])
+            logger.info(f"成功打开临时合并PDF: {temp_path}")
 
-                            if password is None:
-                                # 用户取消
-                                logger.info(f"用户取消输入 {filename} 的密码")
-                                break
-
-                            # 验证密码是否正确
-                            try:
-                                test_doc = fitz.open(encrypted_path)
-                                if test_doc.authenticate(password):
-                                    logger.info(f"密码验证成功: {filename}")
-                                    passwords[encrypted_path] = password
-                                    test_doc.close()
-                                    break
-                                else:
-                                    logger.warning(f"密码错误，第 {attempt + 1} 次尝试失败: {filename}")
-                                    test_doc.close()
-                                    if attempt < 2:
-                                        QMessageBox.warning(
-                                            self.parent,
-                                            "密码错误",
-                                            f"密码错误，请重新输入\n剩余 {2 - attempt} 次机会"
-                                        )
-                            except Exception as e:
-                                logger.warning(f"密码验证时出错: {filename}, {e}")
-                                if attempt < 2:
-                                    QMessageBox.warning(
-                                        self.parent,
-                                        "错误",
-                                        f"密码验证时出错: {str(e)}\n剩余 {2 - attempt} 次机会"
-                                    )
-
-                        # 如果3次都失败或用户取消，跳过此文件
-                        if encrypted_path not in passwords:
-                            logger.info(f"跳过 {filename}（密码输入失败或用户取消）")
-                            pdf_files = [f for f in pdf_files if f != encrypted_path]
-
-                    self.pdf_passwords = passwords
-
-            # 创建临时PDF
-            temp_doc = fitz.open()
-            # A4纸张规格
-            a4_width = 595
-            a4_height = 842
-            padding = 40
-
-            # 合并所有有效的文件（图片 + 有效PDF）
-            all_valid_files = image_files + pdf_files
-
-            progress = QProgressDialog("正在合并文件...", "取消", 0, len(all_valid_files), self.parent)
-            progress.setWindowModality(Qt.WindowModal)
-            progress.show()
-
-            processed_files = []
-
-            for i, file_path in enumerate(all_valid_files):
-                progress.setValue(i)
-                QApplication.processEvents()
-
-                if progress.wasCanceled():
-                    temp_doc.close()
-                    logger.info("用户取消了文件合并")
-                    return
-
-                file_ext = os.path.splitext(file_path)[1].lower()
-
-                if file_ext in image_extensions:
-                    # 图片文件，转换为A4规格的PDF页面
-                    try:
-                        # 创建A4规格的新页面
-                        page = temp_doc.new_page(width=a4_width, height=a4_height)
-
-                        # 计算图片插入区域（去除左右padding）
-                        image_rect = fitz.Rect(
-                            padding,
-                            0,
-                            a4_width - padding,
-                            a4_height
-                        )
-
-                        # 插入图片到指定区域（自动适应）
-                        page.insert_image(image_rect, filename=file_path)
-                        processed_files.append(file_path)
-                    except Exception as e:
-                        logger.warning(f"无法加载图片 {file_path}: {e}")
-                else:
-                    # PDF文件，直接插入
-                    try:
-                        pdf_doc = fitz.open(file_path)
-
-                        # 如果是加密PDF且用户输入了密码，进行认证
-                        if file_path in encrypted_pdfs and hasattr(self, 'pdf_passwords'):
-                            password = self.pdf_passwords.get(file_path)
-                            if password:
-                                if not pdf_doc.authenticate(password):
-                                    logger.warning(f"PDF密码错误或文件已损坏: {file_path}")
-                                    pdf_doc.close()
-                                    continue
-
-                        temp_doc.insert_pdf(pdf_doc)
-                        pdf_doc.close()
-                        processed_files.append(file_path)
-                    except Exception as e:
-                        logger.warning(f"无法加载PDF {file_path}: {e}")
-
-            progress.setValue(len(all_valid_files))
-            progress.close()
-
-            # 检查是否有文件被成功处理
-            if not processed_files:
-                QMessageBox.warning(self.parent, "警告", "没有文件被成功处理")
-                return
-
-            # 如果有文件被跳过，提示用户
-            skipped_count = len(file_paths) - len(processed_files)
+            skipped_count = len(original_file_paths) - len(processed_files)
             if skipped_count > 0:
                 QMessageBox.information(
                     self.parent,
                     "提示",
                     f"成功打开 {len(processed_files)} 个文件\n跳过 {skipped_count} 个文件"
                 )
+        else:
+            logger.error(f"打开临时PDF失败: {message}")
+            QMessageBox.critical(self.parent, "错误", message)
 
-            # 保存到临时文件，使用唯一文件名
-            import uuid
-            temp_filename = f"temp_merge_{uuid.uuid4().hex[:8]}.pdf"
-            temp_path = os.path.join(tempfile.gettempdir(), temp_filename)
-            temp_doc.save(temp_path)
-            temp_doc.close()
+    def _open_multiple_files_as_temp_pdf(self, file_paths):
+        """打开多个文件，创建临时PDF供用户保存"""
+        try:
+            # 第一步：扫描并分类文件
+            pdf_files, image_files, encrypted_pdfs = self._scan_and_classify_files(file_paths)
 
-            # 打开临时PDF
-            success, message = self.parent.pdf_processor.open_pdf(temp_path, async_mode=True)
-            if success:
-                # 标记为临时合并文件，保存时需要用户选择位置
-                self.parent.pdf_processor.is_from_image = True
-                self.parent.pdf_processor.current_file = None
-                self.parent.pdf_processor.original_image_path = None
-                self.parent.pdf_processor.is_temp_merge = True
+            # 第二步：处理加密PDF
+            if encrypted_pdfs:
+                action = self._ask_user_for_encrypted_files_action(encrypted_pdfs)
 
-                AppSettings.set_last_open_dir(file_paths[0])
-                logger.info(f"成功打开临时合并PDF: {temp_path}")
-            else:
-                logger.error(f"打开临时PDF失败: {message}")
-                QMessageBox.critical(self.parent, "错误", message)
+                if action == 'skip':
+                    pdf_files = [f for f in pdf_files if f not in encrypted_pdfs]
+                    logger.info(f"用户选择跳过 {len(encrypted_pdfs)} 个加密PDF文件")
+                elif action == 'cancel':
+                    logger.info("用户取消操作")
+                    return
+                elif action == 'input_password':
+                    passwords = self._collect_passwords_for_encrypted_files(encrypted_pdfs)
+                    self.pdf_passwords = passwords
+                    pdf_files = list(set(pdf_files) & set(passwords.keys()))
+
+            # 第三步：合并文件
+            all_valid_files = image_files + pdf_files
+            passwords = getattr(self, 'pdf_passwords', {})
+
+            temp_doc, processed_files = self._merge_files_to_temp_pdf(
+                all_valid_files, encrypted_pdfs, passwords
+            )
+
+            if temp_doc is None:
+                return
+
+            if not processed_files:
+                QMessageBox.warning(self.parent, "警告", "没有文件被成功处理")
+                return
+
+            # 第四步：保存并打开
+            self._save_temp_pdf_and_open(temp_doc, processed_files, file_paths)
 
         except Exception as e:
             logger.error(f"合并文件时发生错误: {e}")
@@ -622,9 +642,10 @@ class FileManager:
     
     def save_as_file(self):
         """另存为PDF文件"""
-        if not self.parent.pdf_processor.current_file:
+        # 检查是否有打开的文档（包括临时文档）
+        if not self.parent.pdf_processor.pdf_document:
             QMessageBox.information(self.parent, "提示", "📝 请先打开PDF文件")
-            return
+            return False, "没有打开的文档"
 
         # 询问是否要加密保存
         reply = QMessageBox.question(
@@ -636,16 +657,22 @@ class FileManager:
         )
 
         if reply == QMessageBox.Yes:
-            self.save_as_with_encryption()
+            return self.save_as_with_encryption()
         else:
-            self.save_as_without_encryption()
+            return self.save_as_without_encryption()
 
     def save_as_without_encryption(self):
         """另存为PDF文件（不加密）"""
         # 检查是否是从图片打开的文档
         is_from_image_doc = (
-            hasattr(self.parent.pdf_processor, 'is_from_image') and 
+            hasattr(self.parent.pdf_processor, 'is_from_image') and
             self.parent.pdf_processor.is_from_image
+        )
+
+        # 检查是否为临时合并文档
+        is_temp_merge_doc = (
+            hasattr(self.parent.pdf_processor, 'is_temp_merge') and
+            self.parent.pdf_processor.is_temp_merge
         )
 
         # 检查是否为新建文档
@@ -700,26 +727,34 @@ class FileManager:
         file_path, _ = QFileDialog.getSaveFileName(
             self.parent, "保存PDF文件", default_path, "PDF文件 (*.pdf)")
 
-        if file_path:
-            success, message = self.parent.pdf_processor.save_pdf(file_path)
-            if success:
-                # 保存成功后，更新current_file并清除标记
-                self.parent.pdf_processor.current_file = file_path
-                if hasattr(self.parent.pdf_processor, 'is_new_document'):
-                    self.parent.pdf_processor.is_new_document = False
-                if hasattr(self.parent.pdf_processor, 'is_from_image'):
-                    self.parent.pdf_processor.is_from_image = False
-                    self.parent.pdf_processor.original_image_path = None
+        if not file_path:
+            return False, "用户取消保存"
 
-                AppSettings.set_last_save_dir(os.path.dirname(file_path))
-                self._play_success_sound()
-                self.parent.show_message("✅ 文档保存成功")
-                self.parent.update_save_actions_state()
+        success, message = self.parent.pdf_processor.save_pdf(file_path)
+        if success:
+            # 保存成功后，更新current_file并清除标记
+            self.parent.pdf_processor.current_file = file_path
+            if hasattr(self.parent.pdf_processor, 'is_new_document'):
+                self.parent.pdf_processor.is_new_document = False
+            if hasattr(self.parent.pdf_processor, 'is_from_image'):
+                self.parent.pdf_processor.is_from_image = False
+                self.parent.pdf_processor.original_image_path = None
+            if hasattr(self.parent.pdf_processor, 'is_temp_merge'):
+                self.parent.pdf_processor.is_temp_merge = False
 
-                # 重新加载新保存的文件，确保文档状态更新
+            AppSettings.set_last_save_dir(os.path.dirname(file_path))
+            self._play_success_sound()
+            self.parent.show_message("✅ 文档保存成功")
+            self.parent.update_save_actions_state()
+
+            # 只有非临时文档才需要重新打开
+            if not is_temp_merge_doc:
                 self.parent.pdf_processor.open_pdf(file_path, async_mode=True)
-            else:
-                QMessageBox.critical(self.parent, "保存失败", message)
+
+            return True, "保存成功"
+        else:
+            QMessageBox.critical(self.parent, "保存失败", message)
+            return False, message
 
     def save_as_with_encryption(self):
         """加密另存为PDF文件"""
@@ -759,16 +794,16 @@ class FileManager:
             self.parent, "加密另存为PDF文件", default_path, "PDF文件 (*.pdf)")
 
         if not file_path:
-            return
+            return False, "用户取消保存"
 
         # 输入密码
         password = PasswordDialog.get_user_password(self.parent, "请输入加密密码")
         if password is None:
-            return
+            return False, "用户取消输入密码"
 
         if not password:
             QMessageBox.warning(self.parent, "提示", "密码不能为空")
-            return
+            return False, "密码不能为空"
 
         success, message = self.parent.pdf_processor.encrypt_pdf(password, file_path)
         if success:
@@ -785,8 +820,11 @@ class FileManager:
             else:
                 # 重新加载加密后的文件以更新文档状态
                 self.parent.pdf_processor.open_pdf(file_path, async_mode=True, password=password)
+
+            return True, "保存成功"
         else:
             QMessageBox.critical(self.parent, "加密保存失败", message)
+            return False, message
 
     def encrypt_save_file(self):
         """加密保存PDF文件（直接覆盖源文档）"""
