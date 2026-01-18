@@ -40,23 +40,11 @@ class MenuManager(QObject):
         """创建文件菜单"""
         file_menu = menubar.addMenu("📁 文件")
 
-        # 打开
+        # 打开（支持文件、多张图片、图片目录）
         open_action = QAction("📂 打开", self.parent)
         open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self.parent.open_file)
         file_menu.addAction(open_action)
-        
-        # 打开多张图片
-        open_multiple_images_action = QAction("🖼️ 打开多张图片", self.parent)
-        open_multiple_images_action.setShortcut("Ctrl+Shift+O")
-        open_multiple_images_action.triggered.connect(self.parent.open_multiple_images)
-        file_menu.addAction(open_multiple_images_action)
-        
-        # 打开图片目录
-        open_image_dir_action = QAction("📁 打开图片目录", self.parent)
-        open_image_dir_action.setShortcut("Ctrl+Shift+D")
-        open_image_dir_action.triggered.connect(self.parent.open_image_directory)
-        file_menu.addAction(open_image_dir_action)
 
         # 打开远程文件
         remote_open_action = QAction("🌐 打开远程文件", self.parent)
@@ -166,18 +154,13 @@ class MenuManager(QObject):
         
         # PDF处理子菜单
         pdf_menu = tools_menu.addMenu("📄 PDF处理")
-        
+
         # 导入图片
         import_images_action = QAction("📷 导入图片", self.parent)
         import_images_action.setShortcut("Ctrl+Shift+I")
         import_images_action.triggered.connect(self.parent.import_images)
         pdf_menu.addAction(import_images_action)
-        
-        # 从目录导入图片
-        import_images_dir_action = QAction("📂 从目录导入图片", self.parent)
-        import_images_dir_action.triggered.connect(self.parent.open_images_from_directory)
-        pdf_menu.addAction(import_images_dir_action)
-        
+
         # 转为图片
         convert_to_image_action = QAction("🖼️ 转为图片", self.parent)
         convert_to_image_action.setShortcut("Ctrl+I")
