@@ -1,4 +1,4 @@
-# 极灵PDF (AuroraPDF)
+# PDFAssistant (AuroraPDF)
 
 一个功能强大、性能卓越的PDF文档处理工具。采用模块化设计,界面美观现代,支持PDF查看、编辑、OCR识别、条码处理、插件扩展等高级功能。
 
@@ -401,15 +401,9 @@ python start.py
 
 ### 文件操作
 - `Ctrl+O`：打开文件
-- `Ctrl+Shift+O`：打开多张图片
-- `Ctrl+Shift+D`：打开图片目录
 - `Ctrl+S`：保存文件
 - `Ctrl+Shift+S`：另存为
 - `Ctrl+Q`：退出
-
-### 编辑操作
-- `Ctrl+Z`：撤销
-- `Ctrl+Y`：重做
 
 ### 视图操作
 - `Ctrl++`：放大
@@ -480,7 +474,7 @@ python start.py
 - ✅ 智能缩略图延迟加载
 - ✅ 实时性能监控
 - ✅ 应用图标
-- ✅ 代码模块化重构
+- ✅ 代码模块化
 - ✅ 主窗口功能拆分(混入类模式)
 - ✅ AI助手集成(LLM聊天)
 - ✅ 快捷键管理系统

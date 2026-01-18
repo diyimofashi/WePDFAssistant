@@ -22,7 +22,7 @@ from app.config.settings import AppSettings
 class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailManagerMixin,
                   SearchManagerMixin, OCRManagerMixin, UploadManagerMixin,
                   DownloadManagerMixin, OperationManagerMixin, ShortcutManagerMixin):
-    """极灵PDF主窗口 - 重构版本"""
+    """PDFAssistant主窗口"""
     def zoom_in(self):
         """放大：跳转到下一个更大的缩放级别"""
         current_zoom = self.pdf_processor.get_zoom()

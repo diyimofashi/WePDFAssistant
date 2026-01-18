@@ -1,4 +1,4 @@
-"""缩略图管理混入类 - 重构版"""
+"""缩略图管理混入类"""
 import subprocess
 import os
 

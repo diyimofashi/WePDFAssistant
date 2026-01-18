@@ -1,4 +1,4 @@
-# 极灵PDF
+# PDFAssistant
 
 一款简洁高效的PDF文档处理工具
 
@@ -26,4 +26,4 @@
 
 ---
 
-© 2025 极灵PDF All Rights Reserved
+© 2025 PDFAssistant All Rights Reserved

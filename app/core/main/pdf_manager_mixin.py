@@ -1,4 +1,4 @@
-"""PDF管理混入类 - 重构版"""
+"""PDF管理混入类"""
 
 import os
 import traceback

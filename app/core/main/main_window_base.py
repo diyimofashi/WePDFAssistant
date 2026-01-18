@@ -1,4 +1,4 @@
-"""极灵PDF主窗口基础类 - 重构版"""
+"""PDFAssistant主窗口基础类"""
 
 import traceback
 
@@ -32,7 +32,7 @@ from app.utils.logger import get_logger
 
 
 class MainWindowBase(QMainWindow):
-    """极灵PDF主窗口基础类 - 重构版本"""
+    """PDFAssistant主窗口基础类"""
     
     def __init__(self):
         super().__init__()

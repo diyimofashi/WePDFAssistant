@@ -1,4 +1,4 @@
-"""上传管理混入类 - 重构版"""
+"""上传管理混入类"""
 
 import os
 from app.utils.logger import get_logger

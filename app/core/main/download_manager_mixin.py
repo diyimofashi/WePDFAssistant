@@ -1,4 +1,4 @@
-"""下载管理混入类 - 重构版"""
+"""下载管理混入类"""
 
 from app.ui.download_file_dialog import show_download_file_dialog
 from app.config.download_plugin_config import download_config_manager

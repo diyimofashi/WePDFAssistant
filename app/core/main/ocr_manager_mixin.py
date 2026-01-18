@@ -1,4 +1,4 @@
-"""OCR管理混入类 - 重构版"""
+"""OCR管理混入类"""
 
 import os
 import traceback

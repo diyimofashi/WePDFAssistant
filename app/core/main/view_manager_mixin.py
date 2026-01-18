@@ -1,4 +1,4 @@
-"""视图管理混入类 - 重构版"""
+"""视图管理混入类"""
 from PyQt5.QtGui import QContextMenuEvent
 from app.utils.logger import get_logger
 

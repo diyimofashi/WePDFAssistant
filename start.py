@@ -1,4 +1,4 @@
-"""极灵PDF - 启动脚本"""
+"""PDFAssistant - 启动脚本"""
 
 import sys
 import os
@@ -12,7 +12,7 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
-print("启动极灵PDF（集成性能优化版）...")
+print("启动PDFAssistant（集成性能优化版）...")
 print("包含以下优化特性:")
 print("   - 异步PDF加载 - 不再阻塞UI")
 print("   - 虚拟滚动技术 - 流畅浏览大文件")

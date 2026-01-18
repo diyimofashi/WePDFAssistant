@@ -1,4 +1,4 @@
-"""操作管理混入类 - 重构版"""
+"""操作管理混入类"""
 import os
 import markdown2
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QDialogButtonBox, QMessageBox, QTextBrowser
@@ -71,7 +71,7 @@ class OperationManagerMixin:
 
         if not os.path.exists(about_file_path):
             logger.warning(f"关于文件不存在: {about_file_path}")
-            QMessageBox.about(self, "关于", "极灵PDF v1.0\n一个功能强大的PDF文档处理工具")
+            QMessageBox.about(self, "关于", "PDFAssistant v1.0\n一个功能强大的PDF文档处理工具")
             return
 
         try:
@@ -139,7 +139,7 @@ class OperationManagerMixin:
 
         except Exception as e:
             logger.error(f"读取关于文件时出错: {e}")
-            QMessageBox.about(self, "关于", "极灵PDF v1.0\n一个功能强大的PDF文档处理工具")
+            QMessageBox.about(self, "关于", "PDFAssistant v1.0\n一个功能强大的PDF文档处理工具")
     
     def check_for_updates(self):
         """检查更新"""

@@ -16,9 +16,9 @@ class AppSettings:
     """应用设置类"""
     
     # 应用信息
-    APP_NAME = "极灵PDF"
+    APP_NAME = "PDFAssistant"
     APP_VERSION = "1.0.0"
-    ORGANIZATION = "极灵科技"
+    ORGANIZATION = "PDFAssistant"
     
     # 窗口设置
     WINDOW_WIDTH = 1200
