@@ -26,60 +26,18 @@ class FileManager:
             logger.debug(f"播放提示音失败: {e}")
         
     def open_file(self):
-        """打开PDF文件、图片文件、多张图片或图片目录"""
+        """打开PDF文件、图片文件或多个文件"""
         last_dir = AppSettings.get_last_open_dir()
 
-        # 添加图片文件格式支持，支持多选，同时支持选择目录
+        # 弹出文件选择对话框，支持多选
         file_paths, _ = QFileDialog.getOpenFileNames(
             self.parent, "选择文件", last_dir,
             "所有支持的文件 (*.pdf *.jpg *.jpeg *.png *.bmp *.gif *.tiff *.tif *.webp *.ico);;PDF文件 (*.pdf);;图片文件 (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;所有文件 (*.*)"
         )
 
-        # 如果用户没有选择文件，尝试选择目录
+        # 如果用户没有选择文件，直接返回
         if not file_paths:
-            directory_path = QFileDialog.getExistingDirectory(
-                self.parent, "选择包含图片的目录", last_dir
-            )
-
-            if directory_path:
-                # 获取目录下所有图片文件
-                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
-                image_files = []
-
-                try:
-                    # 遍历目录获取所有图片文件
-                    for filename in os.listdir(directory_path):
-                        file_path = os.path.join(directory_path, filename)
-                        if os.path.isfile(file_path):
-                            file_ext = os.path.splitext(filename)[1].lower()
-                            if file_ext in image_extensions:
-                                image_files.append(file_path)
-
-                    # 按文件名排序
-                    image_files.sort()
-
-                    if not image_files:
-                        QMessageBox.information(self.parent, "提示", "所选目录中没有找到图片文件")
-                        return
-
-                    # 加载所有图片
-                    self.parent.show_progress_dialog(f"正在加载目录中的{len(image_files)}张图片...")
-                    success, message = self.parent.pdf_processor.open_multiple_images(image_files, async_mode=True, source_directory=directory_path)
-
-                    if success:
-                        settings = AppSettings._load_settings()
-                        settings['last_open_dir'] = directory_path
-                        AppSettings._save_settings()
-                    else:
-                        logger.error(f"目录图片异步加载启动失败: {message}")
-                        self.parent.hide_progress_dialog()
-                        QMessageBox.critical(self.parent, "错误", message)
-
-                except Exception as e:
-                    logger.error(f"读取目录时发生错误: {e}")
-                    QMessageBox.critical(self.parent, "错误", f"读取目录时发生错误: {str(e)}")
-            else:
-                logger.info("未选择文件或目录")
+            logger.info("用户取消了文件选择")
             return
 
         # 如果选择了多个文件，创建临时PDF
