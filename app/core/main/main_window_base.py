@@ -1,5 +1,5 @@
 """PDFAssistant主窗口基础类"""
-
+import sys
 import traceback
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QHBoxLayout, 
@@ -531,8 +531,15 @@ class MainWindowBase(QMainWindow):
                     return
         else:
             logger.debug("没有未保存的更改")
-        
+
         logger.debug("正常关闭程序")
+        # 从全局窗口列表中移除当前窗口
+        if 'app.main' in sys.modules:
+            from app.main import open_windows
+            if self in open_windows:
+                open_windows.remove(self)
+                logger.debug(f"窗口已从列表中移除，剩余窗口数: {len(open_windows)}")
+
         # 强制清理PDF处理器资源，避免fitz.Document.__del__报错
         if hasattr(self, 'pdf_processor'):
             self.pdf_processor.force_cleanup()

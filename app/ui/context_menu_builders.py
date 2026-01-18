@@ -114,13 +114,6 @@ class ContextMenuBuilder:
             else:
                 menu.addAction(action)
         
-        # AI助手子菜单
-        ai_actions = self._create_ai_actions(selected_text)
-        if ai_actions:
-            menu.addSeparator()
-            for action in ai_actions:
-                menu.addAction(action)
-        
         return menu
     
     def build_page_menu(self, page_num=None, **kwargs):
@@ -205,26 +198,6 @@ class ContextMenuBuilder:
         
         return actions
     
-    def _create_ai_actions(self, selected_text):
-        """创建AI助手动作"""
-        actions = []
-        
-        # 翻译文本
-        translate_action = QAction("🤖 翻译文本", self.main_window)
-        translate_action.triggered.connect(lambda: self._translate_text(selected_text))
-        actions.append(translate_action)
-        
-        # 解释文本
-        explain_action = QAction("🤖 解释文本", self.main_window)
-        explain_action.triggered.connect(lambda: self._explain_text(selected_text))
-        actions.append(explain_action)
-        
-        # 总结文本
-        summarize_action = QAction("🤖 总结文本", self.main_window)
-        summarize_action.triggered.connect(lambda: self._summarize_text(selected_text))
-        actions.append(summarize_action)
-        
-        return actions
     
     def _create_page_actions(self, page_num):
         """创建页面操作动作"""
@@ -442,33 +415,6 @@ class ContextMenuBuilder:
         """OCR识别文本"""
         self.main_window.show_message("🔍 OCR识别功能触发")
         logger.debug("OCR识别功能")
-    
-    def _translate_text(self, text):
-        """翻译文本"""
-        if hasattr(self.main_window, 'llm_sidebar'):
-            prompt = f"请翻译以下文本：\n\n{text}"
-            self.main_window.llm_sidebar.send_message(prompt)
-            if not self.main_window.llm_sidebar_dock.isVisible():
-                self.main_window.llm_sidebar_dock.show()
-        logger.debug(f"翻译文本: {text[:50]}...")
-    
-    def _explain_text(self, text):
-        """解释文本"""
-        if hasattr(self.main_window, 'llm_sidebar'):
-            prompt = f"请解释以下文本的含义：\n\n{text}"
-            self.main_window.llm_sidebar.send_message(prompt)
-            if not self.main_window.llm_sidebar_dock.isVisible():
-                self.main_window.llm_sidebar_dock.show()
-        logger.debug(f"解释文本: {text[:50]}...")
-    
-    def _summarize_text(self, text):
-        """总结文本"""
-        if hasattr(self.main_window, 'llm_sidebar'):
-            prompt = f"请总结以下文本的主要内容：\n\n{text}"
-            self.main_window.llm_sidebar.send_message(prompt)
-            if not self.main_window.llm_sidebar_dock.isVisible():
-                self.main_window.llm_sidebar_dock.show()
-        logger.debug(f"总结文本: {text[:50]}...")
     
     def _rotate_page(self, page_num, angle):
         """旋转页面"""

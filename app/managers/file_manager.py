@@ -27,6 +27,10 @@ class FileManager:
         
     def open_file(self):
         """打开PDF文件、图片文件或多个文件"""
+        # 检查当前窗口是否已打开文件
+        has_current_file = (hasattr(self.parent, 'pdf_processor') and
+                           self.parent.pdf_processor.fitz_document is not None)
+
         last_dir = AppSettings.get_last_open_dir()
 
         # 弹出文件选择对话框，支持多选
@@ -38,6 +42,17 @@ class FileManager:
         # 如果用户没有选择文件，直接返回
         if not file_paths:
             logger.info("用户取消了文件选择")
+            return
+
+        # 如果当前窗口已有文件，在新窗口中打开
+        if has_current_file:
+            logger.info("当前窗口已有文件，创建新窗口打开")
+            try:
+                from app.main import create_new_window
+                create_new_window(file_paths)
+            except ImportError as e:
+                logger.error(f"无法导入create_new_window: {e}")
+                QMessageBox.critical(self.parent, "错误", "无法创建新窗口，请检查日志。")
             return
 
         # 如果选择了多个文件，创建临时PDF

@@ -1,4 +1,5 @@
 
+
 import sys
 import os
 from PyQt5.QtGui import QPixmap, QPainter, QColor, QPen, QFont, QIcon
@@ -19,10 +20,14 @@ from app.core.main.operation_manager_mixin import OperationManagerMixin
 from app.core.main.shortcut_manager_mixin import ShortcutManagerMixin
 from app.config.settings import AppSettings
 
+# 全局窗口列表，用于管理所有打开的窗口
+open_windows = []
+
 class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailManagerMixin,
                   SearchManagerMixin, OCRManagerMixin, UploadManagerMixin,
                   DownloadManagerMixin, OperationManagerMixin, ShortcutManagerMixin):
     """PDFAssistant主窗口"""
+
     def zoom_in(self):
         """放大：跳转到下一个更大的缩放级别"""
         current_zoom = self.pdf_processor.get_zoom()
@@ -188,23 +193,47 @@ def create_builtin_icon():
     return QIcon(pixmap)
 
 
+def create_new_window(file_paths=None):
+    """创建新窗口并添加到全局列表"""
+    global open_windows
+    viewer = AuroraPDF()
+    viewer.setWindowIcon(get_app_icon())
+    viewer.show()
+    open_windows.append(viewer)
+
+    # 如果传入了文件路径，打开这些文件
+    if file_paths:
+        if len(file_paths) > 1:
+            viewer.file_manager._open_multiple_files_as_temp_pdf(file_paths)
+        else:
+            file_path = file_paths[0]
+            file_ext = os.path.splitext(file_path)[1].lower()
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
+
+            if file_ext in image_extensions:
+                viewer.file_manager._load_multiple_images([file_path])
+            else:
+                viewer.file_manager._open_pdf_file(file_path)
+                AppSettings.set_last_open_dir(file_path)
+
+    return viewer
+
 def main():
     """主函数"""
+    global open_windows
     app = QApplication(sys.argv)
-    
+
     app.setApplicationName(AppSettings.APP_NAME)
     app.setApplicationVersion(AppSettings.APP_VERSION)
     app.setOrganizationName(AppSettings.ORGANIZATION)
-    
+
     # 设置应用程序图标
     app_icon = get_app_icon()
     app.setWindowIcon(app_icon)
-    
-    viewer = AuroraPDF()
-    # 为窗口也设置图标
-    viewer.setWindowIcon(app_icon)
-    viewer.show()
-    
+
+    # 创建第一个窗口
+    viewer = create_new_window()
+
     sys.exit(app.exec_())
 
 
