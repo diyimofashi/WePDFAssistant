@@ -1,5 +1,7 @@
 """操作管理混入类 - 重构版"""
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QDialogButtonBox, QMessageBox
+import os
+import markdown2
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QDialogButtonBox, QMessageBox, QTextBrowser
 from app.utils.logger import get_logger
 from app.ui.batch_crypto_dialog import BatchCryptoDialog
 
@@ -64,57 +66,80 @@ class OperationManagerMixin:
     
     def show_about(self):
         """显示关于对话框"""
-        about_text = """
-        <h2>极灵PDF v1.0</h2>
-        <p>一个功能强大的PDF文档处理工具</p>
-        <p>支持PDF查看、编辑、转换、合并、分割等功能</p>
-        <p>🎯 设计理念: 简单易用，功能强大</p>
-        <p>新增功能: PDF转图片转换器</p>
-        """
-        QMessageBox.about(self, "关于", about_text)
-    
-    def show_shortcuts(self):
-        """显示快捷键说明"""
-        dialog = QDialog(self)
-        dialog.setWindowTitle("快捷键说明")
-        dialog.resize(500, 600)
-        
-        layout = QVBoxLayout()
-        
-        shortcuts_text = QTextEdit()
-        shortcuts_text.setReadOnly(True)
-        shortcuts_content = """
-快捷键说明：
+        # 读取Markdown文件
+        about_file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "about.md")
 
-文件操作：
-- Ctrl+O: 打开文件
-- Ctrl+S: 保存文件
-- Ctrl+Shift+S: 另存为/保存更改
-- Ctrl+D: 放弃更改
-- Ctrl+Q: 退出程序
+        if not os.path.exists(about_file_path):
+            logger.warning(f"关于文件不存在: {about_file_path}")
+            QMessageBox.about(self, "关于", "极灵PDF v1.0\n一个功能强大的PDF文档处理工具")
+            return
 
-编辑操作：
-- Ctrl+Z: 撤销
-- Ctrl+Y: 重做
+        try:
+            with open(about_file_path, 'r', encoding='utf-8') as f:
+                markdown_text = f.read()
 
-视图操作：
-- Ctrl++: 放大
-- Ctrl+-: 缩小
-- Ctrl+F: 搜索
+            # 转换Markdown为HTML
+            html_content = markdown2.markdown(markdown_text, extras=['tables', 'fenced-code-blocks'])
 
-页面导航：
-- PgUp: 上一页
-- PgDown: 下一页
-"""
-        shortcuts_text.setPlainText(shortcuts_content.strip())
-        layout.addWidget(shortcuts_text)
-        
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok)
-        button_box.accepted.connect(dialog.accept)
-        layout.addWidget(button_box)
-        
-        dialog.setLayout(layout)
-        dialog.exec_()
+            # 创建对话框
+            dialog = QDialog(self)
+            dialog.setWindowTitle("关于")
+            dialog.resize(700, 700)
+
+            layout = QVBoxLayout()
+
+            # 使用QTextBrowser显示富文本内容
+            text_browser = QTextBrowser()
+            text_browser.setHtml(html_content)
+            text_browser.setOpenExternalLinks(True)  # 允许打开外部链接
+
+            # 设置样式
+            text_browser.setStyleSheet("""
+                QTextBrowser {
+                    font-size: 12px;
+                    padding: 10px;
+                }
+                h1 {
+                    color: #2c3e50;
+                    font-size: 24px;
+                    margin-bottom: 15px;
+                }
+                h2 {
+                    color: #34495e;
+                    font-size: 18px;
+                    margin-bottom: 10px;
+                }
+                p {
+                    color: #34495e;
+                    margin: 5px 0;
+                }
+                code {
+                    background-color: #f5f5f5;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    font-family: monospace;
+                }
+                blockquote {
+                    border-left: 4px solid #3498db;
+                    padding-left: 15px;
+                    color: #555;
+                    margin: 10px 0;
+                }
+            """)
+
+            layout.addWidget(text_browser)
+
+            # 添加确定按钮
+            button_box = QDialogButtonBox(QDialogButtonBox.Ok)
+            button_box.accepted.connect(dialog.accept)
+            layout.addWidget(button_box)
+
+            dialog.setLayout(layout)
+            dialog.exec_()
+
+        except Exception as e:
+            logger.error(f"读取关于文件时出错: {e}")
+            QMessageBox.about(self, "关于", "极灵PDF v1.0\n一个功能强大的PDF文档处理工具")
     
     def check_for_updates(self):
         """检查更新"""

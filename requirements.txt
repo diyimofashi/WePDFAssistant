@@ -5,3 +5,5 @@ qdarkstyle==3.2.3
 pyzbar==0.1.9
 opencv-python==4.8.1.78
 debugpy==1.8.0
+markdown2==2.4.13
+picologging==0.1.3
