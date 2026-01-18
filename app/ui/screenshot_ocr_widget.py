@@ -223,8 +223,8 @@ class ScreenshotOCRWidget(QWidget):
 
             # 绘制选区（红色边框，半透明红色填充）
             if self.selection_rect.isValid():
-                # 绘制选区填充（半透明红色）
-                painter.setBrush(QBrush(self.selection_color))
+                # 绘制选区边框
+                painter.setBrush(Qt.NoBrush)
                 painter.setPen(QPen(self.selection_border_color, self.selection_border_width))
                 painter.drawRect(self.selection_rect)
 
@@ -234,20 +234,8 @@ class ScreenshotOCRWidget(QWidget):
                 font.setPointSize(10)
                 painter.setFont(font)
 
-                # 绘制文字背景
-                text_rect = painter.fontMetrics().boundingRect(text)
-                text_bg_rect = QRect(
-                    self.selection_rect.center().x() - text_rect.width() // 2 - 5,
-                    self.selection_rect.center().y() - text_rect.height() // 2 - 5,
-                    text_rect.width() + 10,
-                    text_rect.height() + 10
-                )
-                painter.setBrush(QBrush(QColor(0, 0, 0, 180)))
-                painter.setPen(Qt.NoPen)
-                painter.drawRoundedRect(text_bg_rect, 3, 3)
-
-                # 绘制文字
+                # 绘制文字（不带背景）
                 painter.setPen(QColor(255, 255, 255))
-                painter.drawText(text_bg_rect, Qt.AlignCenter, text)
+                painter.drawText(self.selection_rect, Qt.AlignCenter, text)
 
         painter.end()
