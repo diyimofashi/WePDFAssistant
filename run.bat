@@ -1,25 +1,46 @@
 @echo off
+chcp 65001 >nul
 title PDFAssistant - 集成优化版
 
 echo.
-echo ╔════════════════════════════════════════════════════════╗
-echo ║                🚀 PDFAssistant 集成优化版                ║
-echo ╠════════════════════════════════════════════════════════╣
-echo ║  自动检测并启用所有性能优化特性                              ║
-echo ║  ⚡ 异步加载 • 虚拟滚动 • 智能缓存 • 延迟缩略图         ║
-echo ║  📊 实时性能监控 • 自动内存优化                             ║
-echo ╚════════════════════════════════════════════════════════╝
+echo ============================================================
+echo              PDFAssistant - Performance Optimized
+echo ============================================================
+echo  Auto-detecting and enabling all performance features
+echo   - Async loading • Virtual scrolling • Smart cache • Lazy thumbnails
+echo   - Real-time performance monitoring • Auto memory optimization
+echo ============================================================
 echo.
 
-REM 激活虚拟环境
-call pypdf\Scripts\activate
+REM Check virtual environment
+if not exist "PDFAssistant\Scripts\activate.bat" (
+    echo [Error] Virtual environment not found: PDFAssistant
+    echo.
+    echo Creating virtual environment...
+    python -m venv PDFAssistant
 
-REM 运行主程序
+    REM Install dependencies
+    call PDFAssistant\Scripts\activate
+    pip install -r requirements.txt
+    echo.
+)
+
+REM Activate virtual environment
+call PDFAssistant\Scripts\activate.bat
+
+REM Try to run the program
 python start.py
 
-REM 如果出错则暂停
+REM If error occurs, show error message
 if %errorlevel% neq 0 (
     echo.
-    echo ❌ 程序运行出错，错误代码: %errorlevel%
+    echo ============================================================
+    echo Program exited with error code: %errorlevel%
+    echo.
+    echo Possible causes:
+    echo   1. Missing Python module in requirements.txt
+    echo   2. Run: pip install <missing_module>
+    echo   3. Or run: scan_imports.py to detect all imports
+    echo ============================================================
     pause
 )

@@ -8,6 +8,7 @@ import importlib.util
 from typing import Dict, Any, List
 from app.core.download.download_plugin_interface import DownloadPluginInterface, DownloadResult, DownloadErrorCode
 from app.utils.logger import get_logger
+from app.utils.app_path import get_plugin_dir
 
 logger = get_logger('download_plugin_manager')
 
@@ -22,18 +23,16 @@ class DownloadPluginManager:
     def load_plugins(self, plugins_dir: str = None) -> List[str]:
         """
         从指定目录加载所有下载插件
-        
+
         Args:
             plugins_dir: 插件目录路径，默认为 app/plugins-download/
-            
+
         Returns:
             List[str]: 成功加载的插件名称列表
         """
         if plugins_dir is None:
-            # 获取项目根目录
-            app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            plugins_dir = os.path.join(app_root, 'plugins-download')
-        
+            plugins_dir = get_plugin_dir('plugins-download')
+
         if not os.path.exists(plugins_dir):
             logger.warning(f"下载插件目录不存在: {plugins_dir}")
             return []

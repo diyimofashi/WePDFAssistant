@@ -190,6 +190,7 @@ ehthumbs.db
 Icon?
 Thumbs.db
 pypdf/
+PDFAssistant/
 test/
 cache/
 .codebuddy/

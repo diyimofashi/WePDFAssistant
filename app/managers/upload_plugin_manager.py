@@ -12,6 +12,7 @@ from typing import Dict, List, Any, Optional
 from app.core.upload.upload_plugin_interface import UploadPluginInterface, UploadResult, UploadErrorCode
 from app.config.upload_plugin_config import upload_config_manager
 from app.utils.logger import get_logger
+from app.utils.app_path import get_app_root, get_plugin_dir
 
 logger = get_logger('upload_plugin_manager')
 
@@ -22,23 +23,21 @@ class UploadPluginManager:
     def __init__(self, plugin_dirs: List[str] = None):
         """
         初始化插件管理器
-        
+
         Args:
             plugin_dirs: 插件目录列表，默认为应用的upload_plugins目录
         """
         self.plugins: Dict[str, UploadPluginInterface] = {}
         self.plugin_dirs = plugin_dirs or []
-        
+
         # 使用配置管理器
         self.config_manager = upload_config_manager
-        
+
         # 如果没有指定插件目录，使用默认目录
         if not self.plugin_dirs:
-            # 获取应用根目录
-            app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            default_plugin_dir = os.path.join(app_root, 'plugins-upload')
+            default_plugin_dir = get_plugin_dir('plugins-upload')
             self.plugin_dirs = [default_plugin_dir]
-        
+
         logger.info(f"上传插件管理器初始化，插件目录: {self.plugin_dirs}")
     
     def discover_plugins(self) -> List[str]:
