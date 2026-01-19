@@ -45,6 +45,11 @@ class DownloadPluginManager:
                 plugin_module_file = os.path.join(plugin_dir, 'download_api.py')
                 if os.path.exists(plugin_module_file):
                     try:
+                        # 将插件目录添加到 sys.path，使相对导入能正确解析
+                        plugin_dir = os.path.dirname(plugin_module_file)
+                        import sys
+                        sys.path.insert(0, plugin_dir)
+                        
                         # 动态加载插件模块
                         spec = importlib.util.spec_from_file_location(
                             f"download_plugin_{plugin_dir_name}", 

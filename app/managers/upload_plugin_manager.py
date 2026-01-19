@@ -84,6 +84,10 @@ class UploadPluginManager:
                 logger.error(f"上传插件缺少__init__.py文件: {plugin_path}")
                 return None
             
+            # 将插件目录添加到 sys.path，使相对导入能正确解析
+            plugin_dir = os.path.dirname(init_file)
+            sys.path.insert(0, plugin_dir)
+            
             # 动态导入插件
             spec = importlib.util.spec_from_file_location(f"upload_plugin_{plugin_name}", init_file)
             plugin_module = importlib.util.module_from_spec(spec)

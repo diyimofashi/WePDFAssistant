@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 >nul
 REM 快速编译脚本 - 仅更新修改过的部分
 
