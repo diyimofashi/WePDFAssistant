@@ -95,7 +95,9 @@ class PDFRenderer(QObject):
 
         # 新的缓存系统
         self.render_cache = RenderCache(max_memory_mb=200, max_items=50)
-        self.disk_cache = DiskCache(cache_dir="cache", max_size_mb=500)
+        # 使用系统缓存目录
+        cache_dir = os.path.join(AppSettings.get_app_data_path(), "cache")
+        self.disk_cache = DiskCache(cache_dir=cache_dir, max_size_mb=500)
 
         # 向后兼容的简单缓存
         self.simple_cache = {}
