@@ -101,13 +101,19 @@ nuitka --standalone ^
        --lto=no ^
        --windows-console-mode=disable ^
        --windows-icon-from-ico=app\assets\app_icon.ico ^
+       --output-filename=PDFAssistant.exe ^
        start.py
 
 if %errorlevel% equ 0 (
     echo [Info] Finalizing output directory...
-    if exist "dist\start.dist" (
+    if exist "dist\PDFAssistant.dist" (
         if exist "dist\PDFAssistant" rmdir /s /q "dist\PDFAssistant"
-        move "dist\start.dist" "dist\PDFAssistant"
+        move "dist\PDFAssistant.dist" "dist\PDFAssistant"
+    )
+
+    echo [Info] Renaming start.exe to PDFAssistant.exe...
+    if exist "dist\PDFAssistant\start.exe" (
+        move "dist\PDFAssistant\start.exe" "dist\PDFAssistant\PDFAssistant.exe"
     )
 
     echo [Info] Copying all plugin directories...
@@ -127,10 +133,10 @@ if %errorlevel% equ 0 (
     echo                  Compilation successful!
     echo ============================================================
     echo  Output directory: dist\PDFAssistant
-    echo  Executable: dist\PDFAssistant\start.exe
+    echo  Executable: dist\PDFAssistant\PDFAssistant.exe
     echo
     echo  Next steps:
-    echo    1. Test the program: dist\PDFAssistant\start.exe
+    echo    1. Test the program: dist\PDFAssistant\PDFAssistant.exe
     echo    2. Create installer: create_installer.bat
     echo ============================================================
 ) else (

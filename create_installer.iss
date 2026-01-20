@@ -8,7 +8,7 @@
 AppName=PDFAssistant
 AppVersion=1.0.0
 AppId=PDFAssistant
-AppPublisher=YourName
+AppPublisher=Cash
 AppPublisherURL=
 AppSupportURL=
 AppUpdatesURL=
@@ -16,11 +16,13 @@ DefaultDirName={commonpf}\PDFAssistant
 DefaultGroupName=PDFAssistant
 AllowNoIcons=yes
 OutputDir=installer
-OutputBaseFilename=PDFAssistant-Setup
+OutputBaseFilename=PDFAssistant-Setup-1.0.0
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
+SetupIconFile=app\assets\app_icon.ico
+UninstallDisplayIcon={app}\start.exe
 
 ; ==================== 安装选项 ====================
 ; 创建桌面快捷方式
@@ -34,9 +36,9 @@ Source: "dist\start.dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdi
 
 [Icons]
 ; ==================== 快捷方式 ====================
-Name: "{group}\PDFAssistant"; Filename: "{app}\start.exe"
+Name: "{group}\PDFAssistant"; Filename: "{app}\PDFAssistant.exe"
 Name: "{group}\卸载 PDFAssistant"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\PDFAssistant"; Filename: "{app}\start.exe"; Tasks: desktopicon
+Name: "{commondesktop}\PDFAssistant"; Filename: "{app}\PDFAssistant.exe"; Tasks: desktopicon
 
 [Tasks]
 ; ==================== 安装任务 ====================
@@ -48,17 +50,33 @@ Name: "fileassoc"; Description: "将 PDFAssistant 设为默认 PDF 阅读器"; G
 ; 仅在选择了 fileassoc 任务时执行
 Root: HKCR; Subkey: ".pdf"; ValueType: string; ValueName: ""; ValueData: "PDFAssistant.PDF"; Flags: uninsdeletevalue; Tasks: fileassoc
 Root: HKCR; Subkey: "PDFAssistant.PDF"; ValueType: string; ValueName: ""; ValueData: "PDF 文档"; Flags: uninsdeletekey; Tasks: fileassoc
-Root: HKCR; Subkey: "PDFAssistant.PDF\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\start.exe,0"; Tasks: fileassoc
-Root: HKCR; Subkey: "PDFAssistant.PDF\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\start.exe"" ""%1"""; Tasks: fileassoc
-Root: HKCR; Subkey: "PDFAssistant.PDF\shell\print\command"; ValueType: string; ValueName: ""; ValueData: """{app}\start.exe"" -print ""%1"""; Tasks: fileassoc
+Root: HKCR; Subkey: "PDFAssistant.PDF\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\PDFAssistant.exe,0"; Tasks: fileassoc
+Root: HKCR; Subkey: "PDFAssistant.PDF\shell"; ValueType: string; ValueName: ""; ValueData: "使用 PDFAssistant 打开"; Tasks: fileassoc
+Root: HKCR; Subkey: "PDFAssistant.PDF\shell\open"; ValueType: string; ValueName: ""; ValueData: "打开"; Tasks: fileassoc
+Root: HKCR; Subkey: "PDFAssistant.PDF\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PDFAssistant.exe"" ""%1"""; Tasks: fileassoc
+Root: HKCR; Subkey: "PDFAssistant.PDF\shell\print"; ValueType: string; ValueName: ""; ValueData: "打印"; Tasks: fileassoc
+Root: HKCR; Subkey: "PDFAssistant.PDF\shell\print\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PDFAssistant.exe"" -print ""%1"""; Tasks: fileassoc
 
 ; 使用 OpenWith 协议让用户设置默认程序
 Root: HKCR; Subkey: ".pdf\OpenWithProgids"; ValueType: none; Flags: uninsdeletevalue; Tasks: fileassoc
 Root: HKCR; Subkey: ".pdf\OpenWithProgids"; ValueType: string; ValueName: "PDFAssistant.PDF"; Tasks: fileassoc
 
+; 添加应用程序注册信息
+Root: HKCR; Subkey: "Applications\PDFAssistant.exe"; ValueType: string; ValueName: ""; ValueData: "PDFAssistant"; Tasks: fileassoc
+Root: HKCR; Subkey: "Applications\PDFAssistant.exe\SupportedTypes"; ValueType: string; ValueName: ".pdf"; Tasks: fileassoc
+Root: HKCR; Subkey: "Applications\PDFAssistant.exe\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PDFAssistant.exe"" ""%1"""; Tasks: fileassoc
+
+; 注册应用程序到系统（用于默认应用显示）
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\PDFAssistant.exe"; ValueType: string; ValueName: ""; ValueData: "{app}\PDFAssistant.exe"; Tasks: fileassoc; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\PDFAssistant.exe"; ValueType: string; ValueName: "PrettyName"; ValueData: "PDFAssistant"; Tasks: fileassoc
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\PDFAssistant.exe"; ValueType: string; ValueName: "Path"; ValueData: "{app}"; Tasks: fileassoc
+Root: HKLM; Subkey: "Software\RegisteredApplications"; ValueType: string; ValueName: "PDFAssistant"; ValueData: "Software\PDFAssistant\Capabilities"; Tasks: fileassoc; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "Software\PDFAssistant\Capabilities"; ValueType: string; ValueName: "ApplicationDescription"; ValueData: "PDFAssistant - PDF 阅读器"; Tasks: fileassoc; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\PDFAssistant\Capabilities\FileAssociations"; ValueType: string; ValueName: ".pdf"; ValueData: "PDFAssistant.PDF"; Tasks: fileassoc
+
 [Run]
 ; ==================== 运行程序 ====================
-Filename: "{app}\start.exe"; Description: "启动 PDFAssistant"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\PDFAssistant.exe"; Description: "启动 PDFAssistant"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; ==================== 卸载清理 ====================
@@ -136,12 +154,31 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
+  RegKey: String;
 begin
   if CurStep = ssPostInstall then
   begin
-    { 如果选择了 fileassoc 任务，调用默认应用设置 }
+    { 如果选择了 fileassoc 任务，设置应用程序描述 }
     if IsTaskSelected('fileassoc') then
     begin
+      { 在 App Paths 中注册应用程序，这有助于系统识别应用名称 }
+      RegKey := 'Software\Microsoft\Windows\CurrentVersion\App Paths\PDFAssistant.exe';
+      RegWriteStringValue(HKLM, RegKey, '', ExpandConstant('{app}\PDFAssistant.exe'));
+      RegWriteStringValue(HKLM, RegKey, 'Path', ExpandConstant('{app}'));
+      RegWriteStringValue(HKLM, RegKey, 'PrettyName', 'PDFAssistant');
+
+      { 注册应用程序到系统应用列表 }
+      RegKey := 'Software\RegisteredApplications';
+      RegWriteStringValue(HKLM, RegKey, 'PDFAssistant', 'Software\PDFAssistant\Capabilities');
+
+      { 添加应用程序能力 }
+      RegKey := 'Software\PDFAssistant\Capabilities';
+      RegWriteStringValue(HKLM, RegKey, 'ApplicationDescription', 'PDFAssistant - PDF 阅读器');
+
+      RegKey := 'Software\PDFAssistant\Capabilities\FileAssociations';
+      RegWriteStringValue(HKLM, RegKey, '.pdf', 'PDFAssistant.PDF');
+
+      { 打开默认应用设置页面 }
       ShellExec('open', 'control', '/name Microsoft.DefaultPrograms /page pageDefaultProgram', '', SW_SHOW, ewNoWait, ResultCode);
       MsgBox('PDFAssistant 已注册为 PDF 打开程序。' + #13#10 + #13#10 +
              '请在打开的默认应用设置页面中，选择 PDFAssistant 作为 PDF 文件的默认打开程序。',
@@ -156,7 +193,7 @@ begin
   Result := False;
 end;
 
-// 卸载完成后
+{ 卸载完成后 }
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   UserDir: String;
@@ -176,6 +213,11 @@ begin
       if DirExists(UserDir) then
         DelTree(UserDir, True, True, True);
     end;
+
+    { 清理应用程序注册信息 }
+    RegDeleteKeyIncludingSubkeys(HKLM, 'Software\PDFAssistant\Capabilities');
+    RegDeleteKeyIncludingSubkeys(HKLM, 'Software\PDFAssistant');
+    RegDeleteKeyIncludingSubkeys(HKLM, 'Software\Microsoft\Windows\CurrentVersion\App Paths\PDFAssistant.exe');
   end;
 end;
 

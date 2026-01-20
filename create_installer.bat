@@ -18,8 +18,8 @@ echo    - Full uninstall support
 echo ============================================================
 echo.
 
-REM Check if dist/start.dist directory exists
-if exist "dist\start.dist\start.exe" (
+REM Check if dist/PDFAssistant directory exists
+if exist "dist\start.dist\PDFAssistant.exe" (
     goto :check_inno
 ) else (
     echo [Error] Compiled program not found

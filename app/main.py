@@ -234,6 +234,18 @@ def main():
     # 创建第一个窗口
     viewer = create_new_window()
 
+    # 处理命令行参数（打开指定文件）
+    if len(sys.argv) > 1:
+        file_path = sys.argv[1]
+        # 处理可能的路径格式（如带引号的路径）
+        if file_path.startswith('"') and file_path.endswith('"'):
+            file_path = file_path[1:-1]
+
+        if os.path.exists(file_path) and file_path.lower().endswith('.pdf'):
+            # 使用延迟调用，确保UI完全加载
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(100, lambda: viewer.file_manager._open_pdf_file(file_path))
+
     sys.exit(app.exec_())
 
 
