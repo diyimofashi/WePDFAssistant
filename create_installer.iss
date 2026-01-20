@@ -7,6 +7,7 @@
 ; ==================== 应用信息 ====================
 AppName=PDFAssistant
 AppVersion=1.0.0
+AppId=PDFAssistant
 AppPublisher=YourName
 AppPublisherURL=
 AppSupportURL=
@@ -29,7 +30,7 @@ ChangesAssociations=yes
 
 [Files]
 ; ==================== Application files ====================
-Source: "dist\PDFAssistant\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist\start.dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 ; ==================== 快捷方式 ====================
@@ -51,8 +52,9 @@ Root: HKCR; Subkey: "PDFAssistant.PDF\DefaultIcon"; ValueType: string; ValueName
 Root: HKCR; Subkey: "PDFAssistant.PDF\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\start.exe"" ""%1"""; Tasks: fileassoc
 Root: HKCR; Subkey: "PDFAssistant.PDF\shell\print\command"; ValueType: string; ValueName: ""; ValueData: """{app}\start.exe"" -print ""%1"""; Tasks: fileassoc
 
-; 为当前用户设置默认关联
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoice"; ValueType: string; ValueName: "ProgId"; ValueData: "PDFAssistant.PDF"; Tasks: fileassoc
+; 使用 OpenWith 协议让用户设置默认程序
+Root: HKCR; Subkey: ".pdf\OpenWithProgids"; ValueType: none; Flags: uninsdeletevalue; Tasks: fileassoc
+Root: HKCR; Subkey: ".pdf\OpenWithProgids"; ValueType: string; ValueName: "PDFAssistant.PDF"; Tasks: fileassoc
 
 [Run]
 ; ==================== 运行程序 ====================
@@ -66,28 +68,61 @@ Type: filesandordirs; Name: "{userappdata}\PDFAssistant"
 Type: filesandordirs; Name: "{localappdata}\PDFAssistant"
 
 [Code]
-; ==================== Pascal 脚本 ====================
 
-// 初始化安装程序
+{ ==================== Pascal 脚本 ==================== }
+
+{ 初始化安装程序 }
 function InitializeSetup(): Boolean;
 var
   ResultCode: Integer;
+  UninstallString: String;
 begin
   Result := True;
 
-  // 检查是否已安装旧版本
+  { 检查是否已安装旧版本 }
   if RegKeyExists(HKLM, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#emit SetupSetting("AppId")}_is1') then
   begin
     if MsgBox('检测到已安装旧版本的 PDFAssistant。' + #13#10 + #13#10 +
               '是否要卸载旧版本并继续安装？',
               mbConfirmation, MB_YESNO) = IDYES then
     begin
-      // 运行卸载程序
-      if not Exec(ExpandConstant('{uninstallexe}'), '/SILENT /NORESTART',
-                  '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      { 获取卸载程序路径 }
+      if RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#emit SetupSetting("AppId")}_is1', 'UninstallString', UninstallString) then
       begin
-        MsgBox('卸载失败。请手动卸载旧版本后再安装。', mbError, MB_OK);
-        Result := False;
+        { 提取卸载程序路径（去掉引号和参数） }
+        UninstallString := RemoveQuotes(UninstallString);
+        { 运行卸载程序 }
+        if not Exec(UninstallString, '/SILENT /NORESTART /SUPPRESSMSGBOXES',
+                    '', SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode) then
+        begin
+          { 卸载失败，可能是卸载程序不存在或被删除 }
+          if MsgBox('卸载程序未找到或已删除。' + #13#10 + #13#10 +
+                 '是否继续安装覆盖旧版本？' + #13#10 +
+                 '（建议先手动卸载旧版本）',
+                 mbConfirmation, MB_YESNO) = IDYES then
+            Result := True
+          else
+            Result := False;
+        end
+        else if ResultCode <> 0 then
+        begin
+          if MsgBox('卸载失败，错误代码: ' + IntToStr(ResultCode) + #13#10 + #13#10 +
+                 '是否继续安装覆盖旧版本？',
+                 mbConfirmation, MB_YESNO) = IDYES then
+            Result := True
+          else
+            Result := False;
+        end;
+      end
+      else
+      begin
+        { 无法获取卸载程序路径 }
+        if MsgBox('无法获取卸载程序信息。' + #13#10 + #13#10 +
+               '是否继续安装覆盖旧版本？',
+               mbConfirmation, MB_YESNO) = IDYES then
+          Result := True
+        else
+          Result := False;
       end;
     end
     else
@@ -97,7 +132,25 @@ begin
   end;
 end;
 
-// 卸载前询问是否删除用户数据
+{ 安装后设置默认程序 }
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    { 如果选择了 fileassoc 任务，调用默认应用设置 }
+    if IsTaskSelected('fileassoc') then
+    begin
+      ShellExec('open', 'control', '/name Microsoft.DefaultPrograms /page pageDefaultProgram', '', SW_SHOW, ewNoWait, ResultCode);
+      MsgBox('PDFAssistant 已注册为 PDF 打开程序。' + #13#10 + #13#10 +
+             '请在打开的默认应用设置页面中，选择 PDFAssistant 作为 PDF 文件的默认打开程序。',
+             mbInformation, MB_OK);
+    end;
+  end;
+end;
+
+{ 卸载前询问是否删除用户数据 }
 function UninstallNeedRestart(): Boolean;
 begin
   Result := False;
