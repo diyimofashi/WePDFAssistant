@@ -64,45 +64,13 @@ if exist "dist" (
     echo [Info] Deleting dist directory...
     rmdir /s /q dist
 )
-REM 保留 build 目录以支持增量编译
-REM if exist "build" (
-REM     echo [Info] Deleting build directory...
-REM     rmdir /s /q build
-REM )
 
 REM Start compilation
 echo [4/5] Starting Nuitka compilation (this may take 10-30 minutes)...
 echo.
 
-REM Execute Nuitka compilation
-nuitka --standalone ^
-       --output-dir=dist ^
-       --show-progress ^
-       --show-memory ^
-       --show-scons ^
-       --enable-plugin=pyqt5 ^
-       --plugin-disable=anti-bloat ^
-       --plugin-disable=implicit-imports ^
-       --include-package-data=PyQt5 ^
-       --follow-imports ^
-       --include-package=app ^
-       --include-module=fitz ^
-       --include-module=PIL ^
-       --include-module=cv2 ^
-       --include-module=pyzbar ^
-       --include-module=picologging ^
-       --include-data-dir=app\assets=assets ^
-       --include-data-dir=app\config=config ^
-       --include-data-dir=app\plugins=plugins ^
-       --include-data-dir=app\plugins-upload=plugins-upload ^
-       --include-data-dir=app\plugins-download=plugins-download ^
-       --include-data-dir=app\plugins-barcode=plugins-barcode ^
-       --jobs=2 ^
-       --lto=no ^
-       --windows-console-mode=disable ^
-       --windows-icon-from-ico=app\assets\app_icon.ico ^
-       --output-filename=PDFAssistant.exe ^
-       start.py
+REM Execute Nuitka compilation using build_config.py
+PDFAssistant\Scripts\python.exe -c "from build_config import execute_command, command_to_string, get_windows_command; cmd = get_windows_command(); print('[Info] Executing:', command_to_string(cmd)); exit(execute_command(cmd))"
 
 if %errorlevel% equ 0 (
     echo [Info] Finalizing output directory...

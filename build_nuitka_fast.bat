@@ -1,5 +1,4 @@
 @echo off
-setlocal enabledelayedexpansion
 chcp 65001 >nul
 REM 快速编译脚本 - 仅更新修改过的部分
 
@@ -46,33 +45,8 @@ REM 开始快速编译
 echo [3/3] Starting incremental compilation...
 echo.
 
-nuitka --standalone ^
-       --output-dir=dist ^
-       --show-progress ^
-       --show-memory ^
-       --enable-plugin=pyqt5 ^
-       --plugin-disable=anti-bloat ^
-       --plugin-disable=implicit-imports ^
-       --include-package-data=PyQt5 ^
-       --follow-imports ^
-       --include-package=app ^
-       --include-module=fitz ^
-       --include-module=PIL ^
-       --include-module=cv2 ^
-       --include-module=pyzbar ^
-       --include-module=picologging ^
-       --include-data-dir=app\assets=assets ^
-       --include-data-dir=app\config=config ^
-       --include-data-dir=app\plugins=plugins ^
-       --include-data-dir=app\plugins-upload=plugins-upload ^
-       --include-data-dir=app\plugins-download=plugins-download ^
-       --include-data-dir=app\plugins-barcode=plugins-barcode ^
-       --jobs=2 ^
-       --lto=no ^
-       --windows-console-mode=disable ^
-       --windows-icon-from-ico=app\assets\app_icon.ico ^
-       --output-filename=PDFAssistant.exe ^
-       start.py
+REM 使用 build_config.py 执行增量编译
+PDFAssistant\Scripts\python.exe -c "from build_config import execute_command, command_to_string, get_windows_command; cmd = get_windows_command(incremental=True); print('[Info] Executing:', command_to_string(cmd)); exit(execute_command(cmd))"
 
 if %errorlevel% equ 0 (
     echo [Info] Finalizing output directory...

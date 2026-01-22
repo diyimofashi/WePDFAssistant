@@ -23,12 +23,20 @@ WizardStyle=modern
 PrivilegesRequired=admin
 SetupIconFile=app\assets\app_icon.ico
 UninstallDisplayIcon={app}\start.exe
+; ==================== 语言和界面 ====================
+ShowLanguageDialog=no
+ShowComponentSizes=no
+; ==================== 许可协议 ====================
+LicenseFile=app\assets\LICENSE.txt
 
 ; ==================== 安装选项 ====================
 ; 创建桌面快捷方式
 ChangesAssociations=yes
 ; 允许安装后运行程序
 ; UninstallDisplayIcon={app}\start.exe
+
+[Languages]
+Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 
 [Files]
 ; ==================== Application files ====================
@@ -39,10 +47,12 @@ Source: "dist\start.dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdi
 Name: "{group}\PDFAssistant"; Filename: "{app}\PDFAssistant.exe"
 Name: "{group}\卸载 PDFAssistant"; Filename: "{uninstallexe}"
 Name: "{commondesktop}\PDFAssistant"; Filename: "{app}\PDFAssistant.exe"; Tasks: desktopicon
+Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\PDFAssistant"; Filename: "{app}\PDFAssistant.exe"; Tasks: quicklaunch
 
 [Tasks]
 ; ==================== 安装任务 ====================
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加图标:"
+Name: "quicklaunch"; Description: "添加到快速启动栏"; GroupDescription: "附加图标:"; Flags: unchecked
 Name: "fileassoc"; Description: "将 PDFAssistant 设为默认 PDF 阅读器"; GroupDescription: "文件关联:"; Flags: unchecked
 
 [Registry]

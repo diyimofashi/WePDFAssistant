@@ -18,10 +18,8 @@ echo ""
 # 检测操作系统
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     PLATFORM="linux"
-    ICON="app/assets/app_icon.png"
 elif [[ "$OSTYPE" == "darwin"* ]]; then
     PLATFORM="macos"
-    ICON="app/assets/app_icon.png"
 else
     echo "[错误] 不支持的操作系统: $OSTYPE"
     exit 1
@@ -60,59 +58,8 @@ rm -rf dist build
 echo "[4/5] 开始 Nuitka 编译（这可能需要 10-30 分钟）..."
 echo ""
 
-# 执行 Nuitka 编译（移除 --qt-plugins 选项）
-if [[ "$PLATFORM" == "macos" ]]; then
-    nuitka --standalone \
-           --output-dir=dist/PyPDF \
-           --show-progress \
-           --show-memory \
-           --show-scons \
-           --enable-plugin=pyqt5 \
-           --include-package-data=PyQt5 \
-           --follow-imports \
-           --include-package=app \
-           --include-module=fitz \
-           --include-module=PIL \
-           --include-module=cv2 \
-           --include-module=pyzbar \
-           --include-module=picologging \
-           --include-data-dir=app/assets=assets \
-           --include-data-dir=app/config=config \
-           --include-data-dir=app/plugins=plugins \
-           --include-data-dir=app/plugins-upload=plugins-upload \
-           --include-data-dir=app/plugins-download=plugins-download \
-           --include-data-dir=app/plugins-barcode=plugins-barcode \
-           --jobs=4 \
-           --lto=no \
-           --macos-create-app-bundle \
-           --macos-app-icon=$ICON \
-           start.py
-else
-    nuitka --standalone \
-           --output-dir=dist/PyPDF \
-           --show-progress \
-           --show-memory \
-           --show-scons \
-           --enable-plugin=pyqt5 \
-           --include-package-data=PyQt5 \
-           --follow-imports \
-           --include-package=app \
-           --include-module=fitz \
-           --include-module=PIL \
-           --include-module=cv2 \
-           --include-module=pyzbar \
-           --include-module=picologging \
-           --include-data-dir=app/assets=assets \
-           --include-data-dir=app/config=config \
-           --include-data-dir=app/plugins=plugins \
-           --include-data-dir=app/plugins-upload=plugins-upload \
-           --include-data-dir=app/plugins-download=plugins-download \
-           --include-data-dir=app/plugins-barcode=plugins-barcode \
-           --jobs=4 \
-           --lto=no \
-           --linux-icon=$ICON \
-           start.py
-fi
+# 使用 build_config.py 执行编译
+python -c "from build_config import execute_command, command_to_string, get_linux_command, get_macos_command; import sys; cmd = get_linux_command() if sys.platform.startswith('linux') else get_macos_command(); print('[Info] Executing:', command_to_string(cmd)); exit(execute_command(cmd))"
 
 echo ""
 if [ $? -eq 0 ]; then
