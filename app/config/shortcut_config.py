@@ -12,6 +12,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from app.utils.logger import get_logger
+from app.utils.app_path import get_config_dir
 
 logger = get_logger('shortcut_config')
 
@@ -61,7 +62,7 @@ class ShortcutConfig:
     }
 
     # 设置文件路径
-    SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".aurora_pdf_settings.json")
+    SETTINGS_FILE = os.path.join(get_config_dir(), "shortcuts.json")
     SHORTCUTS_KEY = "shortcuts"
 
     # 运行时缓存

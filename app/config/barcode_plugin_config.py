@@ -8,6 +8,7 @@ import json
 import threading
 from typing import Dict, Any, List, Union
 from app.utils.logger import get_logger
+from app.utils.app_path import get_config_dir
 
 logger = get_logger('barcode_plugin_config')
 
@@ -122,9 +123,7 @@ class BarcodePluginConfigManager:
             config_file: 配置文件路径，默认为应用配置目录下的barcode_plugins.json
         """
         if config_file is None:
-            # 获取应用配置目录
-            app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            config_file = os.path.join(app_dir, 'config', 'barcode_plugins.json')
+            config_file = os.path.join(get_config_dir(), 'barcode_plugins.json')
 
         self.config_file = config_file
         self.global_config: Dict[str, Any] = {}

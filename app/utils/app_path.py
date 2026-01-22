@@ -22,9 +22,12 @@ def get_app_root():
             exe_dir = os.path.dirname(sys.executable)
         app_dir = os.path.join(exe_dir, 'app')
         if os.path.exists(app_dir):
+            print(f"使用应用目录: {app_dir}")
             return app_dir
+        print(f"使用执行目录: {exe_dir}")
         return exe_dir
     else:
+        print(f"使用当前目录: {os.path.dirname(os.path.abspath(__file__))}")
         return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 

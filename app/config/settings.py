@@ -4,12 +4,12 @@ import os
 import json
 import sys
 
-# 添加项目根目录到Python路径，解决模块导入问题
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, project_root)
+# 导入路径工具
+from app.utils.app_path import get_config_dir
 
 # 导入日志模块
 from app.utils.logger import get_logger
+
 logger = get_logger('settings')
 
 class AppSettings:
@@ -36,17 +36,20 @@ class AppSettings:
     # 预览设置
     DEFAULT_ZOOM = 100
     ZOOM_LEVELS = [25, 50, 75, 100, 125, 150, 200, 300, 400]
+
+    # 日志设置
+    LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     
     # 设置文件路径
-    SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".aurora_pdf_settings.json")
+    SETTINGS_FILE = os.path.join(get_config_dir(), "app_settings.json")
     
     # 运行时设置
     _settings_cache = {}
-    
+
     @classmethod
     def get_app_data_path(cls):
         """获取应用数据目录"""
-        return os.path.join(os.path.expanduser("~"), ".aurora_pdf")
+        return get_config_dir()
     
     @classmethod
     def _load_settings(cls):
@@ -130,3 +133,25 @@ class AppSettings:
         settings = cls._load_settings()
         settings['use_a4_scaling'] = bool(enabled)
         cls._save_settings()
+
+    @classmethod
+    def get_log_level(cls):
+        """获取日志级别"""
+        settings = cls._load_settings()
+        return settings.get('log_level', cls.LOG_LEVEL)
+
+    @classmethod
+    def set_log_level(cls, level):
+        """设置日志级别"""
+        valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        if level.upper() not in valid_levels:
+            logger.warning(f"无效的日志级别: {level}，使用默认值: {cls.LOG_LEVEL}")
+            level = cls.LOG_LEVEL
+
+        settings = cls._load_settings()
+        settings['log_level'] = level.upper()
+        cls._save_settings()
+
+        # 实时应用日志级别
+        from app.utils.logger import set_log_level
+        set_log_level(level.upper())

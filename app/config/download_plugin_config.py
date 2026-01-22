@@ -7,6 +7,7 @@ import os
 import json
 from typing import Dict, Any, Optional
 from app.utils.logger import get_logger
+from app.utils.app_path import get_config_dir
 
 
 logger = get_logger('download_plugin_config')
@@ -18,16 +19,11 @@ class DownloadPluginConfigManager:
     def __init__(self, config_file: str = None):
         """
         初始化配置管理器
-        
+
         Args:
             config_file: 配置文件路径，默认为应用目录下的download_plugins_config.json
         """
-        # 获取应用根目录
-        app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        
-        # 默认配置文件路径 - 保存到config目录
-        config_dir = os.path.join(app_root, 'config')
-        self.config_file = config_file or os.path.join(config_dir, 'download_plugins_config.json')
+        self.config_file = config_file or os.path.join(get_config_dir(), 'download_plugins_config.json')
         
         # 配置数据
         self.config_data: Dict[str, Any] = {}

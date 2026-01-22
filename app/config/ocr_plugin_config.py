@@ -8,6 +8,7 @@ import json
 import threading
 from typing import Dict, Any, List, Union
 from app.utils.logger import get_logger
+from app.utils.app_path import get_config_dir
 
 logger = get_logger('ocr_plugin_config')
 
@@ -117,15 +118,12 @@ class OCRPluginConfigManager:
     def __init__(self, config_file: str = None):
         """
         初始化配置管理器
-        
+
         Args:
             config_file: 配置文件路径，默认为应用配置目录下的ocr_plugins.json
         """
         if config_file is None:
-            # 获取应用配置目录
-            app_config_dir = os.path.join(os.path.expanduser("~"), ".aurora_pdf")
-            os.makedirs(app_config_dir, exist_ok=True)
-            config_file = os.path.join(app_config_dir, "ocr_plugins.json")
+            config_file = os.path.join(get_config_dir(), "ocr_plugins.json")
         
         self.config_file = config_file
         self.global_config: Dict[str, Any] = {}
