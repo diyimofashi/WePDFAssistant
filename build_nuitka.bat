@@ -74,22 +74,29 @@ PDFAssistant\Scripts\python.exe -c "from build_config import execute_command, co
 
 if %errorlevel% equ 0 (
     echo [Info] Finalizing output directory...
-    if exist "dist\PDFAssistant.dist" (
-        if exist "dist\PDFAssistant" rmdir /s /q "dist\PDFAssistant"
-        move "dist\PDFAssistant.dist" "dist\PDFAssistant"
+    if exist "dist\start.dist" (
+        if exist "dist\start.dist" rmdir /s /q "dist\start.dist"
+        move "dist\start.dist.dist" "dist\start.dist"
     )
 
     echo [Info] Renaming start.exe to PDFAssistant.exe...
-    if exist "dist\PDFAssistant\start.exe" (
-        move "dist\PDFAssistant\start.exe" "dist\PDFAssistant\PDFAssistant.exe"
+    if exist "dist\start.dist\start.exe" (
+        move "dist\start.dist\start.exe" "dist\start.dist\PDFAssistant.exe"
     )
 
     echo [Info] Copying all plugin directories...
-    if exist "dist\PDFAssistant\app" (
+    if exist "dist\start.dist\app" (
         for /d %%d in ("app\plugins*") do (
-            echo [Info] Copying %%~nxd to dist\PDFAssistant\app\...
-            if exist "%%d" xcopy /e /y "%%d" "dist\PDFAssistant\app\%%~nxd\"
+            echo [Info] Copying %%~nxd to dist\start.dist\app\...
+            if exist "%%d" xcopy /e /y "%%d" "dist\start.dist\app\%%~nxd\"
         )
+    )
+)
+REM 复制插件到dist/start.dist目录
+if exist "app\plugins" (
+    for /d %%d in ("app\plugins*") do (
+        echo [Info] Copying %%~nxd to dist\start.dist\app\...
+        if exist "%%d" xcopy /e /y "%%d" "dist\start.dist\%%~nxd\"
     )
 )
 
@@ -100,11 +107,11 @@ if %errorlevel% equ 0 (
     echo ============================================================
     echo                  Compilation successful!
     echo ============================================================
-    echo  Output directory: dist\PDFAssistant
-    echo  Executable: dist\PDFAssistant\PDFAssistant.exe
+    echo  Output directory: dist\start.dist
+    echo  Executable: dist\start.dist\PDFAssistant.exe
     echo
     echo  Next steps:
-    echo    1. Test the program: dist\PDFAssistant\PDFAssistant.exe
+    echo    1. Test the program: dist\start.dist\PDFAssistant.exe
     echo    2. Create installer: create_installer.bat
     echo ============================================================
 ) else (

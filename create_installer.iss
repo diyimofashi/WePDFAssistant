@@ -2,21 +2,24 @@
 ; PyPDF Inno Setup 安装脚本
 ; 用于创建 Windows 安装程序
 ; ═══════════════════════════════════════════════════════════════
+#define MyAppName "PDFAssistant"
+#define MyAppVer  "1.0.0"
+#define MyAppExe  "PDFAssistant.exe"
 
 [Setup]
 ; ==================== 应用信息 ====================
-AppName=PDFAssistant
-AppVersion=1.0.0
-AppId=PDFAssistant
+AppName={#MyAppName}
+AppVersion={#MyAppVer}
+AppId={#MyAppName}
 AppPublisher=Cash
 AppPublisherURL=
 AppSupportURL=
 AppUpdatesURL=
-DefaultDirName={commonpf}\PDFAssistant
-DefaultGroupName=PDFAssistant
+DefaultDirName={commonpf}\{#MyAppName}
+DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=installer
-OutputBaseFilename=PDFAssistant-Setup-1.0.0
+OutputBaseFilename={#MyAppName}-Setup-{#MyAppVer}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -44,56 +47,56 @@ Source: "dist\start.dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdi
 
 [Icons]
 ; ==================== 快捷方式 ====================
-Name: "{group}\PDFAssistant"; Filename: "{app}\PDFAssistant.exe"
-Name: "{group}\卸载 PDFAssistant"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\PDFAssistant"; Filename: "{app}\PDFAssistant.exe"; Tasks: desktopicon
-Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\PDFAssistant"; Filename: "{app}\PDFAssistant.exe"; Tasks: quicklaunch
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"
+Name: "{group}\卸载 {#MyAppName}"; Filename: "{uninstallexe}"
+Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: desktopicon
+Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: quicklaunch
 
 [Tasks]
 ; ==================== 安装任务 ====================
-Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加图标:"
-Name: "quicklaunch"; Description: "添加到快速启动栏"; GroupDescription: "附加图标:"; Flags: unchecked
+Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "创建桌面快捷方式:"
+Name: "quicklaunch"; Description: "添加到快速启动栏"; GroupDescription: "添加到快速启动栏:"; Flags: unchecked
 Name: "fileassoc"; Description: "将 PDFAssistant 设为默认 PDF 阅读器"; GroupDescription: "文件关联:"; Flags: unchecked
 
 [Registry]
 ; ==================== 文件关联 ====================
 ; 仅在选择了 fileassoc 任务时执行
-Root: HKCR; Subkey: ".pdf"; ValueType: string; ValueName: ""; ValueData: "PDFAssistant.PDF"; Flags: uninsdeletevalue; Tasks: fileassoc
-Root: HKCR; Subkey: "PDFAssistant.PDF"; ValueType: string; ValueName: ""; ValueData: "PDF 文档"; Flags: uninsdeletekey; Tasks: fileassoc
-Root: HKCR; Subkey: "PDFAssistant.PDF\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\PDFAssistant.exe,0"; Tasks: fileassoc
-Root: HKCR; Subkey: "PDFAssistant.PDF\shell"; ValueType: string; ValueName: ""; ValueData: "使用 PDFAssistant 打开"; Tasks: fileassoc
-Root: HKCR; Subkey: "PDFAssistant.PDF\shell\open"; ValueType: string; ValueName: ""; ValueData: "打开"; Tasks: fileassoc
-Root: HKCR; Subkey: "PDFAssistant.PDF\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PDFAssistant.exe"" ""%1"""; Tasks: fileassoc
-Root: HKCR; Subkey: "PDFAssistant.PDF\shell\print"; ValueType: string; ValueName: ""; ValueData: "打印"; Tasks: fileassoc
-Root: HKCR; Subkey: "PDFAssistant.PDF\shell\print\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PDFAssistant.exe"" -print ""%1"""; Tasks: fileassoc
+Root: HKCR; Subkey: ".pdf"; ValueType: string; ValueName: ""; ValueData: "{#MyAppName}.PDF"; Flags: uninsdeletevalue; Tasks: fileassoc
+Root: HKCR; Subkey: "{#MyAppName}.PDF"; ValueType: string; ValueName: ""; ValueData: "PDF 文档"; Flags: uninsdeletekey; Tasks: fileassoc
+Root: HKCR; Subkey: "{#MyAppName}.PDF\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExe},0"; Tasks: fileassoc
+Root: HKCR; Subkey: "{#MyAppName}.PDF\shell"; ValueType: string; ValueName: ""; ValueData: "使用 {#MyAppName} 打开"; Tasks: fileassoc
+Root: HKCR; Subkey: "{#MyAppName}.PDF\shell\open"; ValueType: string; ValueName: ""; ValueData: "打开"; Tasks: fileassoc
+Root: HKCR; Subkey: "{#MyAppName}.PDF\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExe}"" ""%1"""; Tasks: fileassoc
+Root: HKCR; Subkey: "{#MyAppName}.PDF\shell\print"; ValueType: string; ValueName: ""; ValueData: "打印"; Tasks: fileassoc
+Root: HKCR; Subkey: "{#MyAppName}.PDF\shell\print\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExe}"" -print ""%1"""; Tasks: fileassoc
 
 ; 使用 OpenWith 协议让用户设置默认程序
 Root: HKCR; Subkey: ".pdf\OpenWithProgids"; ValueType: none; Flags: uninsdeletevalue; Tasks: fileassoc
-Root: HKCR; Subkey: ".pdf\OpenWithProgids"; ValueType: string; ValueName: "PDFAssistant.PDF"; Tasks: fileassoc
+Root: HKCR; Subkey: ".pdf\OpenWithProgids"; ValueType: string; ValueName: "{#MyAppName}.PDF"; Tasks: fileassoc
 
 ; 添加应用程序注册信息
-Root: HKCR; Subkey: "Applications\PDFAssistant.exe"; ValueType: string; ValueName: ""; ValueData: "PDFAssistant"; Tasks: fileassoc
-Root: HKCR; Subkey: "Applications\PDFAssistant.exe\SupportedTypes"; ValueType: string; ValueName: ".pdf"; Tasks: fileassoc
-Root: HKCR; Subkey: "Applications\PDFAssistant.exe\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PDFAssistant.exe"" ""%1"""; Tasks: fileassoc
+Root: HKCR; Subkey: "Applications\{#MyAppExe}"; ValueType: string; ValueName: ""; ValueData: "{#MyAppName}"; Tasks: fileassoc
+Root: HKCR; Subkey: "Applications\{#MyAppExe}\SupportedTypes"; ValueType: string; ValueName: ".pdf"; Tasks: fileassoc
+Root: HKCR; Subkey: "Applications\{#MyAppExe}\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExe}"" ""%1"""; Tasks: fileassoc
 
 ; 注册应用程序到系统（用于默认应用显示）
-Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\PDFAssistant.exe"; ValueType: string; ValueName: ""; ValueData: "{app}\PDFAssistant.exe"; Tasks: fileassoc; Flags: uninsdeletekey
-Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\PDFAssistant.exe"; ValueType: string; ValueName: "PrettyName"; ValueData: "PDFAssistant"; Tasks: fileassoc
-Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\PDFAssistant.exe"; ValueType: string; ValueName: "Path"; ValueData: "{app}"; Tasks: fileassoc
-Root: HKLM; Subkey: "Software\RegisteredApplications"; ValueType: string; ValueName: "PDFAssistant"; ValueData: "Software\PDFAssistant\Capabilities"; Tasks: fileassoc; Flags: uninsdeletevalue
-Root: HKLM; Subkey: "Software\PDFAssistant\Capabilities"; ValueType: string; ValueName: "ApplicationDescription"; ValueData: "PDFAssistant - PDF 阅读器"; Tasks: fileassoc; Flags: uninsdeletekey
-Root: HKLM; Subkey: "Software\PDFAssistant\Capabilities\FileAssociations"; ValueType: string; ValueName: ".pdf"; ValueData: "PDFAssistant.PDF"; Tasks: fileassoc
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#MyAppExe}"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExe}"; Tasks: fileassoc; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#MyAppExe}"; ValueType: string; ValueName: "PrettyName"; ValueData: "{#MyAppName}"; Tasks: fileassoc
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#MyAppExe}"; ValueType: string; ValueName: "Path"; ValueData: "{app}"; Tasks: fileassoc
+Root: HKLM; Subkey: "Software\RegisteredApplications"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: "Software\{#MyAppName}\Capabilities"; Tasks: fileassoc; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "Software\{#MyAppName}\Capabilities"; ValueType: string; ValueName: "ApplicationDescription"; ValueData: "{#MyAppName} - PDF 阅读器"; Tasks: fileassoc; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\{#MyAppName}\Capabilities\FileAssociations"; ValueType: string; ValueName: ".pdf"; ValueData: "{#MyAppName}.PDF"; Tasks: fileassoc
 
 [Run]
 ; ==================== 运行程序 ====================
-Filename: "{app}\PDFAssistant.exe"; Description: "启动 PDFAssistant"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExe}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; ==================== 卸载清理 ====================
 ; 删除用户数据目录
-Type: filesandordirs; Name: "{userappdata}\PDFAssistant"
+;Type: filesandordirs; Name: "{userappdata}\{#MyAppName}"
 ; 删除缓存目录
-Type: filesandordirs; Name: "{localappdata}\PDFAssistant"
+;Type: filesandordirs; Name: "{localappdata}\{#MyAppName}"
 
 [Code]
 
@@ -110,7 +113,7 @@ begin
   { 检查是否已安装旧版本 }
   if RegKeyExists(HKLM, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#emit SetupSetting("AppId")}_is1') then
   begin
-    if MsgBox('检测到已安装旧版本的 PDFAssistant。' + #13#10 + #13#10 +
+    if MsgBox('检测到已安装旧版本的 {#MyAppName}。' + #13#10 + #13#10 +
               '是否要卸载旧版本并继续安装？',
               mbConfirmation, MB_YESNO) = IDYES then
     begin
