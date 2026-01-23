@@ -9,3 +9,4 @@ markdown2==2.4.13
 picologging==0.9.3
 psutil
 requests
+pytesseract==0.3.10

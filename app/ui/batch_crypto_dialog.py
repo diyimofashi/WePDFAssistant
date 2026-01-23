@@ -1,6 +1,8 @@
 """批量PDF加解密处理对话框"""
 
 import os
+import shutil
+import tempfile
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
                              QPushButton, QTableWidget, QTableWidgetItem,
                              QHeaderView, QProgressBar, QFileDialog, QGroupBox,
@@ -77,9 +79,16 @@ class BatchCryptoWorker(QThread):
             # 读取原文件
             doc = fitz.open(file_path)
 
+            # 检查是否已加密
+            is_encrypted = doc.needs_pass
+
             # 确定输出路径
             if self.overwrite:
-                output_path = file_path
+                # 覆盖模式：增量保存不适用于加密状态变更，使用临时文件替换
+                temp_file = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
+                temp_path = temp_file.name
+                temp_file.close()
+                output_path = temp_path
             else:
                 if self.output_dir:
                     filename = os.path.basename(file_path)
@@ -94,18 +103,25 @@ class BatchCryptoWorker(QThread):
                     output_path,
                     encryption=fitz.PDF_ENCRYPT_AES_256,
                     user_pw=self.password,
-                    deflate=True,
-                    clean=True,
-                    garbage=1
+                    incremental=(not self.overwrite and not is_encrypted)  # 仅在非覆盖且未加密时使用增量保存
                 )
             else:
                 doc.save(
                     output_path,
-                    deflate=True,
-                    clean=True,
-                    garbage=1
+                    incremental=(not self.overwrite and not is_encrypted)
                 )
             doc.close()
+
+            # 如果是覆盖模式，用临时文件替换原文件
+            if self.overwrite:
+                try:
+                    # 尝试原子替换（同盘操作）
+                    os.replace(output_path, file_path)
+                except OSError:
+                    # 跨盘操作，使用复制+删除
+                    shutil.copy2(output_path, file_path)
+                    os.remove(output_path)
+                output_path = file_path
 
             # 如果需要删除原文件
             if self.delete_original and not self.overwrite and file_path != output_path:
@@ -133,7 +149,11 @@ class BatchCryptoWorker(QThread):
 
             # 确定输出路径
             if self.overwrite:
-                output_path = file_path
+                # 覆盖模式：增量保存不适用于加密状态变更，使用临时文件替换
+                temp_file = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
+                temp_path = temp_file.name
+                temp_file.close()
+                output_path = temp_path
             else:
                 if self.output_dir:
                     filename = os.path.basename(file_path)
@@ -145,11 +165,20 @@ class BatchCryptoWorker(QThread):
             # 保存解密文件
             doc.save(
                 output_path,
-                deflate=True,
-                clean=True,
-                garbage=1
+                incremental=not self.overwrite  # 仅在非覆盖时使用增量保存
             )
             doc.close()
+
+            # 如果是覆盖模式，用临时文件替换原文件
+            if self.overwrite:
+                try:
+                    # 尝试原子替换（同盘操作）
+                    os.replace(output_path, file_path)
+                except OSError:
+                    # 跨盘操作，使用复制+删除
+                    shutil.copy2(output_path, file_path)
+                    os.remove(output_path)
+                output_path = file_path
 
             # 如果需要删除原文件
             if self.delete_original and not self.overwrite and file_path != output_path:
