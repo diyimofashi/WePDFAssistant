@@ -863,9 +863,127 @@ class PDFRenderer(QObject):
             return self.page_editor.rotate_page(page_num, angle)
         return False, "页面编辑器未初始化"
 
-    def convert_pdf_to_images(self, *args, **kwargs):
-        """PDF转图片（待实现）"""
-        return False, "PDF转图片功能待实现"
+    def convert_pdf_to_images(self, output_dir: str, dpi: int = 150, format: str = "JPEG", page_range: str = "all") -> tuple[bool, str]:
+        """将PDF转换为图片
+
+        Args:
+            output_dir: 输出目录路径
+            dpi: 图片分辨率（每英寸点数）
+            format: 图片格式（PNG/JPEG等）
+            page_range: 页面范围，格式如 "all", "1,3,5-9,11-14"
+
+        Returns:
+            (success, message) 元组
+        """
+        if not self.fitz_document:
+            return False, "请先打开PDF文件"
+
+        try:
+            # 检查输出目录是否存在，不存在则创建
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir, exist_ok=True)
+
+            # 检查输出目录是否可写
+            if not os.access(output_dir, os.W_OK):
+                return False, f"输出目录不可写: {output_dir}"
+
+            total_pages = len(self.fitz_document)
+
+            # 解析页面范围
+            page_numbers = self._parse_page_range(page_range, total_pages)
+            if not page_numbers:
+                return False, f"无效的页面范围: {page_range}"
+
+            success_count = 0
+
+            # 创建变换矩阵，设置DPI
+            zoom_factor = dpi / 72.0  # 72 DPI是PDF的标准分辨率
+            mat = fitz.Matrix(zoom_factor, zoom_factor)
+
+            # 逐页转换
+            for page_num in page_numbers:
+                try:
+                    page = self.fitz_document[page_num]
+
+                    # 渲染页面为图像
+                    pix = page.get_pixmap(
+                        matrix=mat,
+                        alpha=False,
+                        colorspace=fitz.csRGB
+                    )
+
+                    # 生成输出文件名
+                    filename = f"page_{page_num + 1:03d}.{format.lower()}"
+                    output_path = os.path.join(output_dir, filename)
+
+                    # 保存图片
+                    if format.upper() == "JPEG" or format.upper() == "JPG":
+                        pix.save(output_path, "jpeg")
+                    elif format.upper() == "PNG":
+                        pix.save(output_path, "png")
+                    elif format.upper() == "BMP":
+                        pix.save(output_path, "bmp")
+                    elif format.upper() == "TIFF" or format.upper() == "TIF":
+                        pix.save(output_path, "tiff")
+                    else:
+                        pix.save(output_path)
+
+                    success_count += 1
+
+                except Exception as page_error:
+                    logger.error(f"转换第{page_num + 1}页失败: {page_error}")
+
+            if success_count == len(page_numbers):
+                return True, f"成功转换所有{len(page_numbers)}页到目录: {output_dir}"
+            elif success_count > 0:
+                return True, f"成功转换{success_count}/{len(page_numbers)}页到目录: {output_dir}"
+            else:
+                return False, "转换失败，所有页面都无法转换"
+
+        except Exception as e:
+            logger.error(f"PDF转图片失败: {e}")
+            return False, f"转换失败: {str(e)}"
+
+    def _parse_page_range(self, page_range: str, total_pages: int) -> list[int]:
+        """解析页面范围字符串
+
+        Args:
+            page_range: 页面范围字符串，如 "all", "1,3,5-9,11-14"
+            total_pages: 总页数
+
+        Returns:
+            页面编号列表（从0开始）
+        """
+        if page_range.lower() == "all":
+            return list(range(total_pages))
+
+        page_numbers = []
+        parts = page_range.split(',')
+
+        for part in parts:
+            part = part.strip()
+            if '-' in part:
+                # 处理范围，如 "5-9"
+                range_parts = part.split('-')
+                if len(range_parts) == 2:
+                    try:
+                        start = int(range_parts[0].strip()) - 1  # 转换为0基索引
+                        end = int(range_parts[1].strip()) - 1
+                        if 0 <= start <= end < total_pages:
+                            page_numbers.extend(range(start, end + 1))
+                    except ValueError:
+                        continue
+            else:
+                # 处理单个页码
+                try:
+                    page_num = int(part) - 1  # 转换为0基索引
+                    if 0 <= page_num < total_pages:
+                        page_numbers.append(page_num)
+                except ValueError:
+                    continue
+
+        # 去重并排序
+        return sorted(set(page_numbers))
 
     def get_supported_image_formats(self):
         """获取支持的图片格式"""
@@ -888,7 +1006,13 @@ class PDFRenderer(QObject):
 
     def get_recommended_dpi(self):
         """获取推荐的DPI"""
-        return 200
+        return {
+            "默认": 72,
+            "屏幕显示": 96,
+            "普通打印": 150,
+            "高质量打印": 300,
+            "超高质量": 600
+        }
 
     def import_images(self, image_paths: list, insert_after_page: int = -1) -> tuple[bool, str]:
         """导入图片到PDF

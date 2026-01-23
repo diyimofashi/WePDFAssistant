@@ -93,9 +93,6 @@ class OCRSettingsDialog(QDialog):
         """窗口显示事件，用于居中显示对话框"""
         super().showEvent(event)
         
-        # 调整窗口大小以适应内容，但不超过最大尺寸
-        self.adjustSize()
-        
         # 确保对话框在屏幕中央显示
         if not self.testAttribute(Qt.WA_Moved):
             self.center_on_screen()
