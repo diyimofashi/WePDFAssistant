@@ -3,10 +3,10 @@
 用于配置所有上传引擎插件的全局和局部选项
 """
 
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, 
-                             QWidget, QFormLayout, QLineEdit, QCheckBox, 
+from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
+                             QWidget, QFormLayout, QLineEdit, QCheckBox,
                              QSpinBox, QDoubleSpinBox, QComboBox, QPushButton,
-                             QLabel, QGroupBox, QScrollArea,
+                             QLabel, QGroupBox, QScrollArea, QToolButton,
                              QMessageBox, QLayout, QSizePolicy)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -44,36 +44,7 @@ class UploadSettingsDialog(QDialog):
         
         self.setup_ui()
         self.load_settings()
-    
-    def populate_plugin_combo(self):
-        """填充插件选择组合框"""
-        # 清空现有项目
-        self.current_plugin_combo.clear()
-        
-        # 获取所有已加载的插件
-        plugins = self.plugin_manager.list_plugins()
-        
-        # 添加插件到组合框
-        for plugin_name in plugins:
-            plugin = self.plugin_manager.get_plugin(plugin_name)
-            if plugin:
-                # 获取插件标题
-                plugin_info = getattr(plugin, 'PluginInfo', {})
-                local_options = plugin_info.get('local_options', {})
-                plugin_title = local_options.get('title', plugin_name)
-                # 添加带有标题的插件项
-                self.current_plugin_combo.addItem(f"{plugin_title} ({plugin_name})", plugin_name)
-        
-        # 设置当前选中的插件
-        current_plugin = self.config_manager.get_current_plugin()
-        if current_plugin:
-            index = self.current_plugin_combo.findData(current_plugin)
-            if index >= 0:
-                self.current_plugin_combo.setCurrentIndex(index)
-        elif plugins:
-            # 如果没有配置的插件，选择第一个插件
-            self.current_plugin_combo.setCurrentIndex(0)
-    
+
     def center_on_screen(self):
         """将窗口居中显示在屏幕中央"""
         # 获取屏幕可用区域
@@ -280,9 +251,15 @@ class UploadSettingsDialog(QDialog):
                 plugin_title = local_options.get('title', plugin_name)
                 # 添加带有标题的插件项
                 self.current_plugin_combo.addItem(f"{plugin_title} ({plugin_name})", plugin_name)
-        
-        # 设置当前选中的插件
-        if plugins:
+
+        # 设置当前选中的插件（从配置中读取）
+        current_plugin = self.config_manager.get_current_plugin()
+        if current_plugin:
+            index = self.current_plugin_combo.findData(current_plugin)
+            if index >= 0:
+                self.current_plugin_combo.setCurrentIndex(index)
+        elif plugins:
+            # 如果没有配置的插件，选择第一个插件
             self.current_plugin_combo.setCurrentIndex(0)
 
     
@@ -388,15 +365,22 @@ class UploadSettingsDialog(QDialog):
         for option_key, option_config in global_config.items():
             if option_key == 'title' or option_key == 'type':
                 continue
-                
+
             widget = self.create_config_widget(plugin_name, option_key, option_config)
             if widget:
                 title = option_config.get('title', option_key)
                 tooltip = option_config.get('toolTip', option_config.get('description', ''))
                 if tooltip:
-                    widget.setToolTip(tooltip)
-                
-                group_layout.addRow(title, widget)
+                    if hasattr(widget, 'password_container'):
+                        widget.password_container.setToolTip(tooltip)
+                    else:
+                        widget.setToolTip(tooltip)
+
+                # 对于密码框，添加容器；其他情况添加 widget
+                if hasattr(widget, 'password_container'):
+                    group_layout.addRow(title, widget.password_container)
+                else:
+                    group_layout.addRow(title, widget)
                 # 存储控件引用
                 if plugin_name not in self.plugin_widgets:
                     self.plugin_widgets[plugin_name] = {}
@@ -419,15 +403,22 @@ class UploadSettingsDialog(QDialog):
         for option_key, option_config in local_config.items():
             if option_key == 'title' or option_key == 'type':
                 continue
-                
+
             widget = self.create_config_widget(plugin_name, option_key, option_config)
             if widget:
                 title = option_config.get('title', option_key)
                 tooltip = option_config.get('toolTip', option_config.get('description', ''))
                 if tooltip:
-                    widget.setToolTip(tooltip)
-                
-                group_layout.addRow(title, widget)
+                    if hasattr(widget, 'password_container'):
+                        widget.password_container.setToolTip(tooltip)
+                    else:
+                        widget.setToolTip(tooltip)
+
+                # 对于密码框，添加容器；其他情况添加 widget
+                if hasattr(widget, 'password_container'):
+                    group_layout.addRow(title, widget.password_container)
+                else:
+                    group_layout.addRow(title, widget)
                 # 存储控件引用
                 if plugin_name not in self.plugin_widgets:
                     self.plugin_widgets[plugin_name] = {}
@@ -473,6 +464,58 @@ class UploadSettingsDialog(QDialog):
                 widget.setStyleSheet("QCheckBox { spacing: 8px; font-size: 11pt; }")  # 增加文本间距和字体大小
                 if default_value is not None:
                     widget.setChecked(bool(default_value))
+            elif option_type == 'password':
+                # 创建带显示/隐藏按钮的密码框
+                container = QWidget()
+                layout = QHBoxLayout(container)
+                layout.setContentsMargins(0, 0, 0, 0)
+                layout.setSpacing(5)
+
+                # 密码输入框
+                password_edit = QLineEdit()
+                password_edit.setFixedHeight(30)
+                password_edit.setStyleSheet("QLineEdit { padding: 4px; font-size: 11pt; }")
+                password_edit.setEchoMode(QLineEdit.Password)
+                if default_value:
+                    password_edit.setText(str(default_value))
+
+                # 眼睛按钮
+                eye_button = QToolButton()
+                eye_button.setFixedSize(30, 30)
+                eye_button.setCheckable(True)
+                eye_button.setStyleSheet("""
+                    QToolButton {
+                        border: none;
+                        background-color: transparent;
+                        border-radius: 4px;
+                    }
+                    QToolButton:hover {
+                        background-color: #E3F2FD;
+                    }
+                """)
+                eye_button.setText("👁")
+                eye_button.setToolTip("显示/隐藏密码")
+
+                # 切换密码显示状态
+                def toggle_password_visibility(checked):
+                    if checked:
+                        password_edit.setEchoMode(QLineEdit.Normal)
+                        eye_button.setText("👁‍🗨")
+                    else:
+                        password_edit.setEchoMode(QLineEdit.Password)
+                        eye_button.setText("👁")
+
+                eye_button.toggled.connect(toggle_password_visibility)
+
+                layout.addWidget(password_edit, 1)
+                layout.addWidget(eye_button)
+
+                # 将密码输入框作为主要 widget
+                widget = password_edit
+                # 保存容器和按钮以便获取值
+                widget.password_container = container
+                widget.password_edit = password_edit
+                widget.eye_button = eye_button
             elif option_type == 'enum':
                 widget = QComboBox()
                 widget.setFixedHeight(30)  # 增加高度以提高可见性

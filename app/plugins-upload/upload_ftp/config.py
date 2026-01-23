@@ -6,12 +6,12 @@ FTP上传插件 - 配置定义
 # 全局配置选项
 global_options = {
     "timeout": {
-        "type": "int",
+        "type": "integer",
         "default": 30,
         "description": "FTP连接超时时间（秒）"
     },
     "buffer_size": {
-        "type": "int", 
+        "type": "integer",
         "default": 8192,  # 8KB
         "description": "上传缓冲区大小（字节）"
     }
@@ -20,27 +20,26 @@ global_options = {
 # 局部配置选项
 local_options = {
     "host": {
-        "type": "str",
+        "type": "string",
         "default": "",
         "description": "FTP服务器地址",
         "required": True
     },
     "port": {
-        "type": "int",
+        "type": "integer",
         "default": 21,
         "description": "FTP服务器端口"
     },
     "username": {
-        "type": "str",
+        "type": "string",
         "default": "",
         "description": "用户名（留空表示匿名登录）",
         "required": False
     },
     "password": {
-        "type": "str", 
+        "type": "password",
         "default": "",
         "description": "密码（留空表示匿名登录）",
-        "password": True,
         "required": False
     },
     "use_tls": {
@@ -49,7 +48,7 @@ local_options = {
         "description": "是否使用TLS加密连接"
     },
     "remote_directory": {
-        "type": "str",
+        "type": "string",
         "default": "/uploads",
         "description": "远程上传目录"
     },

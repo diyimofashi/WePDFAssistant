@@ -6,17 +6,17 @@ HTTP上传插件 - 配置定义
 # 全局配置选项
 global_options = {
     "timeout": {
-        "type": "int",
+        "type": "integer",
         "default": 30,
         "description": "上传超时时间（秒）"
     },
     "chunk_size": {
-        "type": "int", 
+        "type": "integer",
         "default": 1024 * 1024,  # 1MB
         "description": "分块上传大小（字节）"
     },
     "max_retries": {
-        "type": "int",
+        "type": "integer",
         "default": 3,
         "description": "最大重试次数"
     }
@@ -25,13 +25,13 @@ global_options = {
 # 局部配置选项
 local_options = {
     "base_url": {
-        "type": "str",
+        "type": "string",
         "default": "",
         "description": "服务器基础URL",
         "required": True
     },
     "auth_type": {
-        "type": "select",
+        "type": "enum",
         "optionsList": [
             ["none", "无认证"],
             ["basic", "基本认证"],
@@ -42,36 +42,33 @@ local_options = {
         "description": "认证类型"
     },
     "username": {
-        "type": "str",
+        "type": "string",
         "default": "",
         "description": "用户名（基本认证时使用）"
     },
     "password": {
-        "type": "str", 
+        "type": "password",
         "default": "",
-        "description": "密码（基本认证时使用）",
-        "password": True
+        "description": "密码（基本认证时使用）"
     },
     "token": {
-        "type": "str",
+        "type": "password",
         "default": "",
-        "description": "认证Token（Token认证时使用）",
-        "password": True
+        "description": "认证Token（Token认证时使用）"
     },
     "api_key": {
-        "type": "str",
+        "type": "password",
         "default": "",
-        "description": "API Key（API Key认证时使用）",
-        "password": True
+        "description": "API Key（API Key认证时使用）"
     },
     "api_key_header": {
-        "type": "str",
+        "type": "string",
         "default": "X-API-Key",
         "description": "API Key请求头名称"
     },
     "custom_headers": {
-        "type": "dict",
-        "default": {},
-        "description": "自定义请求头"
+        "type": "string",
+        "default": "",
+        "description": "自定义请求头（JSON格式）"
     }
 }

@@ -6,17 +6,17 @@
 # 全局配置选项
 global_options = {
     "timeout": {
-        "type": "int",
+        "type": "integer",
         "default": 300,
         "description": "上传超时时间（秒）"
     },
     "max_retries": {
-        "type": "int",
+        "type": "integer",
         "default": 3,
         "description": "最大重试次数"
     },
     "chunk_size": {
-        "type": "int",
+        "type": "integer",
         "default": 1024 * 1024,  # 1MB
         "description": "分块上传大小（字节）"
     }
@@ -48,37 +48,35 @@ local_options = {
     },
     "bucket_name": {
         "title": "存储桶名称",
-        "type": "str",
+        "type": "string",
         "default": "",
         "description": "COS存储桶名称（Bucket Name）",
         "required": True
     },
     "secret_id": {
         "title": "Secret ID",
-        "type": "str",
+        "type": "password",
         "default": "",
         "description": "腾讯云API密钥的Secret ID",
-        "required": True,
-        "password": True
+        "required": True
     },
     "secret_key": {
         "title": "Secret Key",
-        "type": "str",
+        "type": "password",
         "default": "",
         "description": "腾讯云API密钥的Secret Key",
-        "required": True,
-        "password": True
+        "required": True
     },
     "app_id": {
         "title": "APP ID",
-        "type": "str",
+        "type": "string",
         "default": "",
         "description": "腾讯云账户的APP ID（可选，旧版API使用）",
         "required": False
     },
     "path_prefix": {
         "title": "路径前缀",
-        "type": "str",
+        "type": "string",
         "default": "",
         "description": "文件上传的路径前缀，如 'uploads/'"
     },
