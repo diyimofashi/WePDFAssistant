@@ -10,3 +10,4 @@ picologging==0.9.3
 psutil
 requests
 pytesseract==0.3.10
+cos-python-sdk-v5==1.9.35
