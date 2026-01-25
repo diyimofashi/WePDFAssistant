@@ -339,7 +339,7 @@ class DownloadSettingsDialog(QDialog):
         title_label.setFont(title_font)
         title_label.setWordWrap(True)
         plugin_layout.addWidget(title_label)
-        
+
         # 创建滚动区域以容纳设置
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -667,37 +667,69 @@ class DownloadSettingsDialog(QDialog):
             # 保存每个插件的配置
             for plugin_name, widgets in self.plugin_widgets.items():
                 config = {}
-                
+
                 # 收集配置值
                 for option_key, widget in widgets.items():
                     value = self.get_widget_value(widget)
                     if value is not None:
                         config[option_key] = value
-                
+
                 # 验证配置
                 errors = self.config_manager.set_plugin_config(plugin_name, config)
                 if errors:
                     # 显示验证错误
                     error_msg = "\n".join([f"{key}: {msg}" for key, msg in errors.items()])
-                    QMessageBox.warning(self, "配置验证失败", 
+                    QMessageBox.warning(self, "配置验证失败",
                                       f"插件 {plugin_name} 配置验证失败:\n{error_msg}")
                     return
-            
+
             # 保存当前选中的插件
             current_plugin = self.current_plugin_combo.currentData()
             if current_plugin:
                 self.config_manager.set_current_plugin(current_plugin)
-            
+
             # 保存配置到文件
             self.config_manager.save_config()
-            
+
+            # 通知主窗口更新文件列表面板
+            parent = self.parent()
+            while parent and not hasattr(parent, 'update_file_list_panel'):
+                parent = parent.parent()
+
+            if parent and hasattr(parent, 'update_file_list_panel'):
+                parent.update_file_list_panel()
+
             # 调用父类方法关闭对话框
             super().accept()
-            
+
         except Exception as e:
             logger.error(f"保存配置时出错: {e}")
             QMessageBox.critical(self, "保存失败", f"保存配置时发生错误: {str(e)}")
-    
+
+    def save_current_config(self) -> bool:
+        """保存当前配置"""
+        try:
+            # 验证并保存每个插件的配置
+            for plugin_name, widgets in self.plugin_widgets.items():
+                config = {}
+
+                # 从控件中获取值
+                for option_key, widget in widgets.items():
+                    value = self.get_widget_value(widget)
+                    config[option_key] = value
+
+                # 设置插件配置
+                self.config_manager.set_plugin_config(plugin_name, config)
+
+            # 保存配置到文件
+            self.config_manager.save_config()
+            return True
+
+        except Exception as e:
+            logger.error(f"保存配置时出错: {e}")
+            QMessageBox.critical(self, "保存失败", f"保存配置时发生错误: {str(e)}")
+            return False
+
     def reset_settings(self):
         """重置设置为默认值"""
         # 获取当前选中的tab

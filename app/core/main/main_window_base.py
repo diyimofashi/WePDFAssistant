@@ -17,6 +17,7 @@ from app.core.processing.thumbnail_manager import ThumbnailManager
 from app.ui.menu_manager import MenuManager
 from app.ui.toolbar_manager import ToolbarManager
 from app.ui.context_menu_manager import ContextMenuManager
+from app.ui.file_list_panel import FileListPanel
 from app.managers.file_manager import FileManager
 from app.managers.view_controller import ViewController
 from app.managers.search_manager import SearchManager
@@ -26,6 +27,8 @@ from app.managers.ocr_plugin_manager import OCRPluginManager
 from app.config.ocr_plugin_config import ocr_config_manager
 from app.managers.upload_plugin_manager import UploadPluginManager
 from app.config.upload_plugin_config import upload_config_manager
+from app.managers.download_plugin_manager import download_plugin_manager
+from app.config.download_plugin_config import download_config_manager
 from app.managers.shortcut_manager import ShortcutManager
 from app.utils.logger import get_logger
 
@@ -65,6 +68,10 @@ class MainWindowBase(QMainWindow):
         self.thumbnail_dock = None
         self.thumbnail_list = None
         self.thumbnails = []
+
+        # 文件列表面板相关属性
+        self.file_list_panel = None
+        self.file_list_dock = None
         
         # 进度对话框
         self.progress_dialog = None
@@ -114,8 +121,19 @@ class MainWindowBase(QMainWindow):
         self.upload_config_manager = upload_config_manager
         # 自动加载所有上传插件
         self.upload_plugin_manager.load_all_plugins()
+
+        # 初始化下载插件管理器
+        self.download_plugin_manager = download_plugin_manager
+        self.download_config_manager = download_config_manager
+        # 自动加载所有下载插件
+        self.download_plugin_manager.load_plugins()
+
         # 初始化快捷键管理器
         self.shortcut_manager = ShortcutManager(self)
+
+        # 初始化文件列表面板
+        self.file_list_panel = FileListPanel(self)
+        self.file_list_dock = None
         
     def _connect_signals(self):
         """连接PDF处理器信号"""
@@ -173,6 +191,9 @@ class MainWindowBase(QMainWindow):
             
             # 创建缩略图区域
             self.create_thumbnail_area(main_layout)
+
+            # 创建文件列表面板区域
+            self.create_file_list_area(main_layout)
             
             # 创建PDF显示区域
             self.create_pdf_display_area(main_layout)
@@ -229,6 +250,39 @@ class MainWindowBase(QMainWindow):
         self.thumbnail_dock.setWidget(self.thumbnail_list)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.thumbnail_dock)
         self.thumbnail_dock.hide()
+
+    def create_file_list_area(self, main_layout):
+        """创建文件列表面板区域"""
+        from app.utils.plugin_checker import check_download_plugin
+
+        # 只有在有下载插件时才创建
+        if not check_download_plugin():
+            return
+
+        # 设置面板为不可见（默认隐藏）
+        self.file_list_panel.hide()
+
+        # 添加到右侧停靠区域
+        self.addDockWidget(Qt.RightDockWidgetArea, self.file_list_panel)
+        self.file_list_dock = self.file_list_panel
+
+    def toggle_file_list_panel(self):
+        """切换文件列表面板的显示/隐藏"""
+        if self.file_list_dock:
+            if self.file_list_dock.isVisible():
+                self.file_list_dock.hide()
+            else:
+                self.file_list_dock.show()
+                # 面板会自动加载当前插件并刷新文件列表
+                self.file_list_panel.load_current_plugin()
+
+    def update_file_list_panel(self):
+        """更新文件列表面板"""
+        if not self.file_list_panel or not self.file_list_dock.isVisible():
+            return
+
+        # 重新加载当前插件（会自动加载文件列表）
+        self.file_list_panel.load_current_plugin()
     
     def create_pdf_display_area(self, main_layout):
         """创建PDF显示区域"""

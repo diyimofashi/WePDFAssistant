@@ -288,9 +288,20 @@ class DownloadPluginManager:
                 plugin.cleanup()
             except Exception as e:
                 logger.error(f"清理插件 {plugin_name} 资源失败: {e}")
-        
+
         self.plugins.clear()
         self.plugin_configs.clear()
+
+    def get_current_plugin_instance(self) -> DownloadPluginInterface:
+        """
+        获取当前插件实例
+
+        Returns:
+            DownloadPluginInterface: 当前插件实例
+        """
+        from app.config.download_plugin_config import download_config_manager
+        current_plugin = download_config_manager.get_current_plugin()
+        return self.plugins.get(current_plugin)
 
 
 # 全局下载插件管理器实例

@@ -223,16 +223,20 @@ class DownloadPluginConfigManager:
                 
                 # 合并全局和局部选项的默认值
                 default_config = {}
-                
+
                 # 添加全局选项默认值
                 if hasattr(config_module, 'global_options'):
                     for option_name, option_config in config_module.global_options.items():
-                        default_config[option_name] = option_config.get("default", "")
-                
+                        # 确保option_config是字典类型
+                        if isinstance(option_config, dict):
+                            default_config[option_name] = option_config.get("default", "")
+
                 # 添加局部选项默认值
                 if hasattr(config_module, 'local_options'):
                     for option_name, option_config in config_module.local_options.items():
-                        default_config[option_name] = option_config.get("default", "")
+                        # 确保option_config是字典类型
+                        if isinstance(option_config, dict):
+                            default_config[option_name] = option_config.get("default", "")
                 
                 return default_config
             

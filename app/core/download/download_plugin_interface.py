@@ -77,13 +77,27 @@ class DownloadPluginInterface(metaclass=abc.ABCMeta):
     def download_bytes(self, url: str, **kwargs) -> DownloadResult:
         """
         下载文件为字节流
-        
+
         Args:
             url: 远程文件URL
             **kwargs: 额外参数
-            
+
         Returns:
             DownloadResult: 下载结果
+        """
+        pass
+
+    @abc.abstractmethod
+    def list_files(self, remote_path: str = "", **kwargs) -> DownloadResult:
+        """
+        列出远程文件
+
+        Args:
+            remote_path: 远程路径（可选）
+            **kwargs: 额外参数
+
+        Returns:
+            DownloadResult: 包含文件列表数据，data.files 包含文件信息列表
         """
         pass
 

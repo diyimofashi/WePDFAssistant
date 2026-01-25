@@ -310,14 +310,38 @@ class UploadPluginManager:
     def get_plugin_config(self, plugin_name: str) -> Dict[str, Any]:
         """
         获取插件配置
-        
+
         Args:
             plugin_name: 插件名称
-            
+
         Returns:
             Dict[str, Any]: 插件配置参数
         """
         return self.config_manager.get_plugin_config(plugin_name)
+
+    def get_current_plugin_instance(self, plugin_name: str) -> Optional[UploadPluginInterface]:
+        """
+        获取当前插件实例
+
+        Args:
+            plugin_name: 插件名称
+
+        Returns:
+            Optional[UploadPluginInterface]: 插件实例，不存在返回None
+        """
+        plugin = self.get_plugin(plugin_name)
+        if not plugin:
+            logger.warning(f"获取上传插件实例失败，插件未加载: {plugin_name}")
+            return None
+
+        # 确保插件已初始化
+        config = self.get_plugin_config(plugin_name)
+        result = plugin.initialize(config)
+        if not result.is_success():
+            logger.warning(f"上传插件初始化失败: {plugin_name}, {result.message}")
+            return None
+
+        return plugin
 
 
 # 全局上传插件管理器实例
