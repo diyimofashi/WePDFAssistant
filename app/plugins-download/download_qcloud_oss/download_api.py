@@ -257,7 +257,7 @@ class QcloudOSSDownload(DownloadPluginInterface):
 
         Args:
             remote_path: 远程路径（可选）
-            **kwargs: 额外参数
+            **kwargs: 额外参数，支持分页
 
         Returns:
             DownloadResult: 包含文件列表数据
@@ -265,7 +265,17 @@ class QcloudOSSDownload(DownloadPluginInterface):
         try:
             # 确保 remote_path 是字符串类型
             remote_path = str(remote_path) if remote_path is not None else ""
-            logger.info(f"开始列出文件: {remote_path}")
+
+            # 检查是否需要分页
+            page = kwargs.get('page', 1)
+            page_size = kwargs.get('page_size', 50)
+
+            enable_pagination = 'page' in kwargs or 'page_size' in kwargs
+
+            if enable_pagination:
+                logger.info(f"开始列出文件（分页）: {remote_path}, 第{page}页, 每页{page_size}条")
+            else:
+                logger.info(f"开始列出文件: {remote_path}")
 
             # 构建完整远程路径
             if self.path_prefix:
@@ -278,56 +288,154 @@ class QcloudOSSDownload(DownloadPluginInterface):
 
             # 获取对象列表
             if full_remote_path:
-                # 如果指定了路径，添加前缀
                 prefix = full_remote_path + '/'
             else:
                 prefix = ''
 
-            response = self.client.list_objects(
-                Bucket=self.bucket_name,
-                Prefix=prefix,
-                MaxKeys=1000
-            )
+            # 如果是服务端分页，使用 Marker 参数
+            if enable_pagination:
+                # 先获取所有文件（使用不分页的方式）
+                all_files = []
+                marker = None
 
-            # 解析文件列表
-            files = []
-            if 'Contents' in response:
-                for obj in response['Contents']:
-                    key = obj['Key']
+                while True:
+                    list_kwargs = {
+                        'Bucket': self.bucket_name,
+                        'Prefix': prefix,
+                        'MaxKeys': 1000
+                    }
 
-                    # 跳过前缀本身的条目
-                    if key == prefix.rstrip('/'):
-                        continue
+                    if marker:
+                        list_kwargs['Marker'] = marker
 
-                    # 处理修改时间格式
-                    modified_time = obj.get('LastModified', '')
-                    if hasattr(modified_time, 'strftime'):
-                        modified_time = modified_time.strftime('%Y-%m-%d %H:%M:%S')
-                    elif isinstance(modified_time, str):
-                        modified_time = modified_time
+                    response = self.client.list_objects(**list_kwargs)
+
+                    # 解析文件列表
+                    if 'Contents' in response:
+                        for obj in response['Contents']:
+                            key = obj['Key']
+
+                            # 跳过前缀本身的条目
+                            if key == prefix.rstrip('/'):
+                                continue
+
+                            # 处理修改时间格式
+                            modified_time = obj.get('LastModified', '')
+                            if hasattr(modified_time, 'strftime'):
+                                modified_time = modified_time.strftime('%Y-%m-%d %H:%M:%S')
+                            elif isinstance(modified_time, str):
+                                modified_time = modified_time
+                            else:
+                                modified_time = str(modified_time)
+
+                            # 返回相对于 path_prefix 的路径
+                            prefix_with_slash = self.path_prefix.strip('/') + '/'
+                            if self.path_prefix and key.startswith(prefix_with_slash):
+                                relative_path = key[len(prefix_with_slash):]
+                            else:
+                                relative_path = key
+
+                            all_files.append({
+                                'name': os.path.basename(key),
+                                'size': obj['Size'],
+                                'modified_time': modified_time,
+                                'type': 'file',
+                                'path': relative_path
+                            })
+
+                    # 检查是否还有更多数据
+                    is_truncated = response.get('IsTruncated', False)
+                    if not is_truncated:
+                        break
+
+                    # 使用最后一个 key 作为下一页的 marker
+                    if 'Contents' in response and response['Contents']:
+                        marker = response['Contents'][-1]['Key']
                     else:
-                        modified_time = str(modified_time)
+                        break
 
-                    # 返回相对于 path_prefix 的路径
-                    prefix_with_slash = self.path_prefix.strip('/') + '/'
-                    if self.path_prefix and key.startswith(prefix_with_slash):
-                        relative_path = key[len(prefix_with_slash):]
-                    else:
-                        relative_path = key
+                # 本地分页
+                total_count = len(all_files)
+                total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 1
+                start_idx = (page - 1) * page_size
+                end_idx = start_idx + page_size
+                files = all_files[start_idx:end_idx]
 
-                    files.append({
-                        'name': os.path.basename(key),
-                        'size': obj['Size'],
-                        'modified_time': modified_time,
-                        'type': 'file',
-                        'path': relative_path
-                    })
+                logger.info(f"文件列表获取成功: 总共{total_count}个文件, 返回第{page}页({len(files)}条), 每页{page_size}条")
+            else:
+                # 不分页，一次性获取所有数据（使用分页循环确保获取所有文件）
+                all_files = []
+                marker = None
 
-            logger.info(f"文件列表获取成功: {len(files)} 个文件")
+                while True:
+                    list_kwargs = {
+                        'Bucket': self.bucket_name,
+                        'Prefix': prefix,
+                        'MaxKeys': 1000
+                    }
+
+                    if marker:
+                        list_kwargs['Marker'] = marker
+
+                    response = self.client.list_objects(**list_kwargs)
+
+                    # 解析文件列表
+                    if 'Contents' in response:
+                        for obj in response['Contents']:
+                            key = obj['Key']
+
+                            # 跳过前缀本身的条目
+                            if key == prefix.rstrip('/'):
+                                continue
+
+                            # 处理修改时间格式
+                            modified_time = obj.get('LastModified', '')
+                            if hasattr(modified_time, 'strftime'):
+                                modified_time = modified_time.strftime('%Y-%m-%d %H:%M:%S')
+                            elif isinstance(modified_time, str):
+                                modified_time = modified_time
+                            else:
+                                modified_time = str(modified_time)
+
+                            # 返回相对于 path_prefix 的路径
+                            prefix_with_slash = self.path_prefix.strip('/') + '/'
+                            if self.path_prefix and key.startswith(prefix_with_slash):
+                                relative_path = key[len(prefix_with_slash):]
+                            else:
+                                relative_path = key
+
+                            all_files.append({
+                                'name': os.path.basename(key),
+                                'size': obj['Size'],
+                                'modified_time': modified_time,
+                                'type': 'file',
+                                'path': relative_path
+                            })
+
+                    # 检查是否还有更多数据
+                    is_truncated = response.get('IsTruncated', False)
+                    if not is_truncated:
+                        break
+
+                    marker = response.get('Marker')
+
+                files = all_files
+                total_count = len(files)
+                total_pages = 1
+
+                logger.info(f"文件列表获取成功: {len(files)} 个文件")
+
+            result_data = {'files': files}
+
+            if enable_pagination:
+                result_data['total'] = total_count
+                result_data['page'] = page
+                result_data['page_size'] = page_size
+                result_data['total_pages'] = total_pages
 
             return DownloadResult(
                 code=DownloadErrorCode.SUCCESS,
-                data={'files': files},
+                data=result_data,
                 message=f"获取文件列表成功: {len(files)} 个文件",
                 plugin_name=self.plugin_name
             )
@@ -353,8 +461,17 @@ class QcloudOSSDownload(DownloadPluginInterface):
             "auth_methods": ["secret_key"],
             "max_file_size": "5TB (取决于存储桶配置）",
             "concurrent_downloads": True,
-            "features": ["retry_mechanism", "list_files", "path_prefix"]
+            "features": ["retry_mechanism", "list_files", "path_prefix", "pagination"]
         }
+
+    def supports_pagination(self) -> bool:
+        """
+        检查插件是否支持分页
+
+        Returns:
+            bool: 支持分页返回True
+        """
+        return True
 
     def cleanup(self) -> None:
         """

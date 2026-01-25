@@ -94,22 +94,86 @@ class DownloadPluginInterface(metaclass=abc.ABCMeta):
 
         Args:
             remote_path: 远程路径（可选）
-            **kwargs: 额外参数
+            **kwargs: 额外参数，支持：
+                - page: 页码（从1开始）
+                - page_size: 每页数量
+                - offset: 偏移量
+                - limit: 限制数量
 
         Returns:
-            DownloadResult: 包含文件列表数据，data.files 包含文件信息列表
+            DownloadResult: 包含文件列表数据
+                data.files: 文件信息列表
+                data.total: 总数量（如果支持分页）
+                data.page: 当前页码（如果支持分页）
+                data.page_size: 每页数量（如果支持分页）
+                data.total_pages: 总页数（如果支持分页）
         """
         pass
+
+    def supports_pagination(self) -> bool:
+        """
+        检查插件是否支持分页
+
+        Returns:
+            bool: 是否支持分页
+        """
+        return False
 
     @abc.abstractmethod
     def get_supported_features(self) -> Dict[str, Any]:
         """
         获取插件支持的特性
-        
+
         Returns:
             Dict[str, Any]: 支持的特性
         """
         pass
+
+    def get_file_list_columns(self) -> list:
+        """
+        获取文件列表表格的列名
+
+        Returns:
+            list: 列名列表，例如 ["文件名", "文件大小", "修改时间", "文件类型", "路径"]
+        """
+        return ["文件名", "文件大小", "修改时间", "文件类型", "路径"]
+
+    def get_file_list_row(self, file_info: Dict[str, Any]) -> list:
+        """
+        获取文件列表表格的一行数据
+
+        Args:
+            file_info: 文件信息字典，包含 name, size, modified_time, type, path 等字段
+
+        Returns:
+            list: 一行数据列表，例如 ["filename.pdf", "1.23 MB", "2024-01-25 10:00", "file", "/path/to/file"]
+        """
+        return [
+            file_info.get('name', ''),
+            self._format_size(file_info.get('size', 0)),
+            file_info.get('modified_time', ''),
+            '文件夹' if file_info.get('type') == 'dir' else '文件',
+            file_info.get('path', '')
+        ]
+
+    def _format_size(self, size: int) -> str:
+        """
+        格式化文件大小（默认实现，子类可重写）
+
+        Args:
+            size: 文件大小（字节）
+
+        Returns:
+            str: 格式化后的大小字符串，例如 "1.23 MB"
+        """
+        if size < 1024:
+            return f"{size} B"
+        elif size < 1024 * 1024:
+            return f"{size / 1024:.2f} KB"
+        elif size < 1024 * 1024 * 1024:
+            return f"{size / (1024 * 1024):.2f} MB"
+        else:
+            return f"{size / (1024 * 1024 * 1024):.2f} GB"
 
     @abc.abstractmethod
     def cleanup(self) -> None:
