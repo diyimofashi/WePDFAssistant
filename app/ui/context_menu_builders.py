@@ -444,13 +444,24 @@ class ContextMenuBuilder:
                 # 获取插件实例
                 plugin = self.main_window.ocr_plugin_manager.plugins.get(current_plugin_name)
                 if not plugin:
-                    self.main_window.show_message(f"❌ OCR插件 '{current_plugin_name}' 未加载")
-                    return
+                    # 当前插件不存在，尝试自动切换到第一个可用插件
+                    available_plugins = list(self.main_window.ocr_plugin_manager.plugins.keys())
+                    if available_plugins:
+                        # 切换到第一个可用插件
+                        fallback_plugin = available_plugins[0]
+                        self.main_window.ocr_config_manager.set_current_plugin(fallback_plugin)
+                        self.main_window.ocr_config_manager.save_config()
+                        plugin = self.main_window.ocr_plugin_manager.plugins.get(fallback_plugin)
+                        logger.warning(f"OCR插件 '{current_plugin_name}' 不存在，已自动切换到 '{fallback_plugin}'")
+                        self.main_window.show_message(f"⚠️ OCR插件 '{current_plugin_name}' 不存在，已自动切换到 '{fallback_plugin}'")
+                    else:
+                        self.main_window.show_message("❌ 没有可用的OCR插件")
+                        return
 
                 # 初始化插件（如果尚未初始化）
                 if not plugin.is_initialized:
-                    plugin_config = self.main_window.ocr_config_manager.get_plugin_config(current_plugin_name)
-                    init_result = self.main_window.ocr_plugin_manager.initialize_plugin(current_plugin_name, plugin_config)
+                    plugin_config = self.main_window.ocr_config_manager.get_plugin_config(plugin.plugin_name)
+                    init_result = self.main_window.ocr_plugin_manager.initialize_plugin(plugin.plugin_name, plugin_config)
                     if not init_result.is_success():
                         self.main_window.show_message(f"❌ OCR插件初始化失败: {init_result.message}")
                         return

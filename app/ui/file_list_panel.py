@@ -1,13 +1,12 @@
 """
 文件列表面板 - 用于显示远程文件列表
 支持在右侧停靠，可隐藏和显示
-支持分页和不分页两种模式
 """
 
 from PyQt5.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QTableWidget,
                              QTableWidgetItem, QHeaderView, QMessageBox, QAbstractItemView,
-                             QProgressBar, QComboBox)
+                             QProgressBar)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 from typing import Dict, Any
@@ -20,22 +19,15 @@ class LoadFilesThread(QThread):
     """加载文件列表的线程"""
     finished = pyqtSignal(object)
 
-    def __init__(self, plugin, remote_path: str = "", page: int = 1, page_size: int = 50, supports_pagination: bool = False):
+    def __init__(self, plugin, remote_path: str = ""):
         super().__init__()
         self.plugin = plugin
         self.remote_path = remote_path
-        self.page = page
-        self.page_size = page_size
-        self.supports_pagination = supports_pagination
 
     def run(self):
         """执行加载文件列表"""
-        kwargs = {}
-        if self.supports_pagination:
-            kwargs['page'] = self.page
-            kwargs['page_size'] = self.page_size
-
-        result = self.plugin.list_files(self.remote_path, **kwargs)
+        logger.info(f"LoadFilesThread run() 被调用，remote_path={self.remote_path!r}, type={type(self.remote_path)}")
+        result = self.plugin.list_files(self.remote_path)
         self.finished.emit(result)
 
 
@@ -56,13 +48,6 @@ class FileListPanel(QDockWidget):
         self.plugin = None
         self.load_thread = None
         self.plugin_name = ""  # 添加插件名称属性
-
-        # 分页相关
-        self.current_page = 1
-        self.page_size = 50
-        self.total_count = 0
-        self.total_pages = 0
-        self.supports_pagination = False  # 插件是否支持分页
 
         self.setup_ui()
         self.load_current_plugin_info()
@@ -85,23 +70,19 @@ class FileListPanel(QDockWidget):
 
         # 文件列表表格
         self.table = QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["文件名", "文件大小", "修改时间", "文件类型", "路径"])
+        # 默认表头，将在load_current_plugin_info中更新
+        self.default_headers = ["文件名", "文件大小", "修改时间", "文件类型", "路径"]
+        self.update_table_headers(self.default_headers)
+        
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setAlternatingRowColors(True)
-
-        # 启用列宽调整和工具提示
         self.table.horizontalHeader().setStretchLastSection(True)
-        # 第一列（文件名）自动适应内容，其他列可手动调整
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        for i in range(1, 5):
-            self.table.horizontalHeader().setSectionResizeMode(i, QHeaderView.Interactive)
-
-        # 启用鼠标悬停显示单元格内容
-        self.table.setToolTipDuration(5000)
-        self.table.setMouseTracking(True)
-        self.table.viewport().installEventFilter(self)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
 
         # 双击打开文件
         self.table.itemDoubleClicked.connect(self.open_file_at_index)
@@ -114,41 +95,19 @@ class FileListPanel(QDockWidget):
         self.progress_bar.setRange(0, 0)
         layout.addWidget(self.progress_bar)
 
-        # 分页控件
-        self.pagination_widget = QWidget()
-        pagination_layout = QHBoxLayout(self.pagination_widget)
-        pagination_layout.setContentsMargins(0, 0, 0, 0)
-
-        # 每页数量标签和下拉框
-        pagination_layout.addWidget(QLabel("每页:"))
-        self.page_size_combo = QComboBox()
-        self.page_size_combo.addItems(["10", "20", "30", "50", "100", "200", "500"])
-        self.page_size_combo.setCurrentText("50")
-        self.page_size_combo.currentTextChanged.connect(self.on_page_size_changed)
-        pagination_layout.addWidget(self.page_size_combo)
-
-        pagination_layout.addStretch()
-
-        # 上一页按钮
-        self.prev_button = QPushButton("上一页")
-        self.prev_button.clicked.connect(self.on_prev_page)
-        self.prev_button.setEnabled(False)
-        pagination_layout.addWidget(self.prev_button)
-
-        # 页码标签
-        self.page_label = QLabel("第 1 页")
-        pagination_layout.addWidget(self.page_label)
-
-        # 下一页按钮
-        self.next_button = QPushButton("下一页")
-        self.next_button.clicked.connect(self.on_next_page)
-        self.next_button.setEnabled(False)
-        pagination_layout.addWidget(self.next_button)
-
-        self.pagination_widget.setVisible(False)
-        layout.addWidget(self.pagination_widget)
-
         self.setWidget(container)
+
+    def update_table_headers(self, headers):
+        """更新表格头部"""
+        self.table.setColumnCount(len(headers))
+        self.table.setHorizontalHeaderLabels(headers)
+        
+        # 根据列数重新设置列宽调整模式
+        for col_idx in range(len(headers)):
+            if col_idx == 0:  # 第一列拉伸
+                self.table.horizontalHeader().setSectionResizeMode(col_idx, QHeaderView.Stretch)
+            else:  # 其他列根据内容调整
+                self.table.horizontalHeader().setSectionResizeMode(col_idx, QHeaderView.ResizeToContents)
 
     def load_current_plugin_info(self):
         """加载当前应用的下载插件信息（不加载文件列表）"""
@@ -185,18 +144,37 @@ class FileListPanel(QDockWidget):
 
             # 更新面板标题
             self.setWindowTitle(f"文件列表 - {plugin_title}")
+            
+            # 获取插件特定的表头信息
+            headers = self.get_headers_for_plugin(plugin)
+            self.update_table_headers(headers)
+            
             logger.info(f"成功加载下载插件: {plugin_name}")
-
-            # 检查插件是否支持分页
-            self.supports_pagination = getattr(plugin, 'supports_pagination', lambda: False)()
-
-            # 如果插件支持分页，显示分页控件
-            if self.supports_pagination:
-                self.pagination_widget.setVisible(True)
-            else:
-                self.pagination_widget.setVisible(False)
         except Exception as e:
             logger.error(f"加载当前插件失败: {e}")
+
+    def get_headers_for_plugin(self, plugin):
+        """根据插件获取对应的表头信息，优先检查插件是否提供自定义表头"""
+        # 检查插件是否提供自定义表头方法
+        if hasattr(plugin, 'get_column_headers') and callable(getattr(plugin, 'get_column_headers')):
+            try:
+                return plugin.get_column_headers()
+            except Exception as e:
+                logger.warning(f"插件 {plugin.plugin_name} 的 get_column_headers 方法调用失败: {e}")
+        
+        # 检查插件是否定义了 COLUMN_HEADERS 属性
+        if hasattr(plugin, 'COLUMN_HEADERS'):
+            return plugin.COLUMN_HEADERS
+        
+        # 根据插件名称返回不同的默认表头
+        if hasattr(plugin, 'plugin_name'):
+            plugin_name = plugin.plugin_name.lower()
+            if 'qcloud' in plugin_name or 'oss' in plugin_name or 'cos' in plugin_name:
+                ***REMOVED***OSS插件的表头
+                return ["文件名", "文件大小", "修改时间", "文件类型"]
+        
+        # 默认表头
+        return self.default_headers
 
     def load_current_plugin(self):
         """加载当前应用的下载插件并加载文件列表"""
@@ -233,16 +211,12 @@ class FileListPanel(QDockWidget):
 
             # 更新面板标题
             self.setWindowTitle(f"文件列表 - {plugin_title}")
+            
+            # 更新表头
+            headers = self.get_headers_for_plugin(plugin)
+            self.update_table_headers(headers)
+            
             logger.info(f"成功加载下载插件: {plugin_name}")
-
-            # 检查插件是否支持分页
-            self.supports_pagination = getattr(plugin, 'supports_pagination', lambda: False)()
-
-            # 如果插件支持分页，显示分页控件
-            if self.supports_pagination:
-                self.pagination_widget.setVisible(True)
-            else:
-                self.pagination_widget.setVisible(False)
 
             # 自动加载文件列表
             self.load_files()
@@ -260,52 +234,36 @@ class FileListPanel(QDockWidget):
         else:
             plugin_title = plugin_name
 
-            # 更新面板标题
-            self.setWindowTitle(f"文件列表 - {plugin_title}")
-
-            # 检查插件是否支持分页
-            self.supports_pagination = getattr(plugin, 'supports_pagination', lambda: False)()
-
-            # 如果插件支持分页，显示分页控件
-            if self.supports_pagination:
-                self.pagination_widget.setVisible(True)
-            else:
-                self.pagination_widget.setVisible(False)
+        # 更新面板标题
+        self.setWindowTitle(f"文件列表 - {plugin_title}")
+        
+        # 更新表头
+        headers = self.get_headers_for_plugin(plugin)
+        self.update_table_headers(headers)
 
     def load_files(self, remote_path: str = ""):
         """加载文件列表"""
-        logger.info(f"load_files 被调用，参数: remote_path={remote_path!r}")
-
+        logger.info(f"load_files() 被调用，remote_path={remote_path!r}, type={type(remote_path)}")
         if not self.plugin:
             QMessageBox.warning(self, "提示", "请先在下载设置中选择插件")
             return
 
         if self.load_thread and self.load_thread.isRunning():
-            logger.info("加载线程正在运行，跳过此次调用")
+            logger.warning("加载线程正在运行，忽略新的请求")
             return
 
         self.table.setRowCount(0)
         self.files_data = []
         self.progress_bar.setVisible(True)
         self.refresh_button.setEnabled(False)
-        logger.info(f"开始加载文件列表，当前页: {self.current_page}, 每页大小: {self.page_size}, 支持分页: {self.supports_pagination}")
 
         # 创建加载线程
-        logger.info(f"创建加载线程: remote_path={remote_path!r}, page={self.current_page}, page_size={self.page_size}, supports_pagination={self.supports_pagination}")
-        self.load_thread = LoadFilesThread(
-            self.plugin,
-            remote_path,
-            self.current_page,
-            self.page_size,
-            self.supports_pagination
-        )
+        self.load_thread = LoadFilesThread(self.plugin, remote_path)
         self.load_thread.finished.connect(self.on_files_loaded)
         self.load_thread.start()
-        logger.info("加载线程已启动")
 
     def on_files_loaded(self, result: object):
         """文件列表加载完成"""
-        logger.info(f"文件列表加载完成回调被调用，结果: {result}")
         self.progress_bar.setVisible(False)
         self.refresh_button.setEnabled(True)
 
@@ -316,59 +274,58 @@ class FileListPanel(QDockWidget):
             return
 
         self.files_data = result.data.get('files', [])
-
-        # 更新分页信息
-        if self.supports_pagination:
-            self.total_count = result.data.get('total', len(self.files_data))
-            self.total_pages = result.data.get('total_pages', 1)
-            self.update_pagination_controls()
-        else:
-            self.total_count = len(self.files_data)
-            self.total_pages = 1
-
         self.populate_table()
 
     def populate_table(self):
         """填充表格数据"""
+        # 确保表格列数与数据匹配
+        headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
+        
         self.table.setRowCount(len(self.files_data))
 
         for row, file_info in enumerate(self.files_data):
-            # 文件名
-            name = file_info.get('name', '')
-            logger.debug(f"文件列表第{row}行: name={name}, length={len(name)}")
-            name_item = QTableWidgetItem(name)
-            name_item.setData(Qt.UserRole, file_info)
-            name_item.setToolTip(name)  # 设置工具提示，显示完整文件名
-            self.table.setItem(row, 0, name_item)
+            # 根据表头动态填充列
+            for col_idx, header in enumerate(headers):
+                if header == "文件名":
+                    value = file_info.get('name', '')
+                    name_item = QTableWidgetItem(value)
+                    name_item.setData(Qt.UserRole, file_info)
+                    self.table.setItem(row, col_idx, name_item)
+                elif header == "文件大小":
+                    size = file_info.get('size', 0)
+                    # 确保大小是整数类型
+                    try:
+                        size = int(size)
+                    except (ValueError, TypeError):
+                        size = 0
+                    size_text = self.format_size(size)
+                    self.table.setItem(row, col_idx, QTableWidgetItem(size_text))
+                elif header == "修改时间":
+                    modified_time = file_info.get('modified_time', '')
+                    self.table.setItem(row, col_idx, QTableWidgetItem(modified_time))
+                elif header == "文件类型":
+                    file_type = file_info.get('type', 'file')
+                    type_text = '文件夹' if file_type == 'dir' else '文件'
+                    self.table.setItem(row, col_idx, QTableWidgetItem(type_text))
+                elif header == "路径":
+                    path = file_info.get('path', '')
+                    self.table.setItem(row, col_idx, QTableWidgetItem(path))
+                else:
+                    # 对于未知的表头，尝试从file_info中获取对应字段
+                    field_name = self.convert_header_to_field(header)
+                    value = file_info.get(field_name, '')
+                    self.table.setItem(row, col_idx, QTableWidgetItem(str(value)))
 
-            # 文件大小
-            size = file_info.get('size', 0)
-            # 确保大小是整数类型
-            try:
-                size = int(size)
-            except (ValueError, TypeError):
-                size = 0
-            size_text = self.format_size(size)
-            self.table.setItem(row, 1, QTableWidgetItem(size_text))
-
-            # 修改时间
-            modified_time = file_info.get('modified_time', '')
-            modified_item = QTableWidgetItem(modified_time)
-            modified_item.setToolTip(modified_time)
-            self.table.setItem(row, 2, modified_item)
-
-            # 文件类型
-            file_type = file_info.get('type', 'file')
-            type_text = '文件夹' if file_type == 'dir' else '文件'
-            type_item = QTableWidgetItem(type_text)
-            type_item.setToolTip(type_text)
-            self.table.setItem(row, 3, type_item)
-
-            # 路径
-            path = file_info.get('path', '')
-            path_item = QTableWidgetItem(path)
-            path_item.setToolTip(path)
-            self.table.setItem(row, 4, path_item)
+    def convert_header_to_field(self, header: str) -> str:
+        """将表头转换为对应的字段名"""
+        header_map = {
+            "文件名": "name",
+            "文件大小": "size",
+            "修改时间": "modified_time",
+            "文件类型": "type",
+            "路径": "path"
+        }
+        return header_map.get(header, header.lower())
 
     def format_size(self, size: int) -> str:
         """格式化文件大小"""
@@ -469,45 +426,3 @@ class FileListPanel(QDockWidget):
         if self.load_thread and self.load_thread.isRunning():
             self.load_thread.terminate()
         super().closeEvent(event)
-
-    def on_page_size_changed(self, value: str):
-        """每页数量改变"""
-        self.page_size = int(value)
-        self.current_page = 1
-        self.load_files()
-
-    def on_prev_page(self):
-        """上一页"""
-        if self.current_page > 1:
-            self.current_page -= 1
-            self.load_files()
-
-    def on_next_page(self):
-        """下一页"""
-        if self.current_page < self.total_pages:
-            self.current_page += 1
-            self.load_files()
-
-    def update_pagination_controls(self):
-        """更新分页控件状态"""
-        if self.total_pages > 0:
-            self.page_label.setText(f"第 {self.current_page} / {self.total_pages} 页 (共 {self.total_count} 条)")
-        else:
-            self.page_label.setText("第 0 页")
-
-        self.prev_button.setEnabled(self.current_page > 1)
-        self.next_button.setEnabled(self.current_page < self.total_pages)
-
-    def eventFilter(self, obj, event):
-        """事件过滤器，用于处理表格鼠标移动事件"""
-        if event.type() == event.MouseMove:
-            if obj == self.table.viewport():
-                pos = event.pos()
-                item = self.table.itemAt(pos)
-                if item:
-                    text = item.text()
-                    if text:
-                        self.table.setToolTip(text)
-                else:
-                    self.table.setToolTip("")
-        return super().eventFilter(obj, event)

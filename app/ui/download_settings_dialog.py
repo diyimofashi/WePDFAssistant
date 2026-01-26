@@ -773,6 +773,9 @@ class DownloadSettingsDialog(QDialog):
                 # 从控件中获取值
                 for option_key, widget in widgets.items():
                     value = self.get_widget_value(widget)
+                    # 如果是字符串类型，清理首尾空白字符
+                    if isinstance(value, str):
+                        value = value.strip()
                     config[option_key] = value
 
                 # 设置插件配置
