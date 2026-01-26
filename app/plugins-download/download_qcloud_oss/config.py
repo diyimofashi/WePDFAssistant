@@ -69,6 +69,16 @@ local_options = {
         "type": "string",
         "default": "",
         "description": "文件下载的路径前缀"
+    },
+    "enable_delete": {
+        "type": "boolean",
+        "default": False,
+        "description": "是否启用删除功能（允许从存储桶中删除文件）"
+    },
+    "enable_upload": {
+        "type": "boolean",
+        "default": False,
+        "description": "是否启用上传功能（允许上传当前打开的文档到存储桶）"
     }
 }
 

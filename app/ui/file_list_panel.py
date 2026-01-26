@@ -3,6 +3,7 @@
 支持在右侧停靠，可隐藏和显示
 """
 
+import os
 from PyQt5.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QTableWidget,
                              QTableWidgetItem, QHeaderView, QMessageBox, QAbstractItemView,
@@ -59,13 +60,30 @@ class FileListPanel(QDockWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        # 刷新按钮（靠右对齐）
+        # 按钮区域
         button_layout = QHBoxLayout()
         button_layout.addStretch()
+
+        # 刷新按钮
         self.refresh_button = QPushButton("刷新")
         self.refresh_button.setMaximumWidth(80)
         self.refresh_button.clicked.connect(lambda: self.load_files())
         button_layout.addWidget(self.refresh_button)
+
+        # 删除按钮（根据插件配置显示）
+        self.delete_button = QPushButton("删除")
+        self.delete_button.setMaximumWidth(80)
+        self.delete_button.clicked.connect(self.delete_selected_file)
+        self.delete_button.setVisible(False)
+        button_layout.addWidget(self.delete_button)
+
+        # 上传按钮（根据插件配置显示）
+        self.upload_button = QPushButton("上传当前文档")
+        self.upload_button.setMaximumWidth(120)
+        self.upload_button.clicked.connect(self.upload_current_document)
+        self.upload_button.setVisible(False)
+        button_layout.addWidget(self.upload_button)
+
         layout.addLayout(button_layout)
 
         # 文件列表表格
@@ -211,11 +229,14 @@ class FileListPanel(QDockWidget):
 
             # 更新面板标题
             self.setWindowTitle(f"文件列表 - {plugin_title}")
-            
+
             # 更新表头
             headers = self.get_headers_for_plugin(plugin)
             self.update_table_headers(headers)
-            
+
+            # 更新功能按钮的可见性
+            self.update_feature_buttons()
+
             logger.info(f"成功加载下载插件: {plugin_name}")
 
             # 自动加载文件列表
@@ -420,6 +441,108 @@ class FileListPanel(QDockWidget):
         except Exception as e:
             QMessageBox.warning(self, "打开失败", f"打开文件失败: {str(e)}")
             logger.error(f"打开文件失败: {e}")
+
+    def delete_selected_file(self):
+        """删除选中的文件"""
+        selected_items = self.table.selectedItems()
+        if not selected_items:
+            QMessageBox.information(self, "提示", "请先选择要删除的文件")
+            return
+
+        row = selected_items[0].row()
+        file_info = self.table.item(row, 0).data(Qt.UserRole)
+
+        # 确认删除
+        reply = QMessageBox.question(
+            self,
+            "确认删除",
+            f"确定要删除文件 '{file_info.get('name')}' 吗？\n\n此操作不可恢复！",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                result = self.plugin.delete_file(file_info.get('path', ''))
+                if result.is_success():
+                    QMessageBox.information(self, "删除成功", result.message)
+                    # 重新加载文件列表
+                    self.load_files()
+                else:
+                    QMessageBox.warning(self, "删除失败", result.message)
+                    logger.error(f"删除文件失败: {result.message}")
+            except Exception as e:
+                QMessageBox.warning(self, "删除失败", f"删除文件时发生错误: {str(e)}")
+                logger.error(f"删除文件失败: {e}")
+
+    def upload_current_document(self):
+        """上传当前打开的文档"""
+        # 获取主窗口
+        parent = self.parent_window
+        while parent and not hasattr(parent, 'pdf_processor'):
+            parent = parent.parent()
+
+        if not parent or not hasattr(parent, 'pdf_processor'):
+            QMessageBox.warning(self, "提示", "无法获取当前文档信息")
+            return
+
+        # 获取当前文档路径
+        pdf_processor = parent.pdf_processor
+        if not hasattr(pdf_processor, 'current_file') or not pdf_processor.current_file:
+            QMessageBox.warning(self, "提示", "当前没有打开的文档")
+            return
+
+        local_path = pdf_processor.current_file
+        filename = os.path.basename(local_path)
+
+        # 确认上传
+        reply = QMessageBox.question(
+            self,
+            "确认上传",
+            f"确定要上传当前文档 '{filename}' 吗？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                result = self.plugin.upload_file(local_path, filename)
+                if result.is_success():
+                    QMessageBox.information(self, "上传成功", result.message)
+                    # 重新加载文件列表
+                    self.load_files()
+                else:
+                    QMessageBox.warning(self, "上传失败", result.message)
+                    logger.error(f"上传文件失败: {result.message}")
+            except Exception as e:
+                QMessageBox.warning(self, "上传失败", f"上传文件时发生错误: {str(e)}")
+                logger.error(f"上传文件失败: {e}")
+
+    def update_feature_buttons(self):
+        """根据插件配置更新功能按钮的可见性"""
+        if not self.plugin:
+            return
+
+        # 获取插件配置
+        plugin_config = {}
+        if hasattr(self.plugin, 'config'):
+            plugin_config = self.plugin.config
+
+        # 检查是否启用删除功能
+        enable_delete = plugin_config.get('enable_delete', False)
+        self.delete_button.setVisible(enable_delete)
+        if enable_delete:
+            logger.info("删除功能已启用")
+        else:
+            logger.info("删除功能已禁用")
+
+        # 检查是否启用上传功能
+        enable_upload = plugin_config.get('enable_upload', False)
+        self.upload_button.setVisible(enable_upload)
+        if enable_upload:
+            logger.info("上传功能已启用")
+        else:
+            logger.info("上传功能已禁用")
 
     def closeEvent(self, event):
         """关闭事件"""

@@ -110,6 +110,39 @@ class DownloadPluginInterface(metaclass=abc.ABCMeta):
         """
         pass
 
+    def delete_file(self, remote_path: str) -> DownloadResult:
+        """
+        删除远程文件（可选实现）
+
+        Args:
+            remote_path: 远程文件路径
+
+        Returns:
+            DownloadResult: 删除结果
+        """
+        return DownloadResult(
+            code=DownloadErrorCode.NETWORK_ERROR,
+            message="删除功能未实现"
+        )
+
+    def upload_file(self, local_path: str, remote_path: str, **kwargs) -> DownloadResult:
+        """
+        上传文件到远程（可选实现）
+
+        Args:
+            local_path: 本地文件路径
+            remote_path: 远程保存路径
+            **kwargs: 额外参数，如上传进度回调等
+
+        Returns:
+            DownloadResult: 上传结果
+                data.path: 上传后的文件路径
+        """
+        return DownloadResult(
+            code=DownloadErrorCode.NETWORK_ERROR,
+            message="上传功能未实现"
+        )
+
     def supports_pagination(self) -> bool:
         """
         检查插件是否支持分页

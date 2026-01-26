@@ -487,4 +487,108 @@ class QcloudOSSDownload(DownloadPluginInterface):
         # 关闭COS客户端
         self.client = None
         self.is_initialized = False
+
+    def delete_file(self, remote_path: str) -> DownloadResult:
+        """
+        删除远程文件
+
+        Args:
+            remote_path: 远程文件路径（相对于path_prefix）
+
+        Returns:
+            DownloadResult: 删除结果
+        """
+        try:
+            if not self.client:
+                return DownloadResult(
+                    code=DownloadErrorCode.INIT_ERROR,
+                    message="插件未初始化"
+                )
+
+            # 构建完整的对象键
+            if self.path_prefix:
+                object_key = f"{self.path_prefix.rstrip('/')}/{remote_path}"
+            else:
+                object_key = remote_path
+
+            logger.info(f"准备删除文件: {object_key}")
+
+            # 删除文件
+            response = self.client.delete_object(
+                Bucket=self.bucket_name,
+                Key=object_key
+            )
+
+            logger.info(f"文件删除成功: {object_key}")
+            return DownloadResult(
+                code=DownloadErrorCode.SUCCESS,
+                message=f"文件 '{remote_path}' 删除成功",
+                data={'path': remote_path}
+            )
+
+        except Exception as e:
+            logger.error(f"删除文件失败: {e}")
+            return DownloadResult(
+                code=DownloadErrorCode.DOWNLOAD_FAILED,
+                message=f"删除文件失败: {str(e)}"
+            )
+
+    def upload_file(self, local_path: str, remote_path: str, **kwargs) -> DownloadResult:
+        """
+        上传文件到远程
+
+        Args:
+            local_path: 本地文件路径
+            remote_path: 远程保存路径（相对于path_prefix）
+            **kwargs: 额外参数，如上传进度回调等
+
+        Returns:
+            DownloadResult: 上传结果
+                data.path: 上传后的完整路径
+        """
+        import os
+
+        try:
+            if not self.client:
+                return DownloadResult(
+                    code=DownloadErrorCode.INIT_ERROR,
+                    message="插件未初始化"
+                )
+
+            # 检查本地文件是否存在
+            if not os.path.exists(local_path):
+                return DownloadResult(
+                    code=DownloadErrorCode.FILE_NOT_FOUND,
+                    message=f"本地文件不存在: {local_path}"
+                )
+
+            # 构建完整的对象键
+            if self.path_prefix:
+                object_key = f"{self.path_prefix.rstrip('/')}/{remote_path}"
+            else:
+                object_key = remote_path
+
+            logger.info(f"准备上传文件: {local_path} -> {object_key}")
+
+            # 上传文件
+            with open(local_path, 'rb') as file:
+                response = self.client.put_object(
+                    Bucket=self.bucket_name,
+                    Key=object_key,
+                    Body=file
+                )
+
+            logger.info(f"文件上传成功: {object_key}")
+            return DownloadResult(
+                code=DownloadErrorCode.SUCCESS,
+                message=f"文件上传成功: {remote_path}",
+                data={'path': remote_path, 'object_key': object_key}
+            )
+
+        except Exception as e:
+            logger.error(f"上传文件失败: {e}")
+            return DownloadResult(
+                code=DownloadErrorCode.DOWNLOAD_FAILED,
+                message=f"上传文件失败: {str(e)}"
+            )
         logger.info(f"{self.plugin_name} 插件资源已清理")
