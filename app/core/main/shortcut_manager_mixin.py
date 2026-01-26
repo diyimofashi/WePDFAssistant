@@ -28,3 +28,17 @@ class ShortcutManagerMixin:
         except Exception as e:
             logger.error(f"显示快捷键设置对话框时出错: {e}")
             QMessageBox.critical(self, "错误", f"打开快捷键设置失败: {str(e)}")
+
+    def show_ui_settings(self):
+        """显示界面设置对话框"""
+        try:
+            from app.ui.ui_settings_dialog import show_ui_settings_dialog
+            
+            # 显示界面设置对话框
+            show_ui_settings_dialog(self)
+            logger.info("界面设置对话框已关闭")
+
+        except Exception as e:
+            logger.error(f"显示界面设置对话框时出错: {e}")
+            QMessageBox.critical(self, "错误", f"打开界面设置失败: {str(e)}")
+

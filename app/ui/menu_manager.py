@@ -154,6 +154,11 @@ class MenuManager(QObject):
         """创建设置菜单"""
         settings_menu = menubar.addMenu("⚙️ 设置")
 
+        # 界面设置
+        ui_settings_action = QAction("🎨 界面设置", self.parent)
+        ui_settings_action.triggered.connect(self.parent.show_ui_settings)
+        settings_menu.addAction(ui_settings_action)
+
         # 快捷键设置
         shortcut_settings_action = QAction("⌨️ 快捷键设置", self.parent)
         shortcut_settings_action.setShortcut("Ctrl+K")
