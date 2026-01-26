@@ -259,8 +259,20 @@ class MainWindowBase(QMainWindow):
         if not check_download_plugin():
             return
 
-        # 设置面板为不可见（默认隐藏）
-        self.file_list_panel.hide()
+        # 读取设置：是否默认显示文件列表
+        show_file_list = AppSettings.get_file_list_panel_visible()
+        panel_width = AppSettings.get_file_list_panel_width()
+
+        # 设置面板宽度
+        self.file_list_panel.setMinimumWidth(panel_width)
+
+        # 根据设置显示或隐藏面板
+        if show_file_list:
+            self.file_list_panel.show()
+            # 显示时加载文件列表
+            QTimer.singleShot(500, self.file_list_panel.load_current_plugin)
+        else:
+            self.file_list_panel.hide()
 
         # 添加到右侧停靠区域
         self.addDockWidget(Qt.RightDockWidgetArea, self.file_list_panel)

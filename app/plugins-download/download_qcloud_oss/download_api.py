@@ -266,6 +266,8 @@ class QcloudOSSDownload(DownloadPluginInterface):
             # 确保 remote_path 是字符串类型
             remote_path = str(remote_path) if remote_path is not None else ""
 
+            logger.info(f"list_files 被调用，参数: remote_path={remote_path!r}, kwargs={kwargs!r}")
+
             # 检查是否需要分页
             page = kwargs.get('page', 1)
             page_size = kwargs.get('page_size', 50)
@@ -417,7 +419,11 @@ class QcloudOSSDownload(DownloadPluginInterface):
                     if not is_truncated:
                         break
 
-                    marker = response.get('Marker')
+                    # 使用最后一个 key 作为下一页的 marker
+                    if 'Contents' in response and response['Contents']:
+                        marker = response['Contents'][-1]['Key']
+                    else:
+                        break
 
                 files = all_files
                 total_count = len(files)

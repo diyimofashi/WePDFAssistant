@@ -79,7 +79,7 @@ class FileListPanel(QDockWidget):
         button_layout.addStretch()
         self.refresh_button = QPushButton("刷新")
         self.refresh_button.setMaximumWidth(80)
-        self.refresh_button.clicked.connect(self.load_files)
+        self.refresh_button.clicked.connect(lambda: self.load_files())
         button_layout.addWidget(self.refresh_button)
         layout.addLayout(button_layout)
 
@@ -90,12 +90,18 @@ class FileListPanel(QDockWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setAlternatingRowColors(True)
+
+        # 启用列宽调整和工具提示
         self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        # 第一列（文件名）自动适应内容，其他列可手动调整
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        for i in range(1, 5):
+            self.table.horizontalHeader().setSectionResizeMode(i, QHeaderView.Interactive)
+
+        # 启用鼠标悬停显示单元格内容
+        self.table.setToolTipDuration(5000)
+        self.table.setMouseTracking(True)
+        self.table.viewport().installEventFilter(self)
 
         # 双击打开文件
         self.table.itemDoubleClicked.connect(self.open_file_at_index)
@@ -268,19 +274,24 @@ class FileListPanel(QDockWidget):
 
     def load_files(self, remote_path: str = ""):
         """加载文件列表"""
+        logger.info(f"load_files 被调用，参数: remote_path={remote_path!r}")
+
         if not self.plugin:
             QMessageBox.warning(self, "提示", "请先在下载设置中选择插件")
             return
 
         if self.load_thread and self.load_thread.isRunning():
+            logger.info("加载线程正在运行，跳过此次调用")
             return
 
         self.table.setRowCount(0)
         self.files_data = []
         self.progress_bar.setVisible(True)
         self.refresh_button.setEnabled(False)
+        logger.info(f"开始加载文件列表，当前页: {self.current_page}, 每页大小: {self.page_size}, 支持分页: {self.supports_pagination}")
 
         # 创建加载线程
+        logger.info(f"创建加载线程: remote_path={remote_path!r}, page={self.current_page}, page_size={self.page_size}, supports_pagination={self.supports_pagination}")
         self.load_thread = LoadFilesThread(
             self.plugin,
             remote_path,
@@ -290,9 +301,11 @@ class FileListPanel(QDockWidget):
         )
         self.load_thread.finished.connect(self.on_files_loaded)
         self.load_thread.start()
+        logger.info("加载线程已启动")
 
     def on_files_loaded(self, result: object):
         """文件列表加载完成"""
+        logger.info(f"文件列表加载完成回调被调用，结果: {result}")
         self.progress_bar.setVisible(False)
         self.refresh_button.setEnabled(True)
 
@@ -321,8 +334,11 @@ class FileListPanel(QDockWidget):
 
         for row, file_info in enumerate(self.files_data):
             # 文件名
-            name_item = QTableWidgetItem(file_info.get('name', ''))
+            name = file_info.get('name', '')
+            logger.debug(f"文件列表第{row}行: name={name}, length={len(name)}")
+            name_item = QTableWidgetItem(name)
             name_item.setData(Qt.UserRole, file_info)
+            name_item.setToolTip(name)  # 设置工具提示，显示完整文件名
             self.table.setItem(row, 0, name_item)
 
             # 文件大小
@@ -337,16 +353,22 @@ class FileListPanel(QDockWidget):
 
             # 修改时间
             modified_time = file_info.get('modified_time', '')
-            self.table.setItem(row, 2, QTableWidgetItem(modified_time))
+            modified_item = QTableWidgetItem(modified_time)
+            modified_item.setToolTip(modified_time)
+            self.table.setItem(row, 2, modified_item)
 
             # 文件类型
             file_type = file_info.get('type', 'file')
             type_text = '文件夹' if file_type == 'dir' else '文件'
-            self.table.setItem(row, 3, QTableWidgetItem(type_text))
+            type_item = QTableWidgetItem(type_text)
+            type_item.setToolTip(type_text)
+            self.table.setItem(row, 3, type_item)
 
             # 路径
             path = file_info.get('path', '')
-            self.table.setItem(row, 4, QTableWidgetItem(path))
+            path_item = QTableWidgetItem(path)
+            path_item.setToolTip(path)
+            self.table.setItem(row, 4, path_item)
 
     def format_size(self, size: int) -> str:
         """格式化文件大小"""
@@ -475,3 +497,17 @@ class FileListPanel(QDockWidget):
 
         self.prev_button.setEnabled(self.current_page > 1)
         self.next_button.setEnabled(self.current_page < self.total_pages)
+
+    def eventFilter(self, obj, event):
+        """事件过滤器，用于处理表格鼠标移动事件"""
+        if event.type() == event.MouseMove:
+            if obj == self.table.viewport():
+                pos = event.pos()
+                item = self.table.itemAt(pos)
+                if item:
+                    text = item.text()
+                    if text:
+                        self.table.setToolTip(text)
+                else:
+                    self.table.setToolTip("")
+        return super().eventFilter(obj, event)

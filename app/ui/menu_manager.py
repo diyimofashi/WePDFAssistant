@@ -86,14 +86,25 @@ class MenuManager(QObject):
     def _create_view_menu(self, menubar):
         """创建视图菜单"""
         view_menu = menubar.addMenu("👀 视图")
-        
+
         # 缩略图
         self.parent.thumbnail_action = QAction("🖼️ 缩略图", self.parent)
         self.parent.thumbnail_action.setCheckable(True)
         self.parent.thumbnail_action.setChecked(True)
         self.parent.thumbnail_action.triggered.connect(self.parent.toggle_thumbnails)
         view_menu.addAction(self.parent.thumbnail_action)
-        
+
+        # 文件列表面板
+        from app.utils.plugin_checker import check_download_plugin
+        if check_download_plugin():
+            self.parent.file_list_panel_visible_action = QAction("📂 文件列表面板", self.parent)
+            self.parent.file_list_panel_visible_action.setCheckable(True)
+            # 读取设置
+            is_visible = AppSettings.get_file_list_panel_visible()
+            self.parent.file_list_panel_visible_action.setChecked(is_visible)
+            self.parent.file_list_panel_visible_action.triggered.connect(self.toggle_file_list_panel_visible)
+            view_menu.addAction(self.parent.file_list_panel_visible_action)
+
         # 缩放子菜单
         view_menu.addSeparator()
         zoom_menu = view_menu.addMenu("🔍 缩放")
@@ -289,3 +300,23 @@ class MenuManager(QObject):
         update_action = QAction("🔄 检查更新", self.parent)
         # 假设父窗口有相关方法
         help_menu.addAction(update_action)
+
+    def toggle_file_list_panel_visible(self):
+        """切换文件列表面板的可见性设置"""
+        current = AppSettings.get_file_list_panel_visible()
+        new_value = not current
+        AppSettings.set_file_list_panel_visible(new_value)
+
+        # 更新菜单项状态
+        self.parent.file_list_panel_visible_action.setChecked(new_value)
+
+        # 如果设置为显示且面板当前不可见，则显示它
+        if new_value and self.parent.file_list_dock and not self.parent.file_list_dock.isVisible():
+            self.parent.file_list_dock.show()
+            self.parent.file_list_panel.load_current_plugin()
+        # 如果设置为隐藏且面板当前可见，则隐藏它
+        elif not new_value and self.parent.file_list_dock and self.parent.file_list_dock.isVisible():
+            self.parent.file_list_dock.hide()
+
+        logger = get_logger('menu_manager')
+        logger.info(f"文件列表面板可见性设置已更改为: {'显示' if new_value else '隐藏'}")

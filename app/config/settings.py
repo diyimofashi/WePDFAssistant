@@ -155,3 +155,29 @@ class AppSettings:
         # 实时应用日志级别
         from app.utils.logger import set_log_level
         set_log_level(level.upper())
+
+    @classmethod
+    def get_file_list_panel_visible(cls):
+        """获取文件列表面板是否默认显示"""
+        settings = cls._load_settings()
+        return settings.get('file_list_panel_visible', False)  # 默认不显示
+
+    @classmethod
+    def set_file_list_panel_visible(cls, visible):
+        """设置文件列表面板是否默认显示"""
+        settings = cls._load_settings()
+        settings['file_list_panel_visible'] = bool(visible)
+        cls._save_settings()
+
+    @classmethod
+    def get_file_list_panel_width(cls):
+        """获取文件列表面板宽度"""
+        settings = cls._load_settings()
+        return settings.get('file_list_panel_width', 600)  # 默认600像素
+
+    @classmethod
+    def set_file_list_panel_width(cls, width):
+        """设置文件列表面板宽度"""
+        settings = cls._load_settings()
+        settings['file_list_panel_width'] = int(width)
+        cls._save_settings()
