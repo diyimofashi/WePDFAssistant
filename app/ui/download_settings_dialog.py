@@ -3,11 +3,11 @@
 用于配置所有下载插件的全局和局部选项
 """
 
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, 
-                             QWidget, QFormLayout, QLineEdit, QCheckBox, 
+from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
+                             QWidget, QFormLayout, QLineEdit, QCheckBox,
                              QSpinBox, QDoubleSpinBox, QComboBox, QPushButton,
                              QLabel, QGroupBox, QScrollArea,
-                             QMessageBox, QLayout, QSizePolicy)
+                             QMessageBox, QLayout, QSizePolicy, QToolButton)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from app.managers.download_plugin_manager import download_plugin_manager
@@ -23,7 +23,7 @@ class DownloadSettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("下载插件设置")
-        self.resize(800, 600)  # 增加初始尺寸
+        self.resize(800, 700)  # 增加初始尺寸
         self.setMinimumSize(700, 500)  # 增加最小尺寸
         self.setMaximumSize(1200, 900)  # 增加最大尺寸
         self.setModal(True)
@@ -442,7 +442,7 @@ class DownloadSettingsDialog(QDialog):
         """根据配置定义创建相应的控件"""
         option_type = option_config.get('type', 'string')
         default_value = option_config.get('default')
-        
+
         try:
             if option_type in ['string', 'str']:
                 widget = QLineEdit()
@@ -450,6 +450,57 @@ class DownloadSettingsDialog(QDialog):
                 widget.setStyleSheet("QLineEdit { padding: 4px; font-size: 11pt; }")
                 if default_value:
                     widget.setText(str(default_value))
+            elif option_type == 'password':
+                # 创建带显示/隐藏按钮的密码框
+                container = QWidget()
+                layout = QHBoxLayout(container)
+                layout.setContentsMargins(0, 0, 0, 0)
+                layout.setSpacing(5)
+
+                # 密码输入框
+                password_edit = QLineEdit()
+                password_edit.setFixedHeight(30)
+                password_edit.setStyleSheet("QLineEdit { padding: 4px; font-size: 11pt; }")
+                password_edit.setEchoMode(QLineEdit.Password)
+                if default_value:
+                    password_edit.setText(str(default_value))
+
+                # 眼睛按钮
+                eye_button = QToolButton()
+                eye_button.setFixedSize(30, 30)
+                eye_button.setCheckable(True)
+                eye_button.setStyleSheet("""
+                    QToolButton {
+                        border: none;
+                        background-color: transparent;
+                        border-radius: 4px;
+                    }
+                    QToolButton:hover {
+                        background-color: #E3F2FD;
+                    }
+                """)
+                eye_button.setText("👁")
+                eye_button.setToolTip("显示/隐藏密码")
+
+                # 切换密码显示状态
+                def toggle_password_visibility(checked):
+                    if checked:
+                        password_edit.setEchoMode(QLineEdit.Normal)
+                        eye_button.setText("👁‍🗨")
+                    else:
+                        password_edit.setEchoMode(QLineEdit.Password)
+                        eye_button.setText("👁")
+
+                eye_button.toggled.connect(toggle_password_visibility)
+
+                layout.addWidget(password_edit, 1)
+                layout.addWidget(eye_button)
+
+                # 将容器作为主要 widget
+                widget = container
+                # 保存密码输入框以便获取值
+                widget.password_edit = password_edit
+                widget.eye_button = eye_button
             elif option_type in ['integer', 'int']:
                 widget = QSpinBox()
                 widget.setFixedHeight(30)  # 增加高度以提高可见性
@@ -601,7 +652,10 @@ class DownloadSettingsDialog(QDialog):
     def set_widget_value(self, widget, value):
         """设置控件值"""
         try:
-            if isinstance(widget, QLineEdit):
+            # 处理带眼睛按钮的密码框
+            if hasattr(widget, 'password_edit'):
+                widget.password_edit.setText(str(value))
+            elif isinstance(widget, QLineEdit):
                 widget.setText(str(value))
             elif isinstance(widget, QSpinBox):
                 widget.setValue(int(value))
@@ -641,7 +695,10 @@ class DownloadSettingsDialog(QDialog):
     def get_widget_value(self, widget):
         """获取控件值"""
         try:
-            if isinstance(widget, QLineEdit):
+            # 处理带眼睛按钮的密码框
+            if hasattr(widget, 'password_edit'):
+                return widget.password_edit.text()
+            elif isinstance(widget, QLineEdit):
                 return widget.text()
             elif isinstance(widget, QSpinBox):
                 return widget.value()
