@@ -1,6 +1,6 @@
 """
-下载插件接口定义
-定义所有下载插件必须实现的接口
+云存储插件接口定义
+定义所有云存储插件必须实现的接口（合并下载、上传、删除功能）
 """
 
 import abc
@@ -8,22 +8,25 @@ from typing import Dict, Any, Optional
 from enum import Enum
 
 
-class DownloadErrorCode(Enum):
-    """下载错误代码枚举"""
+class StorageErrorCode(Enum):
+    """云存储错误代码枚举"""
     SUCCESS = 0  # 成功
     DOWNLOAD_FAILED = 1  # 下载失败
-    NETWORK_ERROR = 2  # 网络错误
-    FILE_NOT_FOUND = 3  # 文件不存在
-    INVALID_URL = 4  # URL无效
-    INVALID_CONFIG = 5  # 配置无效
-    INIT_ERROR = 6  # 初始化错误
-    PERMISSION_DENIED = 7  # 权限不足
-    TIMEOUT = 8  # 超时
+    UPLOAD_FAILED = 2  # 上传失败
+    DELETE_FAILED = 3  # 删除失败
+    NETWORK_ERROR = 4  # 网络错误
+    FILE_NOT_FOUND = 5  # 文件不存在
+    INVALID_URL = 6  # URL无效
+    INVALID_CONFIG = 7  # 配置无效
+    INIT_ERROR = 8  # 初始化错误
+    PERMISSION_DENIED = 9  # 权限不足
+    TIMEOUT = 10  # 超时
 
 
-class DownloadResult:
-    """下载结果类"""
-    def __init__(self, code: DownloadErrorCode, message: str = "", data: Optional[Dict[str, Any]] = None, 
+class StorageResult:
+    """云存储操作结果类"""
+    def __init__(self, code: StorageErrorCode, message: str = "", 
+                 data: Optional[Dict[str, Any]] = None, 
                  plugin_name: str = ""):
         self.code = code
         self.message = message
@@ -35,8 +38,8 @@ class DownloadResult:
         return self.code.value == 0  # SUCCESS的值是0
 
 
-class DownloadPluginInterface(metaclass=abc.ABCMeta):
-    """下载插件接口 - 所有下载插件必须继承此类并实现其方法"""
+class StoragePluginInterface(metaclass=abc.ABCMeta):
+    """云存储插件接口 - 所有云存储插件必须继承此类并实现其方法"""
 
     def __init__(self):
         self.is_initialized = False
@@ -46,7 +49,7 @@ class DownloadPluginInterface(metaclass=abc.ABCMeta):
         self.config = {}
 
     @abc.abstractmethod
-    def initialize(self, config: Dict[str, Any]) -> DownloadResult:
+    def initialize(self, config: Dict[str, Any]) -> StorageResult:
         """
         初始化插件
         
@@ -54,12 +57,12 @@ class DownloadPluginInterface(metaclass=abc.ABCMeta):
             config: 插件配置参数
             
         Returns:
-            DownloadResult: 初始化结果
+            StorageResult: 初始化结果
         """
         pass
 
     @abc.abstractmethod
-    def download_file(self, url: str, local_path: str, **kwargs) -> DownloadResult:
+    def download_file(self, url: str, local_path: str, **kwargs) -> StorageResult:
         """
         下载文件
         
@@ -69,12 +72,12 @@ class DownloadPluginInterface(metaclass=abc.ABCMeta):
             **kwargs: 额外参数，如下载进度回调等
             
         Returns:
-            DownloadResult: 下载结果
+            StorageResult: 下载结果
         """
         pass
 
     @abc.abstractmethod
-    def download_bytes(self, url: str, **kwargs) -> DownloadResult:
+    def download_bytes(self, url: str, **kwargs) -> StorageResult:
         """
         下载文件为字节流
 
@@ -83,12 +86,43 @@ class DownloadPluginInterface(metaclass=abc.ABCMeta):
             **kwargs: 额外参数
 
         Returns:
-            DownloadResult: 下载结果
+            StorageResult: 下载结果
         """
         pass
 
     @abc.abstractmethod
-    def list_files(self, remote_path: str = "", **kwargs) -> DownloadResult:
+    def upload_file(self, local_path: str, remote_path: str, **kwargs) -> StorageResult:
+        """
+        上传文件到远程
+
+        Args:
+            local_path: 本地文件路径
+            remote_path: 远程保存路径
+            **kwargs: 额外参数，如上传进度回调等
+
+        Returns:
+            StorageResult: 上传结果
+                data.path: 上传后的文件路径
+        """
+        pass
+
+    def delete_file(self, remote_path: str) -> StorageResult:
+        """
+        删除远程文件（可选实现）
+
+        Args:
+            remote_path: 远程文件路径
+
+        Returns:
+            StorageResult: 删除结果
+        """
+        return StorageResult(
+            code=StorageErrorCode.NETWORK_ERROR,
+            message="删除功能未实现"
+        )
+
+    @abc.abstractmethod
+    def list_files(self, remote_path: str = "", **kwargs) -> StorageResult:
         """
         列出远程文件
 
@@ -101,7 +135,7 @@ class DownloadPluginInterface(metaclass=abc.ABCMeta):
                 - limit: 限制数量
 
         Returns:
-            DownloadResult: 包含文件列表数据
+            StorageResult: 包含文件列表数据
                 data.files: 文件信息列表
                 data.total: 总数量（如果支持分页）
                 data.page: 当前页码（如果支持分页）
@@ -109,39 +143,6 @@ class DownloadPluginInterface(metaclass=abc.ABCMeta):
                 data.total_pages: 总页数（如果支持分页）
         """
         pass
-
-    def delete_file(self, remote_path: str) -> DownloadResult:
-        """
-        删除远程文件（可选实现）
-
-        Args:
-            remote_path: 远程文件路径
-
-        Returns:
-            DownloadResult: 删除结果
-        """
-        return DownloadResult(
-            code=DownloadErrorCode.NETWORK_ERROR,
-            message="删除功能未实现"
-        )
-
-    def upload_file(self, local_path: str, remote_path: str, **kwargs) -> DownloadResult:
-        """
-        上传文件到远程（可选实现）
-
-        Args:
-            local_path: 本地文件路径
-            remote_path: 远程保存路径
-            **kwargs: 额外参数，如上传进度回调等
-
-        Returns:
-            DownloadResult: 上传结果
-                data.path: 上传后的文件路径
-        """
-        return DownloadResult(
-            code=DownloadErrorCode.NETWORK_ERROR,
-            message="上传功能未实现"
-        )
 
     def supports_pagination(self) -> bool:
         """
@@ -162,7 +163,7 @@ class DownloadPluginInterface(metaclass=abc.ABCMeta):
         """
         pass
 
-    def get_file_list_columns(self) -> list:
+    def get_file_list_columns(self) -> list[str]:
         """
         获取文件列表表格的列名
 
@@ -171,7 +172,7 @@ class DownloadPluginInterface(metaclass=abc.ABCMeta):
         """
         return ["文件名", "文件大小", "修改时间", "文件类型", "路径"]
 
-    def get_file_list_row(self, file_info: Dict[str, Any]) -> list:
+    def get_file_list_row(self, file_info: Dict[str, Any]) -> list[str]:
         """
         获取文件列表表格的一行数据
 

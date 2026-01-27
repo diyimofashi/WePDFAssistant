@@ -39,59 +39,31 @@ def check_ocr_plugin():
         return False
 
 
-def check_upload_plugin():
-    """检查上传插件是否可用"""
-    if 'has_upload_plugin' in _plugin_status_cache:
-        return _plugin_status_cache['has_upload_plugin']
+def check_storage_plugin():
+    """检查存储插件是否可用"""
+    if 'has_storage_plugin' in _plugin_status_cache:
+        return _plugin_status_cache['has_storage_plugin']
 
     try:
-        # 检查上传插件目录是否存在
+        # 检查存储插件目录是否存在
         plugins_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                                   'plugins-upload')
+                                   'plugins-storage')
 
         if not os.path.exists(plugins_dir):
-            _plugin_status_cache['has_upload_plugin'] = False
+            _plugin_status_cache['has_storage_plugin'] = False
             return False
 
-        # 检查是否有至少一个上传插件
+        # 检查是否有至少一个存储插件
         plugin_dirs = [d for d in os.listdir(plugins_dir)
                      if os.path.isdir(os.path.join(plugins_dir, d))]
 
         result = len(plugin_dirs) > 0
-        _plugin_status_cache['has_upload_plugin'] = result
-        logger.debug(f"上传插件检查结果: {result}, 插件数: {len(plugin_dirs)}")
+        _plugin_status_cache['has_storage_plugin'] = result
+        logger.debug(f"存储插件检查结果: {result}, 插件数: {len(plugin_dirs)}")
         return result
     except Exception as e:
-        logger.error(f"检查上传插件时出错: {e}")
-        _plugin_status_cache['has_upload_plugin'] = False
-        return False
-
-
-def check_download_plugin():
-    """检查下载插件是否可用"""
-    if 'has_download_plugin' in _plugin_status_cache:
-        return _plugin_status_cache['has_download_plugin']
-
-    try:
-        # 检查下载插件目录是否存在
-        plugins_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                                   'plugins-download')
-
-        if not os.path.exists(plugins_dir):
-            _plugin_status_cache['has_download_plugin'] = False
-            return False
-
-        # 检查是否有至少一个下载插件
-        plugin_dirs = [d for d in os.listdir(plugins_dir)
-                     if os.path.isdir(os.path.join(plugins_dir, d))]
-
-        result = len(plugin_dirs) > 0
-        _plugin_status_cache['has_download_plugin'] = result
-        logger.debug(f"下载插件检查结果: {result}, 插件数: {len(plugin_dirs)}")
-        return result
-    except Exception as e:
-        logger.error(f"检查下载插件时出错: {e}")
-        _plugin_status_cache['has_download_plugin'] = False
+        logger.error(f"检查存储插件时出错: {e}")
+        _plugin_status_cache['has_storage_plugin'] = False
         return False
 
 
@@ -126,7 +98,6 @@ def get_all_plugin_status():
     """获取所有插件状态"""
     return {
         'has_ocr_plugin': check_ocr_plugin(),
-        'has_upload_plugin': check_upload_plugin(),
-        'has_download_plugin': check_download_plugin(),
+        'has_storage_plugin': check_storage_plugin(),
         'has_barcode_split_plugin': check_barcode_split_plugin()
     }

@@ -25,10 +25,8 @@ from app.managers.split_manager import SplitManager
 from app.managers.merge_manager import MergeManager
 from app.managers.ocr_plugin_manager import OCRPluginManager
 from app.config.ocr_plugin_config import ocr_config_manager
-from app.managers.upload_plugin_manager import UploadPluginManager
-from app.config.upload_plugin_config import upload_config_manager
-from app.managers.download_plugin_manager import download_plugin_manager
-from app.config.download_plugin_config import download_config_manager
+from app.managers.storage_plugin_manager import storage_plugin_manager
+from app.config.storage_plugin_config import storage_config_manager
 from app.managers.shortcut_manager import ShortcutManager
 from app.utils.logger import get_logger
 
@@ -116,17 +114,11 @@ class MainWindowBase(QMainWindow):
         # 自动加载所有OCR插件
         self.ocr_plugin_manager.load_all_plugins()
 
-        # 初始化上传插件管理器
-        self.upload_plugin_manager = UploadPluginManager()
-        self.upload_config_manager = upload_config_manager
-        # 自动加载所有上传插件
-        self.upload_plugin_manager.load_all_plugins()
-
-        # 初始化下载插件管理器
-        self.download_plugin_manager = download_plugin_manager
-        self.download_config_manager = download_config_manager
-        # 自动加载所有下载插件
-        self.download_plugin_manager.load_plugins()
+        # 初始化存储插件管理器
+        self.storage_plugin_manager = storage_plugin_manager
+        self.storage_config_manager = storage_config_manager
+        # 自动加载所有存储插件
+        self.storage_plugin_manager.load_plugins()
 
         # 初始化快捷键管理器
         self.shortcut_manager = ShortcutManager(self)
@@ -253,10 +245,10 @@ class MainWindowBase(QMainWindow):
 
     def create_file_list_area(self, main_layout):
         """创建文件列表面板区域"""
-        from app.utils.plugin_checker import check_download_plugin
+        from app.utils.plugin_checker import check_storage_plugin
 
-        # 只有在有下载插件时才创建
-        if not check_download_plugin():
+        # 只有在有存储插件时才创建
+        if not check_storage_plugin():
             return
 
         # 读取设置：是否默认显示文件列表

@@ -231,6 +231,13 @@ class ContextMenuBuilder:
         extract_action.triggered.connect(lambda: self._extract_page_text(page_num))
         actions.append(extract_action)
 
+        # 上传当前文档（如果云存储插件可用）
+        from app.utils.plugin_checker import check_storage_plugin
+        if check_storage_plugin():
+            upload_action = QAction("上传当前文档", self.main_window)
+            upload_action.triggered.connect(self._upload_current_document)
+            actions.append(upload_action)
+
         return actions
     
     def _create_thumbnail_actions(self, page_num):
@@ -300,6 +307,13 @@ class ContextMenuBuilder:
         extract_action.triggered.connect(lambda: self._extract_page_text(page_num))
         actions.append(extract_action)
 
+        # 上传当前文档（如果云存储插件可用）
+        from app.utils.plugin_checker import check_storage_plugin
+        if check_storage_plugin():
+            upload_action = QAction("上传当前文档", self.main_window)
+            upload_action.triggered.connect(self._upload_current_document)
+            actions.append(upload_action)
+
         return actions
     
     def _create_file_actions(self):
@@ -320,7 +334,7 @@ class ContextMenuBuilder:
         save_as_action = QAction("💾 另存为", self.main_window)
         save_as_action.triggered.connect(self.main_window.save_as_file)
         actions.append(save_as_action)
-        
+
         return actions
     
     def _create_quick_access_actions(self):
@@ -347,12 +361,12 @@ class ContextMenuBuilder:
     def _create_tool_actions(self):
         """创建工具动作"""
         actions = []
-        
+
         # OCR工具
         ocr_action = QAction("🔍 OCR识别", self.main_window)
         ocr_action.triggered.connect(self.main_window.ocr_plugin_manager.show_ocr_dialog)
         actions.append(ocr_action)
-        
+
         # 条码拆分
         barcode_action = QAction("📊 条码拆分", self.main_window)
         if hasattr(self.main_window, 'split_manager'):
@@ -360,13 +374,34 @@ class ContextMenuBuilder:
         else:
             barcode_action.setEnabled(False)
         actions.append(barcode_action)
-        
+
         # 搜索
         search_action = QAction("🔎 搜索", self.main_window)
         search_action.triggered.connect(self.main_window.search_manager.show_search_dialog)
         actions.append(search_action)
-        
+
+        # 上传当前文档（如果云存储插件可用）
+        from app.utils.plugin_checker import check_storage_plugin
+        if check_storage_plugin():
+            upload_action = QAction("📄 上传当前文档", self.main_window)
+            upload_action.triggered.connect(self._upload_current_document)
+            actions.append(upload_action)
+
         return actions
+
+    def _upload_current_document(self):
+        """上传当前文档到云存储"""
+        try:
+            if not hasattr(self.main_window, 'file_list_panel'):
+                QMessageBox.warning(self.main_window, "错误", "文件列表面板未初始化")
+                return
+
+            # 调用文件列表面板的上传方法
+            self.main_window.file_list_panel.upload_current_document()
+
+        except Exception as e:
+            logger.error(f"上传当前文档时出错: {e}")
+            QMessageBox.critical(self.main_window, "错误", f"上传文档失败: {str(e)}")
     
     def _copy_text(self, text):
         """复制文本到剪贴板"""

@@ -1,6 +1,6 @@
 """
-腾讯云OSS下载插件 - 配置定义
-定义腾讯云OSS下载插件的配置选项
+腾讯云COS云存储插件 - 配置定义
+定义腾讯云COS存储插件的配置选项
 """
 
 # 全局配置选项
@@ -8,7 +8,7 @@ global_options = {
     "timeout": {
         "type": "integer",
         "default": 300,
-        "description": "下载超时时间（秒）"
+        "description": "操作超时时间（秒）"
     },
     "max_retries": {
         "type": "integer",
@@ -19,7 +19,7 @@ global_options = {
 
 # 局部配置选项
 local_options = {
-    "title": "腾讯云 COS 下载",
+    "title": "腾讯云 COS 存储",
     "region": {
         "type": "enum",
         "optionsList": [
@@ -68,17 +68,32 @@ local_options = {
     "path_prefix": {
         "type": "string",
         "default": "",
-        "description": "文件下载的路径前缀"
+        "description": "文件操作的路径前缀"
+    },
+    "enable_download": {
+        "type": "boolean",
+        "default": True,
+        "description": "是否启用下载功能"
+    },
+    "enable_upload": {
+        "type": "boolean",
+        "default": False,
+        "description": "是否启用上传功能（允许上传当前打开的文档到存储桶）"
     },
     "enable_delete": {
         "type": "boolean",
         "default": False,
         "description": "是否启用删除功能（允许从存储桶中删除文件）"
     },
-    "enable_upload": {
-        "type": "boolean",
-        "default": False,
-        "description": "是否启用上传功能（允许上传当前打开的文档到存储桶）"
+    "acl": {
+        "type": "enum",
+        "optionsList": [
+            ["private", "私有（private）"],
+            ["public-read", "公共读（public-read）"],
+            ["public-read-write", "公共读写（public-read-write）"]
+        ],
+        "default": "private",
+        "description": "上传文件的访问控制列表"
     }
 }
 

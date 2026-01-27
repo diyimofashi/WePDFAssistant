@@ -14,18 +14,17 @@ from app.core.main.view_manager_mixin import ViewManagerMixin
 from app.core.main.thumbnail_manager_mixin import ThumbnailManagerMixin
 from app.core.main.search_manager_mixin import SearchManagerMixin
 from app.core.main.ocr_manager_mixin import OCRManagerMixin
-from app.core.main.upload_manager_mixin import UploadManagerMixin
-from app.core.main.download_manager_mixin import DownloadManagerMixin
 from app.core.main.operation_manager_mixin import OperationManagerMixin
 from app.core.main.shortcut_manager_mixin import ShortcutManagerMixin
+from app.core.main.storage_manager_mixin import StorageManagerMixin
 from app.config.settings import AppSettings
 
 # 全局窗口列表，用于管理所有打开的窗口
 open_windows = []
 
 class AuroraPDF(MainWindowBase, PDFManagerMixin, ViewManagerMixin, ThumbnailManagerMixin,
-                  SearchManagerMixin, OCRManagerMixin, UploadManagerMixin,
-                  DownloadManagerMixin, OperationManagerMixin, ShortcutManagerMixin):
+                  SearchManagerMixin, OCRManagerMixin, OperationManagerMixin,
+                  ShortcutManagerMixin, StorageManagerMixin):
     """PDFAssistant主窗口"""
 
     def zoom_in(self):

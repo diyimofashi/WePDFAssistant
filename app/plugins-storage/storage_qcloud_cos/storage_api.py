@@ -1,26 +1,26 @@
 # -*- coding: utf-8 -*-
 """
-腾讯云OSS下载插件 - 核心实现
-使用腾讯云对象存储（COS）SDK下载文件
+腾讯云COS云存储插件 - 核心实现
+使用腾讯云对象存储（COS）SDK实现下载、上传、删除、列表功能
 """
 
 import os
 from typing import Dict, Any
 from qcloud_cos import CosConfig, CosS3Client
-from app.core.download.download_plugin_interface import DownloadPluginInterface, DownloadResult, DownloadErrorCode
+from app.core.storage.storage_plugin_interface import StoragePluginInterface, StorageResult, StorageErrorCode
 from app.utils.logger import get_logger
 
-logger = get_logger('qcloud_oss_download')
+logger = get_logger('qcloud_cos_storage')
 
 
-class QcloudOSSDownload(DownloadPluginInterface):
-    """腾讯云COS下载插件实现类"""
+class QcloudCosStorage(StoragePluginInterface):
+    """腾讯云COS云存储插件实现类"""
 
     def __init__(self, config=None):
         """初始化插件"""
         super().__init__()
-        self.plugin_name = "腾讯云 COS Download"
-        self.plugin_version = "1.0.0"
+        self.plugin_name = "腾讯云 COS Storage"
+        self.plugin_version = "2.0.0"
         self.plugin_author = "PyPDF Team"
         self.config = config or {}
 
@@ -34,10 +34,11 @@ class QcloudOSSDownload(DownloadPluginInterface):
         self.secret_key = ""
         self.app_id = ""
         self.path_prefix = ""
+        self.acl = "private"
         self.timeout = 300
         self.max_retries = 3
 
-    def initialize(self, config: Dict[str, Any]) -> DownloadResult:
+    def initialize(self, config: Dict[str, Any]) -> StorageResult:
         """
         初始化插件
 
@@ -45,7 +46,7 @@ class QcloudOSSDownload(DownloadPluginInterface):
             config: 插件配置参数
 
         Returns:
-            DownloadResult: 初始化结果
+            StorageResult: 初始化结果
         """
         try:
             # 保存配置
@@ -60,27 +61,28 @@ class QcloudOSSDownload(DownloadPluginInterface):
             # 确保 path_prefix 是字符串类型
             path_prefix = config.get("path_prefix", "")
             self.path_prefix = str(path_prefix) if path_prefix is not None else ""
+            self.acl = config.get("acl", "private")
             self.timeout = int(config.get("timeout", 300))
             self.max_retries = int(config.get("max_retries", 3))
 
             # 验证必填配置
             if not self.bucket_name:
-                return DownloadResult(
-                    code=DownloadErrorCode.INVALID_CONFIG,
+                return StorageResult(
+                    code=StorageErrorCode.INVALID_CONFIG,
                     message="缺少bucket_name配置（存储桶名称）",
                     plugin_name=self.plugin_name
                 )
 
             if not self.secret_id:
-                return DownloadResult(
-                    code=DownloadErrorCode.INVALID_CONFIG,
+                return StorageResult(
+                    code=StorageErrorCode.INVALID_CONFIG,
                     message="缺少secret_id配置",
                     plugin_name=self.plugin_name
                 )
 
             if not self.secret_key:
-                return DownloadResult(
-                    code=DownloadErrorCode.INVALID_CONFIG,
+                return StorageResult(
+                    code=StorageErrorCode.INVALID_CONFIG,
                     message="缺少secret_key配置",
                     plugin_name=self.plugin_name
                 )
@@ -90,7 +92,7 @@ class QcloudOSSDownload(DownloadPluginInterface):
                 Region=self.region,
                 SecretId=self.secret_id,
                 SecretKey=self.secret_key,
-                Token=None,  # 临时密钥，一般不需要
+                Token=None,
                 Scheme='https',
                 Timeout=self.timeout
             )
@@ -101,22 +103,22 @@ class QcloudOSSDownload(DownloadPluginInterface):
             self.is_initialized = True
             logger.info(f"{self.plugin_name} 插件初始化成功，存储桶: {self.bucket_name}, 地域: {self.region}")
 
-            return DownloadResult(
-                code=DownloadErrorCode.SUCCESS,
-                message="腾讯云COS下载插件初始化成功",
+            return StorageResult(
+                code=StorageErrorCode.SUCCESS,
+                message="腾讯云COS云存储插件初始化成功",
                 plugin_name=self.plugin_name
             )
 
         except Exception as e:
             logger.error(f"腾讯云COS插件初始化失败: {e}")
             self.is_initialized = False
-            return DownloadResult(
-                code=DownloadErrorCode.INIT_ERROR,
+            return StorageResult(
+                code=StorageErrorCode.INIT_ERROR,
                 message=f"腾讯云COS插件初始化失败: {str(e)}",
                 plugin_name=self.plugin_name
             )
 
-    def download_file(self, url: str, local_path: str, **kwargs) -> DownloadResult:
+    def download_file(self, url: str, local_path: str, **kwargs) -> StorageResult:
         """
         下载文件
 
@@ -126,7 +128,7 @@ class QcloudOSSDownload(DownloadPluginInterface):
             **kwargs: 额外参数
 
         Returns:
-            DownloadResult: 下载结果
+            StorageResult: 下载结果
         """
         try:
             # 确保 url 是字符串类型
@@ -166,8 +168,8 @@ class QcloudOSSDownload(DownloadPluginInterface):
                         "size": os.path.getsize(local_path)
                     }
 
-                    return DownloadResult(
-                        code=DownloadErrorCode.SUCCESS,
+                    return StorageResult(
+                        code=StorageErrorCode.SUCCESS,
                         data=result_data,
                         message=f"文件下载成功: {os.path.basename(local_path)}",
                         plugin_name=self.plugin_name
@@ -181,21 +183,21 @@ class QcloudOSSDownload(DownloadPluginInterface):
                         continue
                     else:
                         # 所有重试都失败
-                        return DownloadResult(
-                            code=DownloadErrorCode.DOWNLOAD_FAILED,
+                        return StorageResult(
+                            code=StorageErrorCode.DOWNLOAD_FAILED,
                             message=f"文件下载失败，已重试{self.max_retries}次: {str(download_error)}",
                             plugin_name=self.plugin_name
                         )
 
         except Exception as e:
             logger.error(f"下载文件异常: {e}")
-            return DownloadResult(
-                code=DownloadErrorCode.DOWNLOAD_FAILED,
+            return StorageResult(
+                code=StorageErrorCode.DOWNLOAD_FAILED,
                 message=f"文件下载异常: {str(e)}",
                 plugin_name=self.plugin_name
             )
 
-    def download_bytes(self, url: str, **kwargs) -> DownloadResult:
+    def download_bytes(self, url: str, **kwargs) -> StorageResult:
         """
         下载文件为字节流
 
@@ -204,7 +206,7 @@ class QcloudOSSDownload(DownloadPluginInterface):
             **kwargs: 额外参数
 
         Returns:
-            DownloadResult: 下载结果
+            StorageResult: 下载结果
         """
         try:
             # 确保 url 是字符串类型
@@ -236,8 +238,8 @@ class QcloudOSSDownload(DownloadPluginInterface):
                 "size": len(file_bytes)
             }
 
-            return DownloadResult(
-                code=DownloadErrorCode.SUCCESS,
+            return StorageResult(
+                code=StorageErrorCode.SUCCESS,
                 data=result_data,
                 message=f"字节流下载成功: {full_remote_path}",
                 plugin_name=self.plugin_name
@@ -245,13 +247,122 @@ class QcloudOSSDownload(DownloadPluginInterface):
 
         except Exception as e:
             logger.error(f"下载字节流异常: {e}")
-            return DownloadResult(
-                code=DownloadErrorCode.DOWNLOAD_FAILED,
+            return StorageResult(
+                code=StorageErrorCode.DOWNLOAD_FAILED,
                 message=f"字节流下载异常: {str(e)}",
                 plugin_name=self.plugin_name
             )
 
-    def list_files(self, remote_path: str = "", **kwargs) -> DownloadResult:
+    def upload_file(self, local_path: str, remote_path: str, **kwargs) -> StorageResult:
+        """
+        上传文件到远程
+
+        Args:
+            local_path: 本地文件路径
+            remote_path: 远程保存路径（相对于path_prefix）
+            **kwargs: 额外参数
+
+        Returns:
+            StorageResult: 上传结果
+                data.path: 上传后的完整路径
+        """
+        try:
+            if not self.client:
+                return StorageResult(
+                    code=StorageErrorCode.INIT_ERROR,
+                    message="插件未初始化"
+                )
+
+            # 检查本地文件是否存在
+            if not os.path.exists(local_path):
+                return StorageResult(
+                    code=StorageErrorCode.FILE_NOT_FOUND,
+                    message=f"本地文件不存在: {local_path}"
+                )
+
+            # 构建完整的对象键
+            if self.path_prefix:
+                object_key = f"{self.path_prefix.rstrip('/')}/{remote_path}"
+            else:
+                object_key = remote_path
+
+            logger.info(f"准备上传文件: {local_path} -> {object_key}")
+
+            # 上传文件
+            with open(local_path, 'rb') as file:
+                response = self.client.put_object(
+                    Bucket=self.bucket_name,
+                    Key=object_key,
+                    Body=file,
+                    ACL=self.acl
+                )
+
+            logger.info(f"文件上传成功: {object_key}")
+            return StorageResult(
+                code=StorageErrorCode.SUCCESS,
+                message=f"文件上传成功: {remote_path}",
+                data={
+                    'path': remote_path,
+                    'object_key': object_key,
+                    'url': self._get_file_url(object_key),
+                    'size': os.path.getsize(local_path),
+                    'etag': response.get('ETag', '')
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"上传文件失败: {e}")
+            return StorageResult(
+                code=StorageErrorCode.UPLOAD_FAILED,
+                message=f"上传文件失败: {str(e)}"
+            )
+
+    def delete_file(self, remote_path: str) -> StorageResult:
+        """
+        删除远程文件
+
+        Args:
+            remote_path: 远程文件路径（相对于path_prefix）
+
+        Returns:
+            StorageResult: 删除结果
+        """
+        try:
+            if not self.client:
+                return StorageResult(
+                    code=StorageErrorCode.INIT_ERROR,
+                    message="插件未初始化"
+                )
+
+            # 构建完整的对象键
+            if self.path_prefix:
+                object_key = f"{self.path_prefix.rstrip('/')}/{remote_path}"
+            else:
+                object_key = remote_path
+
+            logger.info(f"准备删除文件: {object_key}")
+
+            # 删除文件
+            response = self.client.delete_object(
+                Bucket=self.bucket_name,
+                Key=object_key
+            )
+
+            logger.info(f"文件删除成功: {object_key}")
+            return StorageResult(
+                code=StorageErrorCode.SUCCESS,
+                message=f"文件 '{remote_path}' 删除成功",
+                data={'path': remote_path}
+            )
+
+        except Exception as e:
+            logger.error(f"删除文件失败: {e}")
+            return StorageResult(
+                code=StorageErrorCode.DELETE_FAILED,
+                message=f"删除文件失败: {str(e)}"
+            )
+
+    def list_files(self, remote_path: str = "", **kwargs) -> StorageResult:
         """
         列出远程文件
 
@@ -260,7 +371,7 @@ class QcloudOSSDownload(DownloadPluginInterface):
             **kwargs: 额外参数，支持分页
 
         Returns:
-            DownloadResult: 包含文件列表数据
+            StorageResult: 包含文件列表数据
         """
         try:
             # 确保 remote_path 是字符串类型
@@ -439,8 +550,8 @@ class QcloudOSSDownload(DownloadPluginInterface):
                 result_data['page_size'] = page_size
                 result_data['total_pages'] = total_pages
 
-            return DownloadResult(
-                code=DownloadErrorCode.SUCCESS,
+            return StorageResult(
+                code=StorageErrorCode.SUCCESS,
                 data=result_data,
                 message=f"获取文件列表成功: {len(files)} 个文件",
                 plugin_name=self.plugin_name
@@ -448,8 +559,8 @@ class QcloudOSSDownload(DownloadPluginInterface):
 
         except Exception as e:
             logger.error(f"列出文件异常: {e}")
-            return DownloadResult(
-                code=DownloadErrorCode.DOWNLOAD_FAILED,
+            return StorageResult(
+                code=StorageErrorCode.DOWNLOAD_FAILED,
                 message=f"列出文件异常: {str(e)}",
                 plugin_name=self.plugin_name
             )
@@ -467,7 +578,8 @@ class QcloudOSSDownload(DownloadPluginInterface):
             "auth_methods": ["secret_key"],
             "max_file_size": "5TB (取决于存储桶配置）",
             "concurrent_downloads": True,
-            "features": ["retry_mechanism", "list_files", "path_prefix", "pagination"]
+            "concurrent_uploads": True,
+            "features": ["retry_mechanism", "list_files", "path_prefix", "pagination", "acl_control"]
         }
 
     def supports_pagination(self) -> bool:
@@ -479,6 +591,22 @@ class QcloudOSSDownload(DownloadPluginInterface):
         """
         return True
 
+    def _get_file_url(self, key: str) -> str:
+        """
+        获取文件的访问URL
+
+        Args:
+            key: 文件在COS中的Key
+
+        Returns:
+            str: 文件的访问URL
+        """
+        # 根据ACL返回不同的URL
+        if self.acl == "private":
+            return f"https://{self.bucket_name}.cos.{self.region}.myqcloud.com/{key}"
+        else:
+            return f"https://{self.bucket_name}.cos.{self.region}.myqcloud.com/{key}"
+
     def cleanup(self) -> None:
         """
         清理资源
@@ -487,108 +615,3 @@ class QcloudOSSDownload(DownloadPluginInterface):
         # 关闭COS客户端
         self.client = None
         self.is_initialized = False
-
-    def delete_file(self, remote_path: str) -> DownloadResult:
-        """
-        删除远程文件
-
-        Args:
-            remote_path: 远程文件路径（相对于path_prefix）
-
-        Returns:
-            DownloadResult: 删除结果
-        """
-        try:
-            if not self.client:
-                return DownloadResult(
-                    code=DownloadErrorCode.INIT_ERROR,
-                    message="插件未初始化"
-                )
-
-            # 构建完整的对象键
-            if self.path_prefix:
-                object_key = f"{self.path_prefix.rstrip('/')}/{remote_path}"
-            else:
-                object_key = remote_path
-
-            logger.info(f"准备删除文件: {object_key}")
-
-            # 删除文件
-            response = self.client.delete_object(
-                Bucket=self.bucket_name,
-                Key=object_key
-            )
-
-            logger.info(f"文件删除成功: {object_key}")
-            return DownloadResult(
-                code=DownloadErrorCode.SUCCESS,
-                message=f"文件 '{remote_path}' 删除成功",
-                data={'path': remote_path}
-            )
-
-        except Exception as e:
-            logger.error(f"删除文件失败: {e}")
-            return DownloadResult(
-                code=DownloadErrorCode.DOWNLOAD_FAILED,
-                message=f"删除文件失败: {str(e)}"
-            )
-
-    def upload_file(self, local_path: str, remote_path: str, **kwargs) -> DownloadResult:
-        """
-        上传文件到远程
-
-        Args:
-            local_path: 本地文件路径
-            remote_path: 远程保存路径（相对于path_prefix）
-            **kwargs: 额外参数，如上传进度回调等
-
-        Returns:
-            DownloadResult: 上传结果
-                data.path: 上传后的完整路径
-        """
-        import os
-
-        try:
-            if not self.client:
-                return DownloadResult(
-                    code=DownloadErrorCode.INIT_ERROR,
-                    message="插件未初始化"
-                )
-
-            # 检查本地文件是否存在
-            if not os.path.exists(local_path):
-                return DownloadResult(
-                    code=DownloadErrorCode.FILE_NOT_FOUND,
-                    message=f"本地文件不存在: {local_path}"
-                )
-
-            # 构建完整的对象键
-            if self.path_prefix:
-                object_key = f"{self.path_prefix.rstrip('/')}/{remote_path}"
-            else:
-                object_key = remote_path
-
-            logger.info(f"准备上传文件: {local_path} -> {object_key}")
-
-            # 上传文件
-            with open(local_path, 'rb') as file:
-                response = self.client.put_object(
-                    Bucket=self.bucket_name,
-                    Key=object_key,
-                    Body=file
-                )
-
-            logger.info(f"文件上传成功: {object_key}")
-            return DownloadResult(
-                code=DownloadErrorCode.SUCCESS,
-                message=f"文件上传成功: {remote_path}",
-                data={'path': remote_path, 'object_key': object_key}
-            )
-
-        except Exception as e:
-            logger.error(f"上传文件失败: {e}")
-            return DownloadResult(
-                code=DownloadErrorCode.DOWNLOAD_FAILED,
-                message=f"上传文件失败: {str(e)}"
-            )
-        logger.info(f"{self.plugin_name} 插件资源已清理")

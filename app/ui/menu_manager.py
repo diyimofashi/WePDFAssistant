@@ -46,11 +46,6 @@ class MenuManager(QObject):
         open_action.triggered.connect(self.parent.open_file)
         file_menu.addAction(open_action)
 
-        # 打开远程文件
-        remote_open_action = QAction("🌐 打开远程文件", self.parent)
-        remote_open_action.triggered.connect(self.parent.open_remote_file)
-        file_menu.addAction(remote_open_action)
-
         file_menu.addSeparator()
 
         # 保存
@@ -95,8 +90,8 @@ class MenuManager(QObject):
         view_menu.addAction(self.parent.thumbnail_action)
 
         # 文件列表面板
-        from app.utils.plugin_checker import check_download_plugin
-        if check_download_plugin():
+        from app.utils.plugin_checker import check_storage_plugin
+        if check_storage_plugin():
             self.parent.file_list_panel_visible_action = QAction("📂 文件列表面板", self.parent)
             self.parent.file_list_panel_visible_action.setCheckable(True)
             # 读取设置
@@ -230,34 +225,15 @@ class MenuManager(QObject):
         self.parent.ocr_debug_mode_action.setChecked(False)
         self.parent.ocr_debug_mode_action.triggered.connect(self.parent.toggle_ocr_debug_mode)
         ocr_menu.addAction(self.parent.ocr_debug_mode_action)
-        
-        # 上传工具子菜单
+
+        # 云存储插件子菜单
         tools_menu.addSeparator()
-        upload_menu = tools_menu.addMenu("📤 上传工具")
-        
-        # 上传设置
-        upload_settings_action = QAction("⚙️ 上传设置", self.parent)
-        upload_settings_action.triggered.connect(self.parent.show_upload_settings)
-        upload_menu.addAction(upload_settings_action)
-        
-        # 上传当前文档
-        upload_current_action = QAction("📄 上传当前文档", self.parent)
-        upload_current_action.triggered.connect(self.parent.upload_current_document)
-        upload_menu.addAction(upload_current_action)
+        storage_menu = tools_menu.addMenu("☁️ 云存储插件")
 
-        # 下载工具子菜单
-        tools_menu.addSeparator()
-        download_menu = tools_menu.addMenu("📥 下载工具")
-
-        # 下载设置
-        download_settings_action = QAction("⚙️ 下载设置", self.parent)
-        download_settings_action.triggered.connect(self.parent.show_download_settings)
-        download_menu.addAction(download_settings_action)
-
-        # 下载远程文件
-        download_remote_action = QAction("🌐 下载远程文件", self.parent)
-        download_remote_action.triggered.connect(self.parent.open_remote_file)
-        download_menu.addAction(download_remote_action)
+        # 云存储插件设置
+        storage_settings_action = QAction("⚙️ 云存储插件设置", self.parent)
+        storage_settings_action.triggered.connect(self.parent.show_storage_settings)
+        storage_menu.addAction(storage_settings_action)
 
         # 条码工具子菜单
         tools_menu.addSeparator()

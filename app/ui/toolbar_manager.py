@@ -155,8 +155,8 @@ class ToolbarManager(QObject):
     def _add_mode_actions(self, toolbar):
         """添加模式切换按钮"""
         # 文件列表按钮
-        from app.utils.plugin_checker import check_download_plugin
-        if check_download_plugin():
+        from app.utils.plugin_checker import check_storage_plugin
+        if check_storage_plugin():
             file_list_btn = QAction("📂 文件列表", self.parent)
             file_list_btn.setToolTip("打开远程文件列表 (Ctrl+L)")
             file_list_btn.triggered.connect(self.parent.toggle_file_list_panel)
