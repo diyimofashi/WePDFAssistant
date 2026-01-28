@@ -409,19 +409,81 @@ class QcloudCosStorage(StoragePluginInterface):
             if enable_pagination:
                 # 先获取所有文件（使用不分页的方式）
                 all_files = []
+                dirs_processed = set()  # 记录已处理的目录，避免重复
                 marker = None
+                first_loop = True  # 标记是否第一次循环
 
                 while True:
                     list_kwargs = {
                         'Bucket': self.bucket_name,
                         'Prefix': prefix,
-                        'MaxKeys': 1000
+                        'MaxKeys': 1000,
+                        'Delimiter': '/'  # 添加分隔符来获取子目录
                     }
 
                     if marker:
                         list_kwargs['Marker'] = marker
 
                     response = self.client.list_objects(**list_kwargs)
+
+                    # 调试日志
+                    common_prefixes = response.get('CommonPrefixes', [])
+                    contents = response.get('Contents', [])
+                    logger.info(f"CommonPrefixes count: {len(common_prefixes)}")
+                    logger.info(f"Contents count: {len(contents)}")
+                    if common_prefixes:
+                        for cp in common_prefixes:
+                            logger.info(f"  CommonPrefix: {cp.get('Prefix')}")
+                    if contents:
+                        for c in contents[:5]:  # 只打印前5个
+                            logger.info(f"  Content: {c.get('Key')}")
+
+                    # 只在第一次循环时解析目录列表（CommonPrefixes）
+                    if first_loop and 'CommonPrefixes' in response:
+                        for prefix_obj in response['CommonPrefixes']:
+                            prefix_key = prefix_obj['Prefix']
+
+                            # 返回相对于 path_prefix 的路径
+                            prefix_with_slash = self.path_prefix.strip('/') + '/'
+                            if self.path_prefix and prefix_key.startswith(prefix_with_slash):
+                                relative_path = prefix_key[len(prefix_with_slash):]
+                            else:
+                                relative_path = prefix_key
+
+                            # 移除末尾的斜杠
+                            dir_path = relative_path.rstrip('/')
+
+                            # 检查是否已经处理过这个目录
+                            if dir_path in dirs_processed:
+                                continue
+                            dirs_processed.add(dir_path)
+
+                            # 如果 remote_path 不为空，name 应该是相对于 remote_path 的子目录名
+                            if full_remote_path:
+                                # 获取相对于 full_remote_path 的子路径
+                                if dir_path.startswith(full_remote_path + '/'):
+                                    name = dir_path[len(full_remote_path) + 1:]
+                                    # 只取第一层子目录
+                                    if '/' in name:
+                                        name = name.split('/')[0]
+                                else:
+                                    name = os.path.basename(dir_path)
+                            else:
+                                # 根目录，直接使用 basename
+                                name = os.path.basename(dir_path)
+                                # 只取第一层子目录
+                                if '/' in name:
+                                    name = name.split('/')[0]
+
+                            all_files.append({
+                                'name': name,
+                                'size': 0,
+                                'modified_time': '',
+                                'type': 'dir',
+                                'path': dir_path
+                            })
+
+                        first_loop = False  # 标记目录已处理
 
                     # 解析文件列表
                     if 'Contents' in response:
@@ -430,6 +492,10 @@ class QcloudCosStorage(StoragePluginInterface):
 
                             # 跳过前缀本身的条目
                             if key == prefix.rstrip('/'):
+                                continue
+
+                            # 跳过以 / 结尾的目录（已经在 CommonPrefixes 中处理）
+                            if key.endswith('/'):
                                 continue
 
                             # 处理修改时间格式
@@ -478,19 +544,81 @@ class QcloudCosStorage(StoragePluginInterface):
             else:
                 # 不分页，一次性获取所有数据（使用分页循环确保获取所有文件）
                 all_files = []
+                dirs_processed = set()  # 记录已处理的目录，避免重复
                 marker = None
+                first_loop = True  # 标记是否第一次循环
 
                 while True:
                     list_kwargs = {
                         'Bucket': self.bucket_name,
                         'Prefix': prefix,
-                        'MaxKeys': 1000
+                        'MaxKeys': 1000,
+                        'Delimiter': '/'  # 添加分隔符来获取子目录
                     }
 
                     if marker:
                         list_kwargs['Marker'] = marker
 
                     response = self.client.list_objects(**list_kwargs)
+
+                    # 调试日志
+                    common_prefixes = response.get('CommonPrefixes', [])
+                    contents = response.get('Contents', [])
+                    logger.info(f"CommonPrefixes count: {len(common_prefixes)}")
+                    logger.info(f"Contents count: {len(contents)}")
+                    if common_prefixes:
+                        for cp in common_prefixes:
+                            logger.info(f"  CommonPrefix: {cp.get('Prefix')}")
+                    if contents:
+                        for c in contents[:5]:  # 只打印前5个
+                            logger.info(f"  Content: {c.get('Key')}")
+
+                    # 只在第一次循环时解析目录列表（CommonPrefixes）
+                    if first_loop and 'CommonPrefixes' in response:
+                        for prefix_obj in response['CommonPrefixes']:
+                            prefix_key = prefix_obj['Prefix']
+
+                            # 返回相对于 path_prefix 的路径
+                            prefix_with_slash = self.path_prefix.strip('/') + '/'
+                            if self.path_prefix and prefix_key.startswith(prefix_with_slash):
+                                relative_path = prefix_key[len(prefix_with_slash):]
+                            else:
+                                relative_path = prefix_key
+
+                            # 移除末尾的斜杠
+                            dir_path = relative_path.rstrip('/')
+
+                            # 检查是否已经处理过这个目录
+                            if dir_path in dirs_processed:
+                                continue
+                            dirs_processed.add(dir_path)
+
+                            # 如果 remote_path 不为空，name 应该是相对于 remote_path 的子目录名
+                            if full_remote_path:
+                                # 获取相对于 full_remote_path 的子路径
+                                if dir_path.startswith(full_remote_path + '/'):
+                                    name = dir_path[len(full_remote_path) + 1:]
+                                    # 只取第一层子目录
+                                    if '/' in name:
+                                        name = name.split('/')[0]
+                                else:
+                                    name = os.path.basename(dir_path)
+                            else:
+                                # 根目录，直接使用 basename
+                                name = os.path.basename(dir_path)
+                                # 只取第一层子目录
+                                if '/' in name:
+                                    name = name.split('/')[0]
+
+                            all_files.append({
+                                'name': name,
+                                'size': 0,
+                                'modified_time': '',
+                                'type': 'dir',
+                                'path': dir_path
+                            })
+
+                        first_loop = False  # 标记目录已处理
 
                     # 解析文件列表
                     if 'Contents' in response:
@@ -499,6 +627,10 @@ class QcloudCosStorage(StoragePluginInterface):
 
                             # 跳过前缀本身的条目
                             if key == prefix.rstrip('/'):
+                                continue
+
+                            # 跳过以 / 结尾的目录（已经在 CommonPrefixes 中处理）
+                            if key.endswith('/'):
                                 continue
 
                             # 处理修改时间格式
@@ -590,6 +722,15 @@ class QcloudCosStorage(StoragePluginInterface):
             bool: 支持分页返回True
         """
         return True
+
+    def get_file_list_columns(self) -> list[str]:
+        """
+        获取文件列表表格的列名
+
+        Returns:
+            list: 列名列表
+        """
+        return ["文件名", "文件大小", "修改时间", "文件类型"]
 
     def _get_file_url(self, key: str) -> str:
         """

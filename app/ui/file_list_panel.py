@@ -5,10 +5,11 @@
 
 import os
 import traceback
+import uuid
 from PyQt5.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QTableWidget,
                              QTableWidgetItem, QHeaderView, QMessageBox, QAbstractItemView,
-                             QProgressBar, QComboBox, QDialog)
+                             QProgressBar, QComboBox, QDialog, QTreeWidget, QTreeWidgetItem)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont
 from typing import Dict, Any
@@ -101,17 +102,18 @@ class UploadThread(QThread):
     finished_signal = pyqtSignal(object, bool, str, str)
     error_signal = pyqtSignal(str, bool, str)
 
-    def __init__(self, plugin, local_path, filename, is_temp_file):
+    def __init__(self, plugin, local_path, filename, remote_path, is_temp_file):
         super().__init__()
         self.plugin = plugin
         self.local_path = local_path
         self.filename = filename
+        self.remote_path = remote_path
         self.is_temp_file = is_temp_file
 
     def run(self):
         try:
-            logger.debug(f"上传线程开始，文件: {self.local_path}")
-            result = self.plugin.upload_file(self.local_path, self.filename)
+            logger.debug(f"上传线程开始，文件: {self.local_path}, 远程路径: {self.remote_path}")
+            result = self.plugin.upload_file(self.local_path, self.remote_path, filename=self.filename)
             logger.debug(f"上传线程完成，结果: {result.is_success()}")
             self.finished_signal.emit(result, self.is_temp_file, self.local_path, self.filename)
         except Exception as e:
@@ -145,8 +147,15 @@ class FileListPanel(QDockWidget):
         self.total_files = 0
         self.total_pages = 1
 
+        # 目录相关
+        self.current_remote_path = ""  # 当前所在远程路径
+        self.path_history = []  # 路径历史，用于返回上一级
+
         self.setup_ui()
         self.load_current_plugin_info()
+
+        # 初始化路径标签（在setup_ui之后调用）
+        self.update_path_label()
 
     def setup_ui(self):
         """设置UI"""
@@ -155,47 +164,61 @@ class FileListPanel(QDockWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        # 按钮区域
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
+        # 按钮和路径区域（同一行）
+        top_layout = QHBoxLayout()
+        top_layout.setSpacing(2)  # 设置控件间距，减小间距
+
+        # 目录选择按钮
+        self.dir_button = QPushButton("📁 选择目录")
+        self.dir_button.setMinimumWidth(90)  # 设置最小宽度
+        self.dir_button.setMaximumWidth(100)  # 设置最大宽度
+        self.dir_button.clicked.connect(self.show_directory_dialog)
+        top_layout.addWidget(self.dir_button)
+
+        # 当前路径标签容器
+        self.path_container = QWidget()
+        self.path_layout = QHBoxLayout(self.path_container)
+        self.path_layout.setContentsMargins(8, 0, 8, 0)  # 左右各8px padding
+        self.path_layout.setSpacing(2)
+        self.path_layout.setAlignment(Qt.AlignLeft)  # 路径标签靠左对齐
+        top_layout.addWidget(self.path_container)
+
+        # 添加弹性空间，将右侧按钮推到右边
+        top_layout.addStretch()
 
         # 刷新按钮
         self.refresh_button = QPushButton("刷新")
         self.refresh_button.setMaximumWidth(80)
         self.refresh_button.clicked.connect(lambda: self.load_files())
-        button_layout.addWidget(self.refresh_button)
+        top_layout.addWidget(self.refresh_button)
 
         # 删除按钮（根据插件配置显示）
         self.delete_button = QPushButton("删除")
         self.delete_button.setMaximumWidth(80)
         self.delete_button.clicked.connect(self.delete_selected_file)
         self.delete_button.setVisible(False)
-        button_layout.addWidget(self.delete_button)
+        top_layout.addWidget(self.delete_button)
 
         # 上传按钮（根据插件配置显示）
         self.upload_button = QPushButton("上传当前文档")
         self.upload_button.setMaximumWidth(120)
         self.upload_button.clicked.connect(self.upload_current_document)
         self.upload_button.setVisible(False)
-        button_layout.addWidget(self.upload_button)
+        top_layout.addWidget(self.upload_button)
 
-        layout.addLayout(button_layout)
+        # 添加顶部布局
+        layout.addLayout(top_layout)
 
         # 文件列表表格
         self.table = QTableWidget()
-        # 默认表头，将在load_current_plugin_info中更新
-        self.default_headers = ["文件名", "文件大小", "修改时间", "文件类型", "路径"]
-        self.update_table_headers(self.default_headers)
+        # 初始表头，将在load_current_plugin_info中从插件获取
+        self.table.setColumnCount(0)
+        self.table.setHorizontalHeaderLabels([])
 
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
 
         # 允许拖动列头调整顺序
         self.table.horizontalHeader().setSectionsMovable(True)
@@ -286,25 +309,35 @@ class FileListPanel(QDockWidget):
 
     def load_current_plugin_info(self):
         """加载当前应用的下载插件信息（不加载文件列表）"""
+        logger.info("load_current_plugin_info 开始执行")
         try:
             from app.config.storage_plugin_config import storage_config_manager
             from app.managers.storage_plugin_manager import storage_plugin_manager
 
+            logger.info("获取当前插件名称...")
             plugin_name = storage_config_manager.get_current_plugin()
             if not plugin_name:
+                logger.info("没有配置当前插件")
                 return
 
+            logger.info(f"当前插件名称: {plugin_name}")
+            logger.info("获取插件实例...")
             plugin = storage_plugin_manager.get_plugin(plugin_name)
             if not plugin:
+                logger.warning(f"插件实例不存在: {plugin_name}")
                 return
 
+            logger.info(f"插件实例获取成功: {plugin}")
             # 检查插件是否已初始化，如果没有则初始化
             if not plugin.is_initialized:
+                logger.info("插件未初始化，开始初始化...")
                 config = storage_config_manager.get_plugin_config(plugin_name)
+                logger.info(f"插件配置: {config}")
                 init_result = storage_plugin_manager.initialize_plugin(plugin_name, config)
                 if not init_result.is_success():
                     logger.error(f"存储插件 {plugin_name} 初始化失败: {init_result.message}")
                     return
+                logger.info("插件初始化成功")
 
             # 使用插件实例
             self.plugin = plugin
@@ -319,37 +352,38 @@ class FileListPanel(QDockWidget):
 
             # 更新面板标题
             self.setWindowTitle(f"文件列表 - {plugin_title}")
-            
+
+            logger.info("准备获取表头信息...")
             # 获取插件特定的表头信息
             headers = self.get_headers_for_plugin(plugin)
+            logger.info(f"获取到的表头: {headers}")
+            logger.info("更新表格表头...")
             self.update_table_headers(headers)
-            
+
             logger.info(f"成功加载下载插件: {plugin_name}")
         except Exception as e:
-            logger.error(f"加载当前插件失败: {e}")
+            logger.error(f"加载当前插件失败: {e}", exc_info=True)
+            import traceback
+            traceback.print_exc()
 
     def get_headers_for_plugin(self, plugin):
-        """根据插件获取对应的表头信息，优先检查插件是否提供自定义表头"""
-        # 检查插件是否提供自定义表头方法
-        if hasattr(plugin, 'get_column_headers') and callable(getattr(plugin, 'get_column_headers')):
+        """根据插件获取对应的表头信息"""
+        logger.info(f"get_headers_for_plugin 被调用，plugin={plugin}")
+        # 优先调用插件接口的 get_file_list_columns 方法
+        if hasattr(plugin, 'get_file_list_columns') and callable(getattr(plugin, 'get_file_list_columns')):
+            logger.info("插件有 get_file_list_columns 方法，准备调用")
             try:
-                return plugin.get_column_headers()
+                headers = plugin.get_file_list_columns()
+                logger.info(f"成功获取表头: {headers}")
+                return headers
             except Exception as e:
-                logger.warning(f"插件 {plugin.plugin_name} 的 get_column_headers 方法调用失败: {e}")
-        
-        # 检查插件是否定义了 COLUMN_HEADERS 属性
-        if hasattr(plugin, 'COLUMN_HEADERS'):
-            return plugin.COLUMN_HEADERS
-        
-        # 根据插件名称返回不同的默认表头
-        if hasattr(plugin, 'plugin_name'):
-            plugin_name = plugin.plugin_name.lower()
-            if 'qcloud' in plugin_name or 'oss' in plugin_name or 'cos' in plugin_name:
-                ***REMOVED***OSS插件的表头
-                return ["文件名", "文件大小", "修改时间", "文件类型"]
-        
+                logger.error(f"插件 {plugin.plugin_name} 的 get_file_list_columns 方法调用失败: {e}", exc_info=True)
+                import traceback
+                traceback.print_exc()
+
         # 默认表头
-        return self.default_headers
+        logger.warning("使用默认表头")
+        return ["文件名", "文件大小", "修改时间", "文件类型", "路径"]
 
     def load_current_plugin(self):
         """加载当前应用的下载插件并加载文件列表"""
@@ -425,8 +459,12 @@ class FileListPanel(QDockWidget):
         for widget in self.pagination_widgets:
             widget.setVisible(visible)
 
-    def load_files(self, remote_path: str = "", page: int = None):
+    def load_files(self, remote_path: str = None, page: int = None):
         """加载文件列表"""
+        # 如果没有指定remote_path，使用当前路径
+        if remote_path is None:
+            remote_path = self.current_remote_path
+
         logger.info(f"load_files() 被调用，remote_path={remote_path!r}, type={type(remote_path)}, page={page}")
 
         if not self.plugin:
@@ -439,6 +477,10 @@ class FileListPanel(QDockWidget):
 
         self.table.setRowCount(0)
         self.files_data = []
+
+        # 更新当前路径
+        self.current_remote_path = remote_path
+        self.update_path_label()
 
         # 确定当前页码
         if page is not None:
@@ -568,13 +610,16 @@ class FileListPanel(QDockWidget):
         pass
 
     def open_file_at_index(self, item):
-        """双击打开文件"""
+        """双击打开文件或进入目录"""
         row = item.row()
         file_info = self.table.item(row, 0).data(Qt.UserRole)
 
-        # 只能打开文件，不能打开文件夹
+        # 如果是文件夹，进入该目录
         if file_info.get('type') == 'dir':
-            QMessageBox.information(self, "提示", "请选择文件而不是文件夹")
+            dir_path = file_info.get('path', '')
+            self.current_remote_path = dir_path
+            self.update_path_label()
+            self.load_files(self.current_remote_path)
             return
 
         self.open_file(file_info)
@@ -736,13 +781,19 @@ class FileListPanel(QDockWidget):
         self.upload_dialog = UploadProgressDialog(filename, self)
         self.upload_dialog.show()
 
-        # 在后台线程中执行上传
+        # 在后台线程中执行上传，构建完整的目标路径
         logger.debug("准备启动上传线程")
-        self.upload_thread = UploadThread(self.plugin, local_path, filename, is_temp_file)
+        current_dir = self.current_remote_path or ""
+        if current_dir:
+            remote_path = f"{current_dir.rstrip('/')}/{filename}"
+        else:
+            remote_path = filename
+
+        self.upload_thread = UploadThread(self.plugin, local_path, filename, remote_path, is_temp_file)
         self.upload_thread.finished_signal.connect(lambda result, is_tf, lp, fn: self._on_upload_complete(result, is_tf, lp, fn))
         self.upload_thread.error_signal.connect(lambda err_msg, is_tf, lp: self._on_upload_error(err_msg, is_tf, lp))
         self.upload_thread.start()
-        logger.debug("上传线程已启动")
+        logger.debug(f"上传线程已启动，完整远程路径: {remote_path}")
 
     def _on_upload_complete(self, result, is_temp_file, local_path, filename):
         """上传完成回调"""
@@ -865,3 +916,232 @@ class FileListPanel(QDockWidget):
         if self.load_thread and self.load_thread.isRunning():
             self.load_thread.terminate()
         super().closeEvent(event)
+
+    def show_directory_dialog(self):
+        """显示目录选择对话框"""
+        if not self.plugin:
+            QMessageBox.warning(self, "提示", "请先在云存储插件设置中选择插件")
+            return
+
+        dialog = DirectoryDialog(self.plugin, self.current_remote_path, self)
+        if dialog.exec_() == QDialog.Accepted:
+            selected_path = dialog.get_selected_path()
+            if selected_path != self.current_remote_path:
+                self.current_remote_path = selected_path
+                self.update_path_label()
+                self.load_files(self.current_remote_path)
+
+    def update_path_label(self):
+        """更新路径标签，创建可点击的路径段"""
+        # 清空旧的路径标签（包括所有 item）
+        for i in reversed(range(self.path_layout.count())):
+            item = self.path_layout.itemAt(i)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.spacerItem():
+                # 移除 spacer item
+                self.path_layout.removeItem(item)
+
+        # 添加根目录 "./"
+        root_label = QLabel("./")
+        root_label.setStyleSheet("color: #1890ff; font-size: 12px; text-decoration: underline; cursor: pointer;")
+        root_label.mousePressEvent = lambda e: self.navigate_to_path("")
+        root_label.setToolTip("点击返回根目录")
+        self.path_layout.addWidget(root_label)
+
+        if self.current_remote_path:
+            # 分割路径并添加每个路径段
+            parts = self.current_remote_path.split('/')
+            path_so_far = ""
+
+            for part in parts:
+                if not part:
+                    continue
+
+                # 构建完整路径
+                path_so_far = f"{path_so_far}/{part}" if path_so_far else part
+
+                # 创建可点击的路径段
+                path_label = QLabel(part)
+                path_label.setStyleSheet("color: #1890ff; font-size: 12px; text-decoration: underline; cursor: pointer;")
+                path_label.mousePressEvent = lambda e, path=path_so_far: self.navigate_to_path(path)
+                path_label.setToolTip(f"点击进入: {part}")
+                self.path_layout.addWidget(path_label)
+
+    def navigate_to_path(self, path):
+        """导航到指定路径"""
+        if path != self.current_remote_path:
+            self.current_remote_path = path
+            self.update_path_label()
+            self.load_files(self.current_remote_path)
+
+
+class DirectoryDialog(QDialog):
+    """目录选择对话框"""
+
+    def __init__(self, plugin, current_path, parent=None):
+        super().__init__(parent)
+
+        self.plugin = plugin
+        self.current_path = current_path
+        self.selected_path = current_path
+        self.setWindowTitle("选择目录")
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setModal(True)
+        self.setFixedSize(600, 500)
+
+        layout = QVBoxLayout()
+        layout.setSpacing(10)
+
+        # 当前路径显示容器
+        self.path_container = QWidget()
+        self.path_layout = QHBoxLayout(self.path_container)
+        self.path_layout.setContentsMargins(0, 0, 0, 0)
+        self.path_layout.setSpacing(2)
+
+        # 添加标题
+        title_label = QLabel("当前路径: ")
+        title_label.setStyleSheet("color: #333; font-weight: bold; padding: 5px;")
+        self.path_layout.addWidget(title_label)
+
+        # 更新路径标签
+        self.update_path_label()
+
+        # 添加弹性空间
+        self.path_layout.addStretch()
+        layout.addWidget(self.path_container)
+
+        # 目录树
+        self.tree = QTreeWidget()
+        self.tree.setHeaderLabels(["目录名称"])
+        self.tree.setAlternatingRowColors(True)
+        self.tree.itemClicked.connect(self.on_item_clicked)
+        self.tree.itemDoubleClicked.connect(self.on_item_double_clicked)
+        layout.addWidget(self.tree)
+
+        # 按钮
+        button_layout = QHBoxLayout()
+
+        self.back_button = QPushButton("返回上一级")
+        self.back_button.clicked.connect(self.go_back)
+        button_layout.addWidget(self.back_button)
+
+        button_layout.addStretch()
+
+        self.ok_button = QPushButton("确定")
+        self.ok_button.setMinimumWidth(100)
+        self.ok_button.clicked.connect(self.accept)
+        button_layout.addWidget(self.ok_button)
+
+        self.cancel_button = QPushButton("取消")
+        self.cancel_button.setMinimumWidth(100)
+        self.cancel_button.clicked.connect(self.reject)
+        button_layout.addWidget(self.cancel_button)
+
+        layout.addLayout(button_layout)
+
+        self.setLayout(layout)
+
+        # 加载目录树
+        self.load_directory_tree()
+
+    def load_directory_tree(self):
+        """加载目录树"""
+        try:
+            # 使用插件的 list_directories 方法获取目录列表
+            result = self.plugin.list_directories(self.current_path)
+            if not result.is_success():
+                QMessageBox.warning(self, "错误", f"加载目录失败: {result.message}")
+                return
+
+            dirs = result.data.get('directories', [])
+            self.tree.clear()
+
+            for dir_info in dirs:
+                item = QTreeWidgetItem([dir_info.get('name', '')])
+                item.setData(0, Qt.UserRole, dir_info)
+                item.setIcon(0, self.style().standardIcon(self.style().SP_DirIcon))
+                self.tree.addTopLevelItem(item)
+
+            # 如果有子目录，添加展开标记
+            self.tree.expandAll()
+
+        except Exception as e:
+            QMessageBox.warning(self, "错误", f"加载目录时发生错误: {str(e)}")
+
+    def on_item_clicked(self, item, column):
+        """点击目录项"""
+        dir_info = item.data(0, Qt.UserRole)
+        if dir_info:
+            path = dir_info.get('path', '')
+            self.selected_path = path
+
+    def on_item_double_clicked(self, item, column):
+        """双击进入目录"""
+        dir_info = item.data(0, Qt.UserRole)
+        if dir_info:
+            path = dir_info.get('path', '')
+            self.navigate_to_path(path)
+
+    def go_back(self):
+        """返回上一级目录"""
+        if self.current_path:
+            # 获取父目录
+            parts = self.current_path.split('/')
+            parent_path = '/'.join(parts[:-1]) if len(parts) > 1 else ''
+            self.navigate_to_path(parent_path)
+
+    def update_path_label(self):
+        """更新路径标签，创建可点击的路径段"""
+        # 清空旧的路径标签（保留第一个标题标签）
+        for i in reversed(range(self.path_layout.count())):
+            item = self.path_layout.itemAt(i)
+            widget = item.widget()
+            if widget:
+                # 保留标题标签
+                if hasattr(widget, 'text') and widget.text() == "当前路径: ":
+                    continue
+                widget.deleteLater()
+
+        # 添加根目录 "/"
+        root_label = QLabel("/")
+        root_label.setStyleSheet("color: #1890ff; font-size: 12px; text-decoration: underline; cursor: pointer;")
+        root_label.mousePressEvent = lambda e: self.navigate_to_path("")
+        root_label.setToolTip("点击返回根目录")
+        self.path_layout.addWidget(root_label)
+
+        if self.current_path:
+            # 分割路径并添加每个路径段
+            parts = self.current_path.split('/')
+            path_so_far = ""
+
+            for part in parts:
+                if not part:
+                    continue
+
+                # 添加分隔符
+                sep_label = QLabel("/")
+                sep_label.setStyleSheet("color: #666; font-size: 12px;")
+                self.path_layout.addWidget(sep_label)
+
+                # 构建完整路径
+                path_so_far = f"{path_so_far}/{part}" if path_so_far else part
+
+                # 创建可点击的路径段
+                path_label = QLabel(part)
+                path_label.setStyleSheet("color: #1890ff; font-size: 12px; text-decoration: underline; cursor: pointer;")
+                path_label.mousePressEvent = lambda e, path=path_so_far: self.navigate_to_path(path)
+                path_label.setToolTip(f"点击进入: {part}")
+                self.path_layout.addWidget(path_label)
+
+    def navigate_to_path(self, path):
+        """导航到指定路径"""
+        if path != self.current_path:
+            self.current_path = path
+            self.selected_path = path
+            self.update_path_label()
+            self.load_directory_tree()
+
+    def get_selected_path(self):
+        """获取选中的路径"""
+        return self.selected_path

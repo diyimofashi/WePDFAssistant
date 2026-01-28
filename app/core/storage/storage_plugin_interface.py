@@ -153,6 +153,31 @@ class StoragePluginInterface(metaclass=abc.ABCMeta):
         """
         return False
 
+    def list_directories(self, remote_path: str = "") -> StorageResult:
+        """
+        列出远程目录（可选实现）
+
+        Args:
+            remote_path: 远程路径
+
+        Returns:
+            StorageResult: 包含目录列表数据
+                data.directories: 目录信息列表
+        """
+        # 默认从 list_files 结果中提取目录
+        result = self.list_files(remote_path)
+        if not result.is_success():
+            return result
+
+        files = result.data.get('files', [])
+        directories = [f for f in files if f.get('type') == 'dir']
+
+        return StorageResult(
+            code=StorageErrorCode.SUCCESS,
+            message="获取目录列表成功",
+            data={'directories': directories}
+        )
+
     @abc.abstractmethod
     def get_supported_features(self) -> Dict[str, Any]:
         """
