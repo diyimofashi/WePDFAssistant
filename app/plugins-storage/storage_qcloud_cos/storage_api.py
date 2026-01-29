@@ -981,14 +981,46 @@ class QcloudCosStorage(StoragePluginInterface):
         """
         return True
 
-    def get_file_list_columns(self) -> list[str]:
+    def get_file_list_columns(self) -> list:
         """
-        获取文件列表表格的列名
+        获取文件列表表格的列配置
 
         Returns:
-            list: 列名列表
+            list: 列配置列表（对象字典格式）
         """
-        return ["文件名", "文件大小", "修改时间", "文件类型"]
+        return [
+            {
+                "field": "name",
+                "title": "文件名",
+                "width": 300,
+                "min_width": 150,
+                "resize_mode": "stretch"
+            },
+            {
+                "field": "size",
+                "title": "文件大小",
+                "width": 120,
+                "min_width": 80,
+                "max_width": 200,
+                "resize_mode": "interactive"
+            },
+            {
+                "field": "modified_time",
+                "title": "修改时间",
+                "width": 180,
+                "min_width": 150,
+                "max_width": 250,
+                "resize_mode": "interactive"
+            },
+            {
+                "field": "type",
+                "title": "文件类型",
+                "width": 100,
+                "min_width": 80,
+                "max_width": 120,
+                "resize_mode": "fixed"
+            }
+        ]
 
     def _get_file_url(self, key: str) -> str:
         """

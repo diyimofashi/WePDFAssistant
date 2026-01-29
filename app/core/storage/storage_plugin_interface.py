@@ -235,10 +235,37 @@ class StoragePluginInterface(metaclass=abc.ABCMeta):
 
     def get_file_list_columns(self) -> list[str]:
         """
-        获取文件列表表格的列名
+        获取文件列表表格的列配置
 
         Returns:
-            list: 列名列表，例如 ["文件名", "文件大小", "修改时间", "文件类型", "路径"]
+            list: 列配置列表，支持两种格式：
+
+            格式一（向后兼容）：字符串列表
+                例如 ["文件名", "文件大小", "修改时间", "文件类型", "路径"]
+
+            格式二（推荐）：对象字典列表
+                例如 [
+                    {
+                        "field": "name",           # 字段名（对应数据中的key）
+                        "title": "文件名",          # 显示标题
+                        "width": 200,              # 列宽度（像素，可选）
+                        "min_width": 100,          # 最小宽度（可选）
+                        "max_width": 400,          # 最大宽度（可选）
+                        "sortable": True,          # 是否可排序（可选，默认True）
+                        "resize_mode": "interactive" # 调整模式（可选）：fixed/interactive/stretch/resize_to_contents
+                    },
+                    {
+                        "field": "size",
+                        "title": "文件大小",
+                        "width": 100
+                    }
+                ]
+
+        resize_mode 参数说明：
+            - fixed: 固定宽度，用户不可调整
+            - interactive: 交互式，用户可拖动调整
+            - stretch: 拉伸以填充剩余空间
+            - resize_to_contents: 根据内容自动调整
         """
         return ["文件名", "文件大小", "修改时间", "文件类型", "路径"]
 

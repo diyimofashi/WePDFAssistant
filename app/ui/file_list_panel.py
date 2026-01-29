@@ -10,9 +10,9 @@ from PyQt5.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QTableWidget,
                              QTableWidgetItem, QHeaderView, QMessageBox, QAbstractItemView,
                              QProgressBar, QComboBox, QDialog, QTreeWidget, QTreeWidgetItem,
-                             QFileDialog, QCheckBox, QStyle, QStyleOptionButton, QStyleOptionHeader,
+                             QFileDialog, QCheckBox, QStyle, QStyleOptionButton,
                              QStyledItemDelegate, QApplication)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QRect
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QRect
 from PyQt5.QtGui import QFont, QPainter, QPalette, QColor
 from typing import Dict, Any
 from app.utils.logger import get_logger
@@ -20,46 +20,18 @@ from app.utils.logger import get_logger
 logger = get_logger('file_list_panel')
 
 
-class CenterCheckBoxDelegate(QStyledItemDelegate):
-    """居中显示复选框的委托"""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
+class CenterItemDelegate(QStyledItemDelegate):
+    """单元格内容居中委托"""
 
     def paint(self, painter, option, index):
-        """重写绘制方法，使复选框居中"""
-        # 获取复选框状态
-        value = index.data(Qt.CheckStateRole)
-        if value is not None:
-            # 创建复选框样式选项
-            style_option = QStyleOptionButton()
-            style_option.state = QStyle.State_Enabled
-            if value == Qt.Checked:
-                style_option.state |= QStyle.State_On
-            else:
-                style_option.state |= QStyle.State_Off
-
-            # 计算居中位置
-            style_option.rect = self._centered_checkbox_rect(option.rect)
-
-            # 绘制复选框
-            style_option.iconSize = style_option.rect.size()
-            QApplication.style().drawControl(QStyle.CE_CheckBox, style_option, painter)
-        else:
-            super().paint(painter, option, index)
-
-    def _centered_checkbox_rect(self, rect):
-        """计算居中的复选框矩形"""
-        # 复选框的标准大小
-        checkbox_size = 18
-        width = max(rect.width(), checkbox_size)
-        height = max(rect.height(), checkbox_size)
-
-        # 计算居中位置
-        x = rect.x() + (rect.width() - checkbox_size) // 2
-        y = rect.y() + (rect.height() - checkbox_size) // 2
-
-        return QRect(x, y, checkbox_size, checkbox_size)
+        """重写绘制方法，使单元格内容居中"""
+        column = index.column()
+        logger.debug(f"CenterItemDelegate.paint() 被调用, 列={column}, 行={index.row()}")
+        # 设置文本居中对齐
+        option.displayAlignment = Qt.AlignCenter
+        logger.debug(f"已设置 displayAlignment = Qt.AlignCenter, 列={column}")
+        # 绘制单元格内容
+        super().paint(painter, option, index)
 
 
 class CheckBoxHeaderView(QHeaderView):
@@ -282,6 +254,9 @@ class FileListPanel(QDockWidget):
         self.upload_thread = None
         self.plugin_name = ""  # 添加插件名称属性
 
+        # 列配置（支持对象字典格式）
+        self._column_configs = []
+
         # 分页相关
         self.current_page = 1
         self.page_size = 50
@@ -377,6 +352,7 @@ class FileListPanel(QDockWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)  # 允许多选
         self.table.setAlternatingRowColors(True)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)  # 禁用编辑
 
         # 使用自定义表头（带复选框）
         self.header_view = CheckBoxHeaderView(Qt.Horizontal, self.table)
@@ -398,14 +374,20 @@ class FileListPanel(QDockWidget):
             }
             QTableWidget::item {
                 padding: 4px;
+                border-top: 1px solid #a0a0a0;
+            }
+            QTableWidget::item:selected {
+                background-color: #0078d7;
+                color: white;
             }
             QHeaderView::section {
                 border-left: 1px solid transparent;
                 padding: 4px;
+                font-weight: bold;
             }
-            /* 设置表格每一行的上边框，作为表头与内容的分隔 */
-            QTableWidget::item {
-                border-top: 1px solid #a0a0a0;
+            /* 第一列（checkbox列）标题背景透明 */
+            QHeaderView::section:first {
+                background: transparent;
             }
         """)
 
@@ -415,8 +397,8 @@ class FileListPanel(QDockWidget):
         self.header_view.setSectionResizeMode(0, QHeaderView.Fixed)
         self.table.setColumnWidth(0, 40)
 
-        # 为复选框列设置居中委托（第0列）
-        self.table.setItemDelegateForColumn(0, CenterCheckBoxDelegate(self.table))
+        # 为第一列（checkbox列）设置居中委托
+        self.table.setItemDelegateForColumn(0, CenterItemDelegate(self.table))
 
         # 双击打开文件
         self.table.itemDoubleClicked.connect(self.open_file_at_index)
@@ -492,37 +474,82 @@ class FileListPanel(QDockWidget):
         self.setWidget(container)
 
     def update_table_headers(self, headers):
-        """更新表格头部"""
-        # 第1列是复选框列，第2列是SN列，第3列及之后是接口返回的字段
-        full_headers = ["", "SN"] + headers
+        """更新表格头部，支持对象字典格式"""
+        # 存储列配置信息
+        self._column_configs = []
+
+        # 第1列是复选框列，第2列是SN列
+        full_headers = ["", "SN"]
+        col_configs = []
+
+        # 处理接口返回的列配置（支持字符串列表或对象字典列表）
+        for header_config in headers:
+            if isinstance(header_config, dict):
+                # 对象字典格式
+                title = header_config.get("title", "")
+                full_headers.append(title)
+                col_configs.append(header_config)
+            else:
+                # 简单字符串格式（向后兼容）
+                full_headers.append(header_config)
+                col_configs.append({
+                    "title": str(header_config),
+                    "field": self.convert_header_to_field(str(header_config))
+                })
+
         self.table.setColumnCount(len(full_headers))
         self.table.setHorizontalHeaderLabels(full_headers)
 
-        # 为复选框列设置居中委托（第0列）
-        self.table.setItemDelegateForColumn(0, CenterCheckBoxDelegate(self.table))
+        # 为第一、二列（checkbox和SN列）设置居中委托
+        logger.debug(f"为第0列设置居中委托")
+        self.table.setItemDelegateForColumn(0, CenterItemDelegate(self.table))
+        logger.debug(f"为第1列设置居中委托")
+        self.table.setItemDelegateForColumn(1, CenterItemDelegate(self.table))
+        logger.debug(f"委托设置完成，第0列委托: {self.table.itemDelegateForColumn(0)}, 第1列委托: {self.table.itemDelegateForColumn(1)}")
 
         # 设置复选框列和SN列的表头居中对齐
         for col_idx in [0, 1]:
             header_item = self.table.horizontalHeaderItem(col_idx)
             if header_item:
                 header_item.setTextAlignment(Qt.AlignCenter)
+                logger.debug(f"第{col_idx}列表头设置居中对齐: {header_item.text()}")
+
+        # 调整模式映射
+        mode_map = {
+            "fixed": QHeaderView.Fixed,
+            "interactive": QHeaderView.Interactive,
+            "stretch": QHeaderView.Stretch,
+            "resize_to_contents": QHeaderView.ResizeToContents
+        }
 
         # 根据列数重新设置列宽调整模式
         for col_idx in range(len(full_headers)):
             if col_idx == 0:
-                # 第1列是复选框列，固定宽度
+                # 第1列是复选框列，固定宽度40px
                 self.header_view.setSectionResizeMode(col_idx, QHeaderView.Fixed)
                 self.table.setColumnWidth(col_idx, 40)
+                logger.debug(f"第0列（checkbox列）设置宽度=40px，模式=Fixed，实际宽度={self.table.columnWidth(col_idx)}")
             elif col_idx == 1:
-                # 第2列SN列，固定宽度
+                # 第2列SN列，固定宽度40px
                 self.header_view.setSectionResizeMode(col_idx, QHeaderView.Fixed)
-                self.table.setColumnWidth(col_idx, 60)
-            elif col_idx == len(full_headers) - 1:
-                # 最后一列拉伸以填充剩余空间
-                self.header_view.setSectionResizeMode(col_idx, QHeaderView.Stretch)
-            else:
-                # 中间列根据内容调整，但设置为交互式以允许用户调整
-                self.header_view.setSectionResizeMode(col_idx, QHeaderView.Interactive)
+                self.table.setColumnWidth(col_idx, 40)
+                logger.debug(f"第1列（SN列）设置宽度=40px，模式=Fixed，实际宽度={self.table.columnWidth(col_idx)}")
+            elif col_idx >= 2:
+                # 处理插件返回的列配置
+                config_idx = col_idx - 2
+                if config_idx < len(col_configs):
+                    config = col_configs[config_idx]
+
+                    # 设置列宽
+                    if "width" in config:
+                        self.table.setColumnWidth(col_idx, config["width"])
+
+                    # 设置调整模式
+                    resize_mode = config.get("resize_mode", "interactive")
+                    self.header_view.setSectionResizeMode(col_idx, mode_map.get(resize_mode, QHeaderView.Interactive))
+
+                    # 存储配置供后续使用
+                    self._column_configs.append(config)
 
     def on_header_state_changed(self, state):
         """表头复选框状态改变"""
@@ -777,10 +804,7 @@ class FileListPanel(QDockWidget):
         self.populate_table()
 
     def populate_table(self):
-        """填充表格数据"""
-        # 确保表格列数与数据匹配
-        headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
-
+        """填充表格数据，支持对象字典格式的列配置"""
         self.table.setRowCount(len(self.files_data))
 
         for row, file_info in enumerate(self.files_data):
@@ -789,57 +813,104 @@ class FileListPanel(QDockWidget):
             checkbox.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
             checkbox.setCheckState(Qt.Unchecked)
             checkbox.setData(Qt.UserRole, file_info)  # 存储文件信息
+            checkbox.setTextAlignment(Qt.AlignCenter)  # 居中对齐
             self.table.setItem(row, 0, checkbox)
+            logger.debug(f"第{row}行，第0列（checkbox列）设置完成，检查状态: {checkbox.checkState()}")
 
             # 第2列是SN序号
             sn_item = QTableWidgetItem(str(row + 1))
             sn_item.setFlags(Qt.ItemIsEnabled)
             sn_item.setTextAlignment(Qt.AlignCenter)  # 居中对齐
             self.table.setItem(row, 1, sn_item)
+            logger.debug(f"第{row}行，第1列（SN列）设置完成，文本: {sn_item.text()}, 对齐: {sn_item.textAlignment()}")
 
-            # 从第3列开始填充数据（跳过复选框和SN列）
-            for col_idx, header in enumerate(headers[2:], start=2):
-                if header == "文件名":
-                    value = file_info.get('name', '')
-                    name_item = QTableWidgetItem(value)
-                    name_item.setData(Qt.UserRole, file_info)
-                    name_item.setToolTip(value)
-                    self.table.setItem(row, col_idx, name_item)
-                elif header == "文件大小":
-                    size = file_info.get('size', 0)
-                    # 确保大小是整数类型
-                    try:
-                        size = int(size)
-                    except (ValueError, TypeError):
-                        size = 0
-                    size_text = self.format_size(size)
-                    size_item = QTableWidgetItem(size_text)
-                    size_item.setToolTip(size_text)
-                    self.table.setItem(row, col_idx, size_item)
-                elif header == "修改时间":
-                    modified_time = file_info.get('modified_time', '')
-                    time_item = QTableWidgetItem(modified_time)
-                    time_item.setToolTip(modified_time)
-                    self.table.setItem(row, col_idx, time_item)
-                elif header == "文件类型":
-                    file_type = file_info.get('type', 'file')
-                    type_text = '文件夹' if file_type == 'dir' else '文件'
-                    type_item = QTableWidgetItem(type_text)
-                    type_item.setToolTip(type_text)
-                    self.table.setItem(row, col_idx, type_item)
-                elif header == "路径":
-                    path = file_info.get('path', '')
-                    path_item = QTableWidgetItem(path)
-                    path_item.setToolTip(path)
-                    self.table.setItem(row, col_idx, path_item)
-                else:
-                    # 对于未知的表头，尝试从file_info中获取对应字段
+            # 从第3列开始填充数据（使用列配置）
+            if hasattr(self, '_column_configs'):
+                for config_idx, config in enumerate(self._column_configs):
+                    col_idx = config_idx + 2  # 跳过复选框和SN列
+                    field_name = config.get('field', '')
+
+                    # 根据字段名获取值
+                    if field_name == 'name':
+                        value = file_info.get('name', '')
+                        item = QTableWidgetItem(value)
+                        item.setData(Qt.UserRole, file_info)
+                        item.setToolTip(value)
+                        self.table.setItem(row, col_idx, item)
+                    elif field_name == 'size':
+                        size = file_info.get('size', 0)
+                        try:
+                            size = int(size)
+                        except (ValueError, TypeError):
+                            size = 0
+                        size_text = self.format_size(size)
+                        item = QTableWidgetItem(size_text)
+                        item.setToolTip(size_text)
+                        self.table.setItem(row, col_idx, item)
+                    elif field_name == 'modified_time':
+                        value = file_info.get('modified_time', '')
+                        item = QTableWidgetItem(value)
+                        item.setToolTip(value)
+                        self.table.setItem(row, col_idx, item)
+                    elif field_name == 'type':
+                        file_type = file_info.get('type', 'file')
+                        type_text = '文件夹' if file_type == 'dir' else '文件'
+                        item = QTableWidgetItem(type_text)
+                        item.setToolTip(type_text)
+                        self.table.setItem(row, col_idx, item)
+                    elif field_name == 'path':
+                        value = file_info.get('path', '')
+                        item = QTableWidgetItem(value)
+                        item.setToolTip(value)
+                        self.table.setItem(row, col_idx, item)
+                    else:
+                        # 其他字段直接取值
+                        value = file_info.get(field_name, '')
+                        value_str = str(value)
+                        item = QTableWidgetItem(value_str)
+                        item.setToolTip(value_str)
+                        self.table.setItem(row, col_idx, item)
+            else:
+                # 向后兼容：如果没有列配置，使用表头标题
+                headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
+                for col_idx, header in enumerate(headers[2:], start=2):
                     field_name = self.convert_header_to_field(header)
                     value = file_info.get(field_name, '')
-                    value_str = str(value)
-                    value_item = QTableWidgetItem(value_str)
-                    value_item.setToolTip(value_str)
-                    self.table.setItem(row, col_idx, value_item)
+
+                    if header == "文件名":
+                        item = QTableWidgetItem(value)
+                        item.setData(Qt.UserRole, file_info)
+                        item.setToolTip(value)
+                        self.table.setItem(row, col_idx, item)
+                    elif header == "文件大小":
+                        size = file_info.get('size', 0)
+                        try:
+                            size = int(size)
+                        except (ValueError, TypeError):
+                            size = 0
+                        size_text = self.format_size(size)
+                        item = QTableWidgetItem(size_text)
+                        item.setToolTip(size_text)
+                        self.table.setItem(row, col_idx, item)
+                    elif header == "修改时间":
+                        item = QTableWidgetItem(value)
+                        item.setToolTip(value)
+                        self.table.setItem(row, col_idx, item)
+                    elif header == "文件类型":
+                        file_type = file_info.get('type', 'file')
+                        type_text = '文件夹' if file_type == 'dir' else '文件'
+                        item = QTableWidgetItem(type_text)
+                        item.setToolTip(type_text)
+                        self.table.setItem(row, col_idx, item)
+                    elif header == "路径":
+                        item = QTableWidgetItem(value)
+                        item.setToolTip(value)
+                        self.table.setItem(row, col_idx, item)
+                    else:
+                        value_str = str(value)
+                        item = QTableWidgetItem(value_str)
+                        item.setToolTip(value_str)
+                        self.table.setItem(row, col_idx, item)
 
     def convert_header_to_field(self, header: str) -> str:
         """将表头转换为对应的字段名"""
@@ -1411,6 +1482,12 @@ class FileListPanel(QDockWidget):
             for part in parts:
                 if not part:
                     continue
+
+                # 添加斜杠分隔符（除了第一个路径段）
+                if path_so_far:
+                    sep_label = QLabel("/")
+                    sep_label.setStyleSheet("color: #666; font-size: 12px;")
+                    self.path_layout.addWidget(sep_label)
 
                 # 构建完整路径
                 path_so_far = f"{path_so_far}/{part}" if path_so_far else part
