@@ -16,7 +16,7 @@ logger = get_logger('storage_plugin_config')
 class StoragePluginConfigManager:
     """云存储插件配置管理器"""
 
-    def __init__(self, config_file: str = None):
+    def __init__(self, config_file: str | None = None):
         """
         初始化配置管理器
 
@@ -160,18 +160,53 @@ class StoragePluginConfigManager:
         """
         errors = {}
 
-        # 这里可以添加具体的验证逻辑
-        # 例如：检查必需字段、数据类型等
+        # 根据插件类型使用不同的验证规则
+        if plugin_name == "storage_qcloud_cos":
+            ***REMOVED***COS验证
+            if not config.get("bucket_name"):
+                errors["bucket_name"] = "存储桶名称不能为空"
 
-        # 云存储插件通用验证
-        if not config.get("bucket_name"):
-            errors["bucket_name"] = "存储桶名称不能为空"
+            if not config.get("secret_id"):
+                errors["secret_id"] = "Secret ID不能为空"
 
-        if not config.get("secret_id"):
-            errors["secret_id"] = "Secret ID不能为空"
+            if not config.get("secret_key"):
+                errors["secret_key"] = "Secret Key不能为空"
 
-        if not config.get("secret_key"):
-            errors["secret_key"] = "Secret Key不能为空"
+        elif plugin_name == "storage_ftp":
+            # FTP验证
+            if not config.get("host"):
+                errors["host"] = "FTP服务器地址不能为空"
+
+            if not config.get("username"):
+                errors["username"] = "FTP用户名不能为空"
+
+        else:
+            # 其他插件的通用验证：检查required字段
+            plugin_config = self.get_plugin_default_config(plugin_name)
+            if plugin_config:
+                # 尝试读取插件的config.py获取required字段
+                try:
+                    import os
+                    import importlib.util
+
+                    app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    plugin_dir = os.path.join(app_root, 'plugins-storage', plugin_name)
+                    config_file = os.path.join(plugin_dir, 'config.py')
+
+                    if os.path.exists(config_file):
+                        spec = importlib.util.spec_from_file_location(f"storage_config_{plugin_name}", config_file)
+                        if spec and spec.loader:
+                            config_module = importlib.util.module_from_spec(spec)
+                            spec.loader.exec_module(config_module)
+
+                            # 检查required字段
+                            if hasattr(config_module, 'local_options'):
+                                for option_name, option_config in config_module.local_options.items():
+                                    if isinstance(option_config, dict) and option_config.get("required"):
+                                        if not config.get(option_name):
+                                            errors[option_name] = f"{option_config.get('description', option_name)}不能为空"
+                except Exception as e:
+                    logger.error(f"获取插件 {plugin_name} 验证规则失败: {e}")
 
         return errors if errors else None
 
@@ -196,27 +231,29 @@ class StoragePluginConfigManager:
 
             if os.path.exists(config_file):
                 spec = importlib.util.spec_from_file_location(f"storage_config_{plugin_name}", config_file)
-                config_module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(config_module)
+                if spec and spec.loader:
+                    config_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(config_module)
 
-                # 合并全局和局部选项的默认值
-                default_config = {}
+                    # 合并全局和局部选项的默认值
+                    default_config = {}
 
-                # 添加全局选项默认值
-                if hasattr(config_module, 'global_options'):
-                    for option_name, option_config in config_module.global_options.items():
-                        # 确保option_config是字典类型
-                        if isinstance(option_config, dict):
-                            default_config[option_name] = option_config.get("default", "")
+                    # 添加全局选项默认值
+                    if hasattr(config_module, 'global_options'):
+                        for option_name, option_config in config_module.global_options.items():
+                            # 确保option_config是字典类型
+                            if isinstance(option_config, dict):
+                                default_config[option_name] = option_config.get("default", "")
 
-                # 添加局部选项默认值
-                if hasattr(config_module, 'local_options'):
-                    for option_name, option_config in config_module.local_options.items():
-                        # 确保option_config是字典类型
-                        if isinstance(option_config, dict):
-                            default_config[option_name] = option_config.get("default", "")
+                    # 添加局部选项默认值
+                    if hasattr(config_module, 'local_options'):
+                        for option_name, option_config in config_module.local_options.items():
+                            # 确保option_config是字典类型
+                            if isinstance(option_config, dict):
+                                default_config[option_name] = option_config.get("default", "")
 
-                return default_config
+
+                    return default_config
 
             # 如果无法获取默认配置，返回空字典
             return {}

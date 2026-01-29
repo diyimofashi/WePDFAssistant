@@ -1141,6 +1141,11 @@ class FileListPanel(QDockWidget):
             QMessageBox.information(self, "提示", "请先选择要下载的文件")
             return
 
+        # 检查是否只选择了目录
+        if len(files) == 1 and files[0].get('type') == 'dir':
+            QMessageBox.information(self, "提示", "暂不支持下载文件夹，请选择文件进行下载")
+            return
+
         # 选择保存目录
         save_dir = QFileDialog.getExistingDirectory(self, "选择保存目录")
         if not save_dir:
@@ -1151,9 +1156,17 @@ class FileListPanel(QDockWidget):
             failed_files = []
 
             for file_info in files:
+                file_type = file_info.get('type', '')
+                # 跳过目录（批量下载时）
+                if file_type == 'dir':
+                    logger.info(f"跳过目录: {file_info.get('name', '')}")
+                    continue
+
                 remote_path = file_info.get('path', '')
                 filename = file_info.get('name', '')
                 local_path = os.path.join(save_dir, filename)
+
+                logger.info(f"准备下载: remote_path={remote_path}, filename={filename}, local_path={local_path}")
 
                 result = self.plugin.download_file(remote_path, local_path)
                 if result.is_success():
