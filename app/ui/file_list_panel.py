@@ -9,13 +9,154 @@ import uuid
 from PyQt5.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QTableWidget,
                              QTableWidgetItem, QHeaderView, QMessageBox, QAbstractItemView,
-                             QProgressBar, QComboBox, QDialog, QTreeWidget, QTreeWidgetItem)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont
+                             QProgressBar, QComboBox, QDialog, QTreeWidget, QTreeWidgetItem,
+                             QFileDialog, QCheckBox, QStyle, QStyleOptionButton, QStyleOptionHeader,
+                             QStyledItemDelegate, QApplication)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QRect
+from PyQt5.QtGui import QFont, QPainter, QPalette, QColor
 from typing import Dict, Any
 from app.utils.logger import get_logger
 
 logger = get_logger('file_list_panel')
+
+
+class CenterCheckBoxDelegate(QStyledItemDelegate):
+    """居中显示复选框的委托"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def paint(self, painter, option, index):
+        """重写绘制方法，使复选框居中"""
+        # 获取复选框状态
+        value = index.data(Qt.CheckStateRole)
+        if value is not None:
+            # 创建复选框样式选项
+            style_option = QStyleOptionButton()
+            style_option.state = QStyle.State_Enabled
+            if value == Qt.Checked:
+                style_option.state |= QStyle.State_On
+            else:
+                style_option.state |= QStyle.State_Off
+
+            # 计算居中位置
+            style_option.rect = self._centered_checkbox_rect(option.rect)
+
+            # 绘制复选框
+            style_option.iconSize = style_option.rect.size()
+            QApplication.style().drawControl(QStyle.CE_CheckBox, style_option, painter)
+        else:
+            super().paint(painter, option, index)
+
+    def _centered_checkbox_rect(self, rect):
+        """计算居中的复选框矩形"""
+        # 复选框的标准大小
+        checkbox_size = 18
+        width = max(rect.width(), checkbox_size)
+        height = max(rect.height(), checkbox_size)
+
+        # 计算居中位置
+        x = rect.x() + (rect.width() - checkbox_size) // 2
+        y = rect.y() + (rect.height() - checkbox_size) // 2
+
+        return QRect(x, y, checkbox_size, checkbox_size)
+
+
+class CheckBoxHeaderView(QHeaderView):
+    """带复选框的表头"""
+
+    stateChanged = pyqtSignal(int)
+
+    def __init__(self, orientation, parent=None):
+        super().__init__(orientation, parent)
+        self._checkbox = QCheckBox()
+        self._checkbox.setTristate(True)
+        self._checkbox.stateChanged.connect(self._on_checkbox_state_changed)
+        self._checkbox.setStyleSheet("QCheckBox { margin: 4px; }")
+        self._checkbox.setParent(self)  # checkbox的parent应该是header_view自身
+        self._checkbox.hide()  # 初始隐藏
+        self._is_programmatic_change = False  # 标记是否是程序化设置状态
+
+        # 监听列宽变化
+        self.sectionResized.connect(self._on_section_resized)
+
+    def checkState(self):
+        """获取复选框状态"""
+        return self._checkbox.checkState()
+
+    def setCheckState(self, state):
+        """设置复选框状态"""
+        self._is_programmatic_change = True
+        self._checkbox.setCheckState(state)
+        self._is_programmatic_change = False
+
+    def _on_checkbox_state_changed(self, state):
+        """复选框状态改变事件"""
+        if not self._is_programmatic_change:
+            # 如果不是程序化改变，则是用户点击
+            # 将部分选中转换为全选
+            if state == Qt.PartiallyChecked:
+                self._checkbox.blockSignals(True)
+                self._checkbox.setCheckState(Qt.Checked)
+                self._checkbox.blockSignals(False)
+                state = Qt.Checked
+            self.stateChanged.emit(state)
+
+    def _on_section_resized(self, logicalIndex, oldSize, newSize):
+        """列宽改变时更新checkbox位置"""
+        if logicalIndex == 0:
+            self._update_checkbox_position()
+
+    def resizeEvent(self, event):
+        """调整大小时重新定位checkbox"""
+        super().resizeEvent(event)
+        self._update_checkbox_position()
+
+    def showEvent(self, event):
+        """显示时定位checkbox"""
+        super().showEvent(event)
+        self._update_checkbox_position()
+
+    def _update_checkbox_position(self):
+        """更新checkbox位置 - checkbox在第1列（logicalIndex=0）"""
+        if self.count() > 1:
+            # 获取第1列的位置和大小
+            # sectionViewportPosition返回的是视口中的位置，已经考虑了滚动偏移
+            x_pos = self.sectionViewportPosition(0)
+            width = self.sectionSize(0)
+            height = self.height()
+
+            # 计算checkbox的中心位置
+            center_x = x_pos + width // 2
+            center_y = height // 2
+
+            # 获取checkbox的实际尺寸
+            checkbox_width = self._checkbox.width()
+            checkbox_height = self._checkbox.height()
+
+            logger.debug(f"列1位置: sectionViewportPosition(0)={x_pos}")
+            logger.debug(f"列2位置: sectionViewportPosition(1)={self.sectionViewportPosition(1)}")
+            logger.debug(f"Checkbox最终位置: x={center_x - checkbox_width // 2}, y={center_y - checkbox_height // 2}")
+
+            # 移动checkbox到中心位置
+            self._checkbox.move(
+                center_x - checkbox_width // 2,
+                center_y - checkbox_height // 2
+            )
+            self._checkbox.raise_()
+            self._checkbox.show()
+        else:
+            self._checkbox.hide()
+
+    def paintSection(self, painter, rect, logicalIndex):
+        """重写绘制表头的方法"""
+        if logicalIndex == 0:
+            # 第1列不绘制文本（因为有checkbox控件）
+            # 样式表会自动处理边框，这里只跳过文本
+            return
+        else:
+            # 其他列正常绘制
+            super().paintSection(painter, rect, logicalIndex)
 
 
 class LoadFilesThread(QThread):
@@ -199,6 +340,24 @@ class FileListPanel(QDockWidget):
         self.delete_button.setVisible(False)
         top_layout.addWidget(self.delete_button)
 
+        # 移动按钮
+        self.move_button = QPushButton("移动")
+        self.move_button.setMaximumWidth(80)
+        self.move_button.clicked.connect(self.move_selected_files)
+        top_layout.addWidget(self.move_button)
+
+        # 复制按钮
+        self.copy_button = QPushButton("复制")
+        self.copy_button.setMaximumWidth(80)
+        self.copy_button.clicked.connect(self.copy_selected_files)
+        top_layout.addWidget(self.copy_button)
+
+        # 下载按钮
+        self.download_button = QPushButton("下载")
+        self.download_button.setMaximumWidth(80)
+        self.download_button.clicked.connect(self.download_selected_files)
+        top_layout.addWidget(self.download_button)
+
         # 上传按钮（根据插件配置显示）
         self.upload_button = QPushButton("上传当前文档")
         self.upload_button.setMaximumWidth(120)
@@ -216,17 +375,54 @@ class FileListPanel(QDockWidget):
         self.table.setHorizontalHeaderLabels([])
 
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)  # 允许多选
         self.table.setAlternatingRowColors(True)
-        self.table.horizontalHeader().setStretchLastSection(True)
 
-        # 允许拖动列头调整顺序
-        self.table.horizontalHeader().setSectionsMovable(True)
-        self.table.horizontalHeader().setDragEnabled(True)
-        self.table.horizontalHeader().setDragDropMode(QAbstractItemView.InternalMove)
+        # 使用自定义表头（带复选框）
+        self.header_view = CheckBoxHeaderView(Qt.Horizontal, self.table)
+        self.table.setHorizontalHeader(self.header_view)
+        self.header_view.stateChanged.connect(self.on_header_state_changed)
+        self.header_view.setSectionsMovable(True)
+        self.header_view.setDragEnabled(True)
+        self.header_view.setDragDropMode(QAbstractItemView.InternalMove)
+        self.header_view.setSectionsClickable(True)  # 允许点击表头
+        self.header_view.setHighlightSections(True)  # 高亮点击的列
+
+        # 隐藏垂直表头（默认的行号列）
+        self.table.verticalHeader().setVisible(False)
+
+        # 使用Qt样式表设置表格样式，第一行显示上边框
+        self.table.setStyleSheet("""
+            QTableWidget {
+                gridline-color: #e0e0e0;
+            }
+            QTableWidget::item {
+                padding: 4px;
+            }
+            QHeaderView::section {
+                border-left: 1px solid transparent;
+                padding: 4px;
+            }
+            /* 设置表格每一行的上边框，作为表头与内容的分隔 */
+            QTableWidget::item {
+                border-top: 1px solid #a0a0a0;
+            }
+        """)
+
+        # 添加复选框列
+        self.table.setColumnCount(1)
+        self.table.setHorizontalHeaderLabels([""])
+        self.header_view.setSectionResizeMode(0, QHeaderView.Fixed)
+        self.table.setColumnWidth(0, 40)
+
+        # 为复选框列设置居中委托（第0列）
+        self.table.setItemDelegateForColumn(0, CenterCheckBoxDelegate(self.table))
 
         # 双击打开文件
         self.table.itemDoubleClicked.connect(self.open_file_at_index)
+
+        # 复选框状态改变
+        self.table.itemChanged.connect(self.on_item_changed)
 
         layout.addWidget(self.table)
 
@@ -297,15 +493,64 @@ class FileListPanel(QDockWidget):
 
     def update_table_headers(self, headers):
         """更新表格头部"""
-        self.table.setColumnCount(len(headers))
-        self.table.setHorizontalHeaderLabels(headers)
-        
+        # 第1列是复选框列，第2列是SN列，第3列及之后是接口返回的字段
+        full_headers = ["", "SN"] + headers
+        self.table.setColumnCount(len(full_headers))
+        self.table.setHorizontalHeaderLabels(full_headers)
+
+        # 为复选框列设置居中委托（第0列）
+        self.table.setItemDelegateForColumn(0, CenterCheckBoxDelegate(self.table))
+
+        # 设置复选框列和SN列的表头居中对齐
+        for col_idx in [0, 1]:
+            header_item = self.table.horizontalHeaderItem(col_idx)
+            if header_item:
+                header_item.setTextAlignment(Qt.AlignCenter)
+
         # 根据列数重新设置列宽调整模式
-        for col_idx in range(len(headers)):
-            if col_idx == 0:  # 第一列拉伸
-                self.table.horizontalHeader().setSectionResizeMode(col_idx, QHeaderView.Stretch)
-            else:  # 其他列根据内容调整
-                self.table.horizontalHeader().setSectionResizeMode(col_idx, QHeaderView.ResizeToContents)
+        for col_idx in range(len(full_headers)):
+            if col_idx == 0:
+                # 第1列是复选框列，固定宽度
+                self.header_view.setSectionResizeMode(col_idx, QHeaderView.Fixed)
+                self.table.setColumnWidth(col_idx, 40)
+            elif col_idx == 1:
+                # 第2列SN列，固定宽度
+                self.header_view.setSectionResizeMode(col_idx, QHeaderView.Fixed)
+                self.table.setColumnWidth(col_idx, 60)
+            elif col_idx == len(full_headers) - 1:
+                # 最后一列拉伸以填充剩余空间
+                self.header_view.setSectionResizeMode(col_idx, QHeaderView.Stretch)
+            else:
+                # 中间列根据内容调整，但设置为交互式以允许用户调整
+                self.header_view.setSectionResizeMode(col_idx, QHeaderView.Interactive)
+
+    def on_header_state_changed(self, state):
+        """表头复选框状态改变"""
+        for row in range(self.table.rowCount()):
+            checkbox_item = self.table.item(row, 0)
+            if checkbox_item:
+                checkbox_item.setCheckState(state)
+
+    def on_item_changed(self, item):
+        """表格项改变事件"""
+        if item.column() == 0:  # 第1列是复选框列
+            # 更新表头状态
+            has_checked = False
+            has_unchecked = False
+            for row in range(self.table.rowCount()):
+                checkbox_item = self.table.item(row, 0)
+                if checkbox_item:
+                    if checkbox_item.checkState() == Qt.Checked:
+                        has_checked = True
+                    else:
+                        has_unchecked = True
+
+            if has_checked and not has_unchecked:
+                self.header_view.setCheckState(Qt.Checked)
+            elif has_unchecked and not has_checked:
+                self.header_view.setCheckState(Qt.Unchecked)
+            else:
+                self.header_view.setCheckState(Qt.PartiallyChecked)
 
     def load_current_plugin_info(self):
         """加载当前应用的下载插件信息（不加载文件列表）"""
@@ -539,8 +784,21 @@ class FileListPanel(QDockWidget):
         self.table.setRowCount(len(self.files_data))
 
         for row, file_info in enumerate(self.files_data):
-            # 根据表头动态填充列
-            for col_idx, header in enumerate(headers):
+            # 第1列是复选框
+            checkbox = QTableWidgetItem()
+            checkbox.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+            checkbox.setCheckState(Qt.Unchecked)
+            checkbox.setData(Qt.UserRole, file_info)  # 存储文件信息
+            self.table.setItem(row, 0, checkbox)
+
+            # 第2列是SN序号
+            sn_item = QTableWidgetItem(str(row + 1))
+            sn_item.setFlags(Qt.ItemIsEnabled)
+            sn_item.setTextAlignment(Qt.AlignCenter)  # 居中对齐
+            self.table.setItem(row, 1, sn_item)
+
+            # 从第3列开始填充数据（跳过复选框和SN列）
+            for col_idx, header in enumerate(headers[2:], start=2):
                 if header == "文件名":
                     value = file_info.get('name', '')
                     name_item = QTableWidgetItem(value)
@@ -612,7 +870,11 @@ class FileListPanel(QDockWidget):
     def open_file_at_index(self, item):
         """双击打开文件或进入目录"""
         row = item.row()
-        file_info = self.table.item(row, 0).data(Qt.UserRole)
+        # 文件信息在复选框列（第0列）存储
+        checkbox_item = self.table.item(row, 0)
+        if not checkbox_item:
+            return
+        file_info = checkbox_item.data(Qt.UserRole)
 
         # 如果是文件夹，进入该目录
         if file_info.get('type') == 'dir':
@@ -631,7 +893,11 @@ class FileListPanel(QDockWidget):
             return
 
         row = selected_items[0].row()
-        file_info = self.table.item(row, 0).data(Qt.UserRole)
+        # 文件信息在复选框列（第0列）存储
+        checkbox_item = self.table.item(row, 0)
+        if not checkbox_item:
+            return
+        file_info = checkbox_item.data(Qt.UserRole)
 
         # 只能打开文件，不能打开文件夹
         if file_info.get('type') == 'dir':
@@ -679,38 +945,223 @@ class FileListPanel(QDockWidget):
             QMessageBox.warning(self, "打开失败", f"打开文件失败: {str(e)}")
             logger.error(f"打开文件失败: {e}")
 
+    def get_selected_files(self):
+        """获取所有勾选的文件信息"""
+        files = []
+        for row in range(self.table.rowCount()):
+            checkbox_item = self.table.item(row, 0)
+            if checkbox_item and checkbox_item.checkState() == Qt.Checked:
+                file_info = checkbox_item.data(Qt.UserRole)
+                if file_info:
+                    files.append(file_info)
+        return files
+
+    def move_selected_files(self):
+        """移动选中的文件"""
+        files = self.get_selected_files()
+        if not files:
+            QMessageBox.information(self, "提示", "请先选择要移动的文件")
+            return
+
+        # 显示目录选择对话框
+        dialog = DirectoryDialog(self.plugin, self.current_remote_path, self)
+        if dialog.exec_() == QDialog.Accepted:
+            target_path = dialog.selected_path
+            if target_path == self.current_remote_path:
+                QMessageBox.information(self, "提示", "目标目录与当前目录相同")
+                return
+
+            # 确认移动
+            file_names = "\n".join([f.get('name', '') for f in files[:5]])
+            if len(files) > 5:
+                file_names += f"\n... 还有 {len(files) - 5} 个文件"
+
+            reply = QMessageBox.question(
+                self,
+                "确认移动",
+                f"确定要移动 {len(files)} 个文件到 '{target_path}' 吗？\n\n{file_names}",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+
+            if reply == QMessageBox.Yes:
+                try:
+                    success_count = 0
+                    failed_files = []
+
+                    for file_info in files:
+                        # 复制到目标目录
+                        old_path = file_info.get('path', '')
+                        new_filename = file_info.get('name', '')
+                        if target_path:
+                            new_path = f"{target_path.rstrip('/')}/{new_filename}"
+                        else:
+                            new_path = new_filename
+
+                        # 先复制
+                        copy_result = self.plugin.copy_file(old_path, new_path)
+                        if copy_result.is_success():
+                            # 复制成功后删除原文件
+                            delete_result = self.plugin.delete_file(old_path)
+                            if delete_result.is_success():
+                                success_count += 1
+                            else:
+                                failed_files.append(file_info.get('name', ''))
+                                # 复制成功但删除失败，需要回滚
+                                self.plugin.delete_file(new_path)
+                        else:
+                            failed_files.append(file_info.get('name', ''))
+
+                    if success_count > 0:
+                        QMessageBox.information(self, "移动成功", f"成功移动 {success_count} 个文件")
+                        self.load_files()
+                    if failed_files:
+                        QMessageBox.warning(self, "部分失败", f"以下文件移动失败:\n" + "\n".join(failed_files[:10]))
+
+                except Exception as e:
+                    QMessageBox.warning(self, "移动失败", f"移动文件时发生错误: {str(e)}")
+                    logger.error(f"移动文件失败: {e}")
+
+    def copy_selected_files(self):
+        """复制选中的文件"""
+        files = self.get_selected_files()
+        if not files:
+            QMessageBox.information(self, "提示", "请先选择要复制的文件")
+            return
+
+        # 显示目录选择对话框
+        dialog = DirectoryDialog(self.plugin, self.current_remote_path, self)
+        if dialog.exec_() == QDialog.Accepted:
+            target_path = dialog.selected_path
+
+            try:
+                success_count = 0
+                failed_files = []
+
+                for file_info in files:
+                    old_path = file_info.get('path', '')
+                    new_filename = file_info.get('name', '')
+                    if target_path:
+                        new_path = f"{target_path.rstrip('/')}/{new_filename}"
+                    else:
+                        new_path = new_filename
+
+                    result = self.plugin.copy_file(old_path, new_path)
+                    if result.is_success():
+                        success_count += 1
+                    else:
+                        failed_files.append(file_info.get('name', ''))
+
+                if success_count > 0:
+                    QMessageBox.information(self, "复制成功", f"成功复制 {success_count} 个文件")
+                    if target_path != self.current_remote_path:
+                        self.load_files()
+                if failed_files:
+                    QMessageBox.warning(self, "部分失败", f"以下文件复制失败:\n" + "\n".join(failed_files[:10]))
+
+            except Exception as e:
+                QMessageBox.warning(self, "复制失败", f"复制文件时发生错误: {str(e)}")
+                logger.error(f"复制文件失败: {e}")
+
+    def download_selected_files(self):
+        """下载选中的文件"""
+        files = self.get_selected_files()
+        if not files:
+            QMessageBox.information(self, "提示", "请先选择要下载的文件")
+            return
+
+        # 选择保存目录
+        save_dir = QFileDialog.getExistingDirectory(self, "选择保存目录")
+        if not save_dir:
+            return
+
+        try:
+            success_count = 0
+            failed_files = []
+
+            for file_info in files:
+                remote_path = file_info.get('path', '')
+                filename = file_info.get('name', '')
+                local_path = os.path.join(save_dir, filename)
+
+                result = self.plugin.download_file(remote_path, local_path)
+                if result.is_success():
+                    success_count += 1
+                else:
+                    failed_files.append(filename)
+
+            if success_count > 0:
+                QMessageBox.information(self, "下载成功", f"成功下载 {success_count} 个文件")
+            if failed_files:
+                QMessageBox.warning(self, "部分失败", f"以下文件下载失败:\n" + "\n".join(failed_files[:10]))
+
+        except Exception as e:
+            QMessageBox.warning(self, "下载失败", f"下载文件时发生错误: {str(e)}")
+            logger.error(f"下载文件失败: {e}")
+
     def delete_selected_file(self):
         """删除选中的文件"""
-        selected_items = self.table.selectedItems()
-        if not selected_items:
+        files = self.get_selected_files()
+        if not files:
             QMessageBox.information(self, "提示", "请先选择要删除的文件")
             return
 
-        row = selected_items[0].row()
-        file_info = self.table.item(row, 0).data(Qt.UserRole)
+        # 检查是否包含目录
+        has_dir = any(f.get('type') == 'dir' for f in files)
 
         # 确认删除
+        file_names = "\n".join([f.get('name', '') for f in files[:5]])
+        if len(files) > 5:
+            file_names += f"\n... 还有 {len(files) - 5} 个文件"
+
+        if has_dir:
+            message = f"确定要删除 {len(files)} 个文件或目录吗？\n\n{file_names}\n\n此操作不可恢复！"
+        else:
+            message = f"确定要删除 {len(files)} 个文件吗？\n\n{file_names}\n\n此操作不可恢复！"
+
         reply = QMessageBox.question(
             self,
             "确认删除",
-            f"确定要删除文件 '{file_info.get('name')}' 吗？\n\n此操作不可恢复！",
+            message,
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
 
         if reply == QMessageBox.Yes:
             try:
-                result = self.plugin.delete_file(file_info.get('path', ''))
-                if result.is_success():
-                    QMessageBox.information(self, "删除成功", result.message)
-                    # 重新加载文件列表
+                success_count = 0
+                failed_files = []
+
+                for file_info in files:
+                    file_path = file_info.get('path', '')
+                    file_type = file_info.get('type', 'unknown')
+                    logger.info(f"准备删除: {file_path} (类型: {file_type})")
+
+                    # 根据类型调用不同的删除方法
+                    if file_type == 'dir':
+                        if hasattr(self.plugin, 'delete_directory'):
+                            result = self.plugin.delete_directory(file_path)
+                        else:
+                            result = self.plugin.delete_file(file_path)
+                    else:
+                        result = self.plugin.delete_file(file_path)
+
+                    if result.is_success():
+                        success_count += 1
+                        logger.info(f"删除成功: {file_path}")
+                    else:
+                        failed_files.append(file_info.get('name', ''))
+                        logger.error(f"删除失败: {file_path}, 原因: {result.message}")
+
+                if success_count > 0:
+                    QMessageBox.information(self, "删除成功", f"成功删除 {success_count} 个文件")
                     self.load_files()
-                else:
-                    QMessageBox.warning(self, "删除失败", result.message)
-                    logger.error(f"删除文件失败: {result.message}")
+                if failed_files:
+                    QMessageBox.warning(self, "部分失败", f"以下文件删除失败:\n" + "\n".join(failed_files[:10]))
+
             except Exception as e:
                 QMessageBox.warning(self, "删除失败", f"删除文件时发生错误: {str(e)}")
-                logger.error(f"删除文件失败: {e}")
+                logger.error(f"删除文件失败: {e}", exc_info=True)
 
     def upload_current_document(self):
         """上传当前打开的文档"""
@@ -866,6 +1317,9 @@ class FileListPanel(QDockWidget):
             logger.info("上传功能已启用")
         else:
             logger.info("上传功能已禁用")
+
+        # 移动、复制、下载功能默认启用
+        logger.info("移动、复制、下载功能已启用")
 
     def update_pagination_label(self):
         """更新分页标签"""

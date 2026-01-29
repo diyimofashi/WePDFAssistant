@@ -14,13 +14,14 @@ class StorageErrorCode(Enum):
     DOWNLOAD_FAILED = 1  # 下载失败
     UPLOAD_FAILED = 2  # 上传失败
     DELETE_FAILED = 3  # 删除失败
-    NETWORK_ERROR = 4  # 网络错误
-    FILE_NOT_FOUND = 5  # 文件不存在
-    INVALID_URL = 6  # URL无效
-    INVALID_CONFIG = 7  # 配置无效
-    INIT_ERROR = 8  # 初始化错误
-    PERMISSION_DENIED = 9  # 权限不足
-    TIMEOUT = 10  # 超时
+    COPY_FAILED = 4  # 复制失败
+    NETWORK_ERROR = 5  # 网络错误
+    FILE_NOT_FOUND = 6  # 文件不存在
+    INVALID_URL = 7  # URL无效
+    INVALID_CONFIG = 8  # 配置无效
+    INIT_ERROR = 9  # 初始化错误
+    PERMISSION_DENIED = 10  # 权限不足
+    TIMEOUT = 11  # 超时
 
 
 class StorageResult:
@@ -119,6 +120,50 @@ class StoragePluginInterface(metaclass=abc.ABCMeta):
         return StorageResult(
             code=StorageErrorCode.NETWORK_ERROR,
             message="删除功能未实现"
+        )
+
+    def delete_directory(self, remote_path: str) -> StorageResult:
+        """
+        删除远程目录（可选实现）
+
+        Args:
+            remote_path: 远程目录路径
+
+        Returns:
+            StorageResult: 删除结果
+        """
+        return StorageResult(
+            code=StorageErrorCode.NETWORK_ERROR,
+            message="删除目录功能未实现"
+        )
+        """
+        删除远程文件（可选实现）
+
+        Args:
+            remote_path: 远程文件路径
+
+        Returns:
+            StorageResult: 删除结果
+        """
+        return StorageResult(
+            code=StorageErrorCode.NETWORK_ERROR,
+            message="删除功能未实现"
+        )
+
+    def copy_file(self, source_path: str, target_path: str) -> StorageResult:
+        """
+        复制远程文件（可选实现）
+
+        Args:
+            source_path: 源文件路径
+            target_path: 目标文件路径
+
+        Returns:
+            StorageResult: 复制结果
+        """
+        return StorageResult(
+            code=StorageErrorCode.NETWORK_ERROR,
+            message="复制功能未实现"
         )
 
     @abc.abstractmethod

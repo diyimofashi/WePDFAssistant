@@ -356,10 +356,268 @@ class QcloudCosStorage(StoragePluginInterface):
             )
 
         except Exception as e:
-            logger.error(f"删除文件失败: {e}")
+            logger.error(f"删除文件失败: {e}", exc_info=True)
+            return StorageResult(
+                code=StorageErrorCode.DELETE_FAILED,
+                message=f"删除失败: {str(e)}"
+            )
+
+    def delete_directory(self, remote_path: str) -> StorageResult:
+        """
+        删除远程目录（递归删除目录下所有文件）
+
+        Args:
+            remote_path: 远程目录路径（相对于path_prefix）
+
+        Returns:
+            StorageResult: 删除结果
+        """
+        try:
+            if not self.client:
+                return StorageResult(
+                    code=StorageErrorCode.INIT_ERROR,
+                    message="插件未初始化"
+                )
+
+            # 构建完整的对象键
+            if self.path_prefix:
+                object_key = f"{self.path_prefix.rstrip('/')}/{remote_path}"
+            else:
+                object_key = remote_path
+
+            # 确保以 / 结尾作为前缀
+            # 注意：腾讯云 COS 的对象键不应以 / 开头（除非是根目录）
+            if object_key.startswith('/'):
+                prefix = object_key[1:].rstrip('/') + '/'  # 移除开头的 /
+            else:
+                prefix = object_key.rstrip('/') + '/'
+
+            logger.info(f"[delete_directory] 准备删除目录: prefix={prefix}, path_prefix={self.path_prefix}, remote_path={remote_path}, object_key={object_key}")
+            logger.info(f"[delete_directory] Bucket={self.bucket_name}")
+
+            # 参考官方代码，使用 Marker 和 IsTruncated 进行分页
+            is_over = False
+            marker = ''
+            delete_count = 0
+
+            while not is_over:
+                # 列出对象
+                list_result = self.client.list_objects(
+                    Bucket=self.bucket_name,
+                    Prefix=prefix,
+                    Marker=marker
+                )
+
+                logger.info(f"[delete_directory] list_objects 结果: marker={marker}, IsTruncated={list_result.get('IsTruncated', 'false')}, Contents数量={len(list_result.get('Contents', []))}")
+                logger.info(f"[delete_directory] list_result keys: {list(list_result.keys())}")
+
+                # 删除所有对象
+                if 'Contents' in list_result:
+                    for content in list_result['Contents']:
+                        key = content['Key']
+                        logger.info(f"[delete_directory] 准备删除对象: {key}, Size={content.get('Size', 0)}")
+                        try:
+                            self.client.delete_object(Bucket=self.bucket_name, Key=key)
+                            delete_count += 1
+                            logger.info(f"[delete_directory] 删除成功: {key}")
+                        except Exception as e:
+                            logger.error(f"[delete_directory] 删除失败: {key}, 错误: {e}", exc_info=True)
+
+                # 检查是否还有更多对象
+                # 注意：IsTruncated 可能是字符串 'false'/'true' 或布尔值
+                is_truncated = list_result.get('IsTruncated', False)
+                if isinstance(is_truncated, str):
+                    is_truncated = is_truncated.lower() == 'true'
+
+                if not is_truncated:
+                    is_over = True
+                else:
+                    # 获取下一个 marker
+                    if 'Contents' in list_result and list_result['Contents']:
+                        marker = list_result['Contents'][-1]['Key']
+                    else:
+                        # 如果没有 Contents 但 IsTruncated 为 true，使用 NextMarker
+                        marker = list_result.get('NextMarker', '')
+                        if not marker:
+                            is_over = True
+
+            logger.info(f"目录删除完成，共删除 {delete_count} 个对象")
+            return StorageResult(
+                code=StorageErrorCode.SUCCESS,
+                message=f"目录 '{remote_path}' 删除成功（共 {delete_count} 个文件）",
+                data={'path': remote_path, 'count': delete_count}
+            )
+
+        except Exception as e:
+            logger.error(f"删除目录失败: {e}", exc_info=True)
+            return StorageResult(
+                code=StorageErrorCode.DELETE_FAILED,
+                message=f"删除目录失败: {str(e)}"
+            )
+
+    def delete_file(self, remote_path: str) -> StorageResult:
+        """
+        删除远程文件或目录
+
+        Args:
+            remote_path: 远程文件路径（相对于path_prefix）
+
+        Returns:
+            StorageResult: 删除结果
+        """
+        try:
+            if not self.client:
+                return StorageResult(
+                    code=StorageErrorCode.INIT_ERROR,
+                    message="插件未初始化"
+                )
+
+            # 构建完整的对象键
+            if self.path_prefix:
+                object_key = f"{self.path_prefix.rstrip('/')}/{remote_path}"
+            else:
+                object_key = remote_path
+
+            ***REMOVED*** COS 的对象键不应以 / 开头（除非是根目录）
+            if object_key.startswith('/'):
+                object_key = object_key[1:]
+
+            logger.info(f"准备删除: {object_key}")
+
+            # 尝试删除（如果是目录，需要递归删除目录下的所有文件）
+            # 先尝试直接删除
+            try:
+                response = self.client.delete_object(
+                    Bucket=self.bucket_name,
+                    Key=object_key
+                )
+                logger.info(f"删除成功: {object_key}")
+                return StorageResult(
+                    code=StorageErrorCode.SUCCESS,
+                    message=f"文件 '{remote_path}' 删除成功",
+                    data={'path': remote_path}
+                )
+            except Exception as e:
+                # 如果删除失败，可能是目录，尝试列出目录内容并递归删除
+                logger.info(f"直接删除失败，可能是目录，尝试递归删除: {object_key}, 错误: {e}")
+
+                # 确保以 / 结尾作为前缀
+                prefix = object_key.rstrip('/') + '/'
+
+                # 参考官方代码，使用 Marker 和 IsTruncated 进行分页
+                is_over = False
+                marker = ''
+                delete_count = 0
+
+                while not is_over:
+                    # 列出对象
+                    list_result = self.client.list_objects(
+                        Bucket=self.bucket_name,
+                        Prefix=prefix,
+                        Marker=marker
+                    )
+
+                    logger.info(f"递归删除 list_objects 结果: marker={marker}, IsTruncated={list_result.get('IsTruncated', 'false')}, Contents数量={len(list_result.get('Contents', []))}")
+
+                    # 删除所有对象
+                    if 'Contents' in list_result:
+                        for content in list_result['Contents']:
+                            key = content['Key']
+                            logger.info(f"递归删除对象: {key}, Size={content.get('Size', 0)}")
+                            try:
+                                self.client.delete_object(Bucket=self.bucket_name, Key=key)
+                                delete_count += 1
+                                logger.info(f"递归删除成功: {key}")
+                            except Exception as e:
+                                logger.error(f"递归删除失败: {key}, 错误: {e}")
+
+                    # 检查是否还有更多对象
+                    is_truncated = list_result.get('IsTruncated', False)
+                    if isinstance(is_truncated, str):
+                        is_truncated = is_truncated.lower() == 'true'
+
+                    if not is_truncated:
+                        is_over = True
+                    else:
+                        # 获取下一个 marker
+                        if 'Contents' in list_result and list_result['Contents']:
+                            marker = list_result['Contents'][-1]['Key']
+                        else:
+                            marker = list_result.get('NextMarker', '')
+                            if not marker:
+                                is_over = True
+
+                logger.info(f"递归删除完成，共删除 {delete_count} 个对象")
+                return StorageResult(
+                    code=StorageErrorCode.SUCCESS,
+                    message=f"目录 '{remote_path}' 删除成功（共 {delete_count} 个文件）",
+                    data={'path': remote_path, 'count': delete_count}
+                )
+
+        except Exception as e:
+            logger.error(f"删除失败: {e}", exc_info=True)
             return StorageResult(
                 code=StorageErrorCode.DELETE_FAILED,
                 message=f"删除文件失败: {str(e)}"
+            )
+
+    def copy_file(self, source_path: str, target_path: str) -> StorageResult:
+        """
+        复制远程文件
+
+        Args:
+            source_path: 源文件路径（相对于path_prefix）
+            target_path: 目标文件路径（相对于path_prefix）
+
+        Returns:
+            StorageResult: 复制结果
+        """
+        try:
+            if not self.client:
+                return StorageResult(
+                    code=StorageErrorCode.INIT_ERROR,
+                    message="插件未初始化"
+                )
+
+            # 构建完整的对象键
+            if self.path_prefix:
+                source_key = f"{self.path_prefix.rstrip('/')}/{source_path}"
+                target_key = f"{self.path_prefix.rstrip('/')}/{target_path}"
+            else:
+                source_key = source_path
+                target_key = target_path
+
+            logger.info(f"准备复制文件: {source_key} -> {target_key}")
+
+            # 复制文件，Python SDK 使用 copy 方法
+            copy_source = {
+                'Bucket': self.bucket_name,
+                'Key': source_key,
+                'Region': self.region
+            }
+
+            response = self.client.copy(
+                Bucket=self.bucket_name,
+                Key=target_key,
+                CopySource=copy_source
+            )
+
+            logger.info(f"文件复制成功: {target_key}")
+            return StorageResult(
+                code=StorageErrorCode.SUCCESS,
+                message=f"文件复制成功",
+                data={
+                    'source_path': source_path,
+                    'target_path': target_path,
+                    'target_key': target_key
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"复制文件失败: {e}")
+            return StorageResult(
+                code=StorageErrorCode.COPY_FAILED,
+                message=f"复制文件失败: {str(e)}"
             )
 
     def list_files(self, remote_path: str = "", **kwargs) -> StorageResult:
