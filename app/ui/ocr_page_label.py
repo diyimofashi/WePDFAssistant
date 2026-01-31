@@ -230,24 +230,13 @@ class OCRPageLabel(QWidget):
             QTextEdit: 创建的文本块，如果失败返回None
         """
         try:
-            # 计算字体大小
-            font_size = max(int(rect.height() * 0.5), 8)
+            # 计算合适的字体大小，让文本填满bbox的宽度
+            w = rect.width()
+            h = rect.height()
+            font_size = self._calculate_font_size(text, w, h)
 
-            # 计算合适的字体大小 - 使用二分查找优化
+            # 创建字体
             font = QFont("Arial", font_size)
-            fm = QFontMetrics(font)
-            text_width = fm.horizontalAdvance(text)
-
-            # 如果文本宽度超过矩形宽度，调整字体大小
-            if text_width > rect.width() and font_size > 6:
-                # 计算需要的缩放比例
-                scale_ratio = rect.width() / text_width
-                font_size = max(int(font_size * scale_ratio * 0.95), 6)  # 0.95是安全边距
-                font.setPointSize(font_size)
-
-            # 计算最终文本高度
-            fm = QFontMetrics(font)
-            text_height = fm.height()
 
             # 创建文本块
             text_block = QTextEdit(self)
@@ -351,3 +340,44 @@ class OCRPageLabel(QWidget):
         max_y = max(y_coords)
 
         return QRect(int(min_x), int(min_y), int(max_x - min_x), int(max_y - min_y))
+
+    def _calculate_font_size(self, text, w, h):
+        """
+        计算填满宽和高的一行字体大小
+
+        Args:
+            text: 文本内容
+            w: 容器宽度
+            h: 容器高度
+
+        Returns:
+            int: 计算出的字体大小
+        """
+        if h > w:  # 竖排转为横排计算
+            w, h = h, w
+
+        # 字体大小初值，假设为行高
+        font_size = round(h)
+
+        # 字体大小下限
+        min_size = 5
+
+        # 获取文本长度的函数
+        def get_text_len(text, size):
+            font = QFont("Arial", int(size))
+            fm = QFontMetrics(font)
+            return fm.horizontalAdvance(text)
+
+        # 尝试减小字体，直到行宽刚好小于界限
+        while get_text_len(text, font_size) > w and font_size >= min_size:
+            font_size -= 1
+
+        # 尝试增大字体，直到行宽刚好超过界限
+        while get_text_len(text, font_size) < w:
+            font_size += 1
+
+        # 再次减小字体，将精度提升到 0.1
+        while get_text_len(text, font_size) > w and font_size >= min_size:
+            font_size -= 0.1
+
+        return int(font_size)
