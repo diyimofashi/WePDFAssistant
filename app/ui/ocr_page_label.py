@@ -13,10 +13,25 @@ if project_root not in sys.path:
 from app.utils.logger import get_logger
 logger = get_logger('ocr_page_label')
 
-from PyQt5.QtWidgets import QLabel, QWidget, QTextEdit, QVBoxLayout
-from PyQt5.QtGui import QFont, QFontMetrics
-from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QTimer
+from PyQt5.QtWidgets import QLabel, QWidget, QTextEdit, QVBoxLayout, QApplication
+from PyQt5.QtGui import QFont, QFontMetrics, QPalette, QColor
+from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QTimer, QEvent
 import traceback
+
+
+class CustomTextEdit(QTextEdit):
+    """自定义文本编辑框，失去焦点时清除选中状态"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def focusOutEvent(self, event):
+        """失去焦点事件"""
+        # 清除选中状态
+        cursor = self.textCursor()
+        cursor.clearSelection()
+        self.setTextCursor(cursor)
+        super().focusOutEvent(event)
 
 class OCRPageLabel(QWidget):
     """支持OCR文本层的页面标签 - 双层架构"""
@@ -108,6 +123,9 @@ class OCRPageLabel(QWidget):
                         border: none;
                         color: rgba(0, 0, 0, 255);
                     }
+                    QTextEdit::selection {
+                        background-color: rgba(0, 120, 215, 100);
+                    }
                 """)
             else:
                 block.setStyleSheet("""
@@ -115,6 +133,9 @@ class OCRPageLabel(QWidget):
                         background-color: transparent;
                         border: none;
                         color: transparent;
+                    }
+                    QTextEdit::selection {
+                        background-color: transparent;
                     }
                 """)
         self.debug_mode_changed.emit(enabled)
@@ -239,7 +260,7 @@ class OCRPageLabel(QWidget):
             font = QFont("Arial", font_size)
 
             # 创建文本块
-            text_block = QTextEdit(self)
+            text_block = CustomTextEdit(self)
             text_block.setReadOnly(True)
             text_block.setPlainText(text)
             text_block.setFrameStyle(QTextEdit.NoFrame)
@@ -263,6 +284,9 @@ class OCRPageLabel(QWidget):
                         border: none;
                         color: rgba(0, 0, 0, 255);
                     }
+                    QTextEdit::selection {
+                        background-color: rgba(0, 120, 215, 100);
+                    }
                 """)
             else:
                 text_block.setStyleSheet("""
@@ -270,6 +294,9 @@ class OCRPageLabel(QWidget):
                         background-color: transparent;
                         border: none;
                         color: transparent;
+                    }
+                    QTextEdit::selection {
+                        background-color: transparent;
                     }
                 """)
 
