@@ -1,7 +1,7 @@
 {
-  "last_open_dir": "D:/FNPData/OMR",
+  "last_open_dir": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1103",
   "log_level": "DEBUG",
   "ocr_highlight_mode": true,
-  "file_list_panel_visible": true,
+  "file_list_panel_visible": false,
   "file_list_panel_width": 800
 }
