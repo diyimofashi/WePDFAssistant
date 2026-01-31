@@ -792,25 +792,49 @@ class VirtualScrollArea(QScrollArea):
 
     
     def get_current_page(self):
-        """获取当前页面（基于滚动位置）"""
+        """获取当前页面（基于视口中心点）"""
         scroll_pos = self.verticalScrollBar().value()
+        viewport_height = self.viewport().height()
+        viewport_top = scroll_pos
+        viewport_bottom = scroll_pos + viewport_height
+        center_pos = (viewport_top + viewport_bottom) / 2
         
         # 如果没有页面数据，返回第一页
         if not self.page_positions:
             return 1
         
-        # 遍历页面位置，找到当前滚动位置所在的页面
+        # 找到包含视口中心点的页面
         for i in range(len(self.page_positions) - 1, -1, -1):
             page_start_pos = self.page_positions[i]
             page_height = self.page_heights[i] if i < len(self.page_heights) else 1100
             page_end_pos = page_start_pos + page_height
             
-            # 检查滚动位置是否在当前页面范围内
-            if page_start_pos <= scroll_pos < page_end_pos:
+            # 检查视口中心点是否在当前页面范围内（包含边界）
+            if page_start_pos <= center_pos <= page_end_pos:
                 return i + 1  # 返回1基索引
         
-        # 如果没有找到匹配的页面（例如滚动到底部），返回最后一页
-        return len(self.page_positions)
+        # 如果中心点超出所有页面范围（滚动到最底部），使用可见面积占比判断
+        max_visible_ratio = 0
+        current_page = 1
+        
+        for i in range(len(self.page_positions)):
+            page_start_pos = self.page_positions[i]
+            page_height = self.page_heights[i] if i < len(self.page_heights) else 1100
+            page_end_pos = page_start_pos + page_height
+            
+            # 计算该页在视口中的可见范围
+            visible_start = max(viewport_top, page_start_pos)
+            visible_end = min(viewport_bottom, page_end_pos)
+            visible_height = max(0, visible_end - visible_start)
+            
+            # 计算可见面积占比
+            visible_ratio = visible_height / page_height if page_height > 0 else 0
+            
+            if visible_ratio > max_visible_ratio:
+                max_visible_ratio = visible_ratio
+                current_page = i + 1
+        
+        return current_page
         
     def resizeEvent(self, event):
         """窗口大小变化事件"""
