@@ -1,7 +1,8 @@
 {
   "last_open_dir": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1103",
   "log_level": "DEBUG",
-  "ocr_highlight_mode": true,
+  "ocr_highlight_mode": false,
   "file_list_panel_visible": false,
-  "file_list_panel_width": 800
+  "file_list_panel_width": 800,
+  "use_a4_scaling": true
 }

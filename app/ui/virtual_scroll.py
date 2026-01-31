@@ -377,7 +377,8 @@ class VirtualScrollArea(QScrollArea):
                 return
 
             # 如果存储了OCR识别时的zoom_factor，需要计算缩放比率
-            if ocr_zoom_factor is not None:
+            # 只有在page_scale为默认值1.0时才重新计算，避免覆盖已经计算好的page_scale
+            if ocr_zoom_factor is not None and page_scale == 1.0:
                 # 获取当前的zoom_factor
                 parent = self.parent()
                 while parent and not hasattr(parent, 'pdf_processor'):
@@ -389,6 +390,7 @@ class VirtualScrollArea(QScrollArea):
                     scale_ratio = current_zoom_factor / ocr_zoom_factor if ocr_zoom_factor > 0 else 1.0
                     # 更新page_scale为缩放比率
                     page_scale = scale_ratio
+                    logger.debug(f"[VirtualScroll._set_page_ocr_layer] 重新计算page_scale={page_scale}")
 
             # 检查OCR结果数据
             if hasattr(ocr_result, 'data'):
@@ -695,14 +697,15 @@ class VirtualScrollArea(QScrollArea):
 
                 if parent and hasattr(parent, 'pdf_processor'):
                     pdf_processor = parent.pdf_processor
-                    # 获取页面实际尺寸
-                    page_dimensions = pdf_processor.get_page_dimensions(page_num)
+                    # 获取页面实际尺寸（不应用自动缩放，获取原始尺寸）
+                    page_dimensions = pdf_processor.get_page_dimensions(page_num, apply_auto_scaling=False)
                     if page_dimensions:
                         actual_width = page_dimensions['width']
                         actual_height = page_dimensions['height']
-                        # 计算缩放比例
+                        # 计算缩放比例（从原始PDF坐标到显示坐标）
                         scale_x = pixmap.width() / actual_width if actual_width > 0 else 1.0
                         scale_y = pixmap.height() / actual_height if actual_height > 0 else 1.0
+                        page_scale = max(scale_x, scale_y)
 
                         # 检查是否有OCR数据
                         has_ocr_data = self._has_ocr_data(page_num, pdf_processor)
@@ -710,7 +713,7 @@ class VirtualScrollArea(QScrollArea):
 
                         # 如果有OCR数据，设置OCR文本层
                         if has_ocr_data:
-                            self._set_page_ocr_layer(page_num, page_label)
+                            self._set_page_ocr_layer(page_num, page_label, page_scale=page_scale)
                         else:
                             # 如果没有OCR数据，尝试从PDF提取原生文本
                             logger.debug(f"[VirtualScroll.on_page_rendered] 第{page_num+1}页尝试从PDF提取原生文本")
