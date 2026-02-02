@@ -30,6 +30,9 @@ def get_base_command(output_dir: str = 'dist', incremental: bool = False):
         '--include-module=cv2',
         '--include-module=pyzbar',
         '--include-module=picologging',
+        '--include-package=qcloud_cos',
+        '--include-package=oss2',
+        '--include-package=paramiko',
         '--include-data-dir=app/assets=assets',
         '--include-data-dir=app/config=config',
     ]

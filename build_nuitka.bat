@@ -73,15 +73,14 @@ REM Execute Nuitka compilation using build_config.py
 PDFAssistant\Scripts\python.exe -c "from build_config import execute_command, command_to_string, get_windows_command; cmd = get_windows_command(); print('[Info] Executing:', command_to_string(cmd)); exit(execute_command(cmd))"
 
 if %errorlevel% equ 0 (
-    echo [Info] Finalizing output directory...
-    if exist "dist\start.dist" (
-        if exist "dist\start.dist" rmdir /s /q "dist\start.dist"
-        move "dist\start.dist.dist" "dist\start.dist"
-    )
+    echo [Info] Renaming PDFAssistant.exe if needed...
 
-    echo [Info] Renaming start.exe to PDFAssistant.exe...
-    if exist "dist\start.dist\start.exe" (
-        move "dist\start.dist\start.exe" "dist\start.dist\PDFAssistant.exe"
+    echo [Info] Copying all plugin directories...
+    if exist "dist\start.dist\app" (
+        for /d %%d in ("app\plugins*") do (
+            echo [Info] Copying %%~nxd to dist\start.dist\app\...
+            if exist "%%d" xcopy /e /y "%%d" "dist\start.dist\app\%%~nxd\"
+        )
     )
 
     echo [Info] Copying all plugin directories...
