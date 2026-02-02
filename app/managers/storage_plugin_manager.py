@@ -77,6 +77,9 @@ class StoragePluginManager:
 
                         if plugin_class:
                             plugin_instance = plugin_class()
+                            # 如果模块中有PluginInfo，设置到插件实例上
+                            if hasattr(plugin_module, 'PluginInfo'):
+                                plugin_instance.PluginInfo = plugin_module.PluginInfo
                             self.plugins[plugin_dir_name] = plugin_instance
                             loaded_plugins.append(plugin_dir_name)
                             logger.info(f"成功加载云存储插件: {plugin_dir_name}")
@@ -356,8 +359,9 @@ class StoragePluginManager:
                 return getattr(plugin, 'PluginInfo', {})
             else:
                 # 如果插件没有PluginInfo，尝试从配置文件加载
-                app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                plugin_dir = os.path.join(app_root, 'plugins-storage', plugin_name)
+                from app.utils.app_path import get_plugin_dir
+                plugin_root_dir = get_plugin_dir('plugins-storage')
+                plugin_dir = os.path.join(plugin_root_dir, plugin_name)
                 config_file = os.path.join(plugin_dir, 'config.py')
 
                 if os.path.exists(config_file):
