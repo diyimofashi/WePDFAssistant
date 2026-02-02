@@ -11,8 +11,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # 检测是否为编译环境（Nuitka或PyInstaller）
 if hasattr(sys, 'frozen') or hasattr(sys, '_MEIPASS') or not os.path.exists(os.path.join(os.path.dirname(__file__), 'app')):
     # Nuitka/PyInstaller 编译后的环境
-    # sys.executable 指向 start.exe，返回其所在目录
-    APPLICATION_PATH = os.path.dirname(sys.executable)
+    # 优先使用 sys._MEIPASS（Nuitka 打包后的资源目录）
+    if hasattr(sys, '_MEIPASS'):
+        APPLICATION_PATH = sys._MEIPASS
+    else:
+        APPLICATION_PATH = os.path.dirname(sys.executable)
     # 确保 sys.frozen 存在（Nuitka可能不会自动设置）
     if not hasattr(sys, 'frozen'):
         sys.frozen = True

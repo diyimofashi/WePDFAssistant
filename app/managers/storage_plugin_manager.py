@@ -25,7 +25,7 @@ class StoragePluginManager:
         从指定目录加载所有云存储插件
 
         Args:
-            plugins_dir: 插件目录路径，默认为 app/plugins-storage/
+            plugins_dir: 插件目录路径，默认为 plugins-storage/
 
         Returns:
             List[str]: 成功加载的插件名称列表
@@ -46,23 +46,19 @@ class StoragePluginManager:
                 init_file = os.path.join(plugin_dir, '__init__.py')
                 if os.path.exists(init_file):
                     try:
-                        # 使用更可靠的方式加载插件模块
-                        # 不依赖相对导入，直接导入插件包
-                        plugin_package = f"app.plugins-storage.{plugin_dir_name}"
+                        # 将插件目录添加到 sys.path，使相对导入能正确解析
+                        # 这与 OCR/条码插件管理器的加载方式一致
+                        plugin_root_dir = os.path.dirname(init_file)
+                        sys.path.insert(0, plugin_root_dir)
 
-                        try:
-                            # 首先尝试直接导入
-                            plugin_module = importlib.import_module(plugin_package)
-                        except ImportError:
-                            # 如果直接导入失败，尝试使用 spec 方式
-                            spec = importlib.util.spec_from_file_location(
-                                plugin_package,
-                                init_file
-                            )
-                            plugin_module = importlib.util.module_from_spec(spec)
-
-                            # 设置包路径，使相对导入能正确解析
-                            spec.loader.exec_module(plugin_module)
+                        # 动态导入插件
+                        spec = importlib.util.spec_from_file_location(
+                            f"storage_plugin_{plugin_dir_name}",
+                            init_file
+                        )
+                        plugin_module = importlib.util.module_from_spec(spec)
+                        sys.modules[f"storage_plugin_{plugin_dir_name}"] = plugin_module
+                        spec.loader.exec_module(plugin_module)
 
                         # 查找插件类
                         plugin_class = None
