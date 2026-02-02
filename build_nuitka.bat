@@ -75,27 +75,12 @@ PDFAssistant\Scripts\python.exe -c "from build_config import execute_command, co
 if %errorlevel% equ 0 (
     echo [Info] Renaming PDFAssistant.exe if needed...
 
-    echo [Info] Copying all plugin directories...
+    echo [Info] Copying plugin directories to dist\start.dist\app\...
     if exist "dist\start.dist\app" (
         for /d %%d in ("app\plugins*") do (
             echo [Info] Copying %%~nxd to dist\start.dist\app\...
             if exist "%%d" xcopy /e /y "%%d" "dist\start.dist\app\%%~nxd\"
         )
-    )
-
-    echo [Info] Copying all plugin directories...
-    if exist "dist\start.dist\app" (
-        for /d %%d in ("app\plugins*") do (
-            echo [Info] Copying %%~nxd to dist\start.dist\app\...
-            if exist "%%d" xcopy /e /y "%%d" "dist\start.dist\app\%%~nxd\"
-        )
-    )
-)
-REM 复制插件到dist/start.dist目录
-if exist "app\plugins" (
-    for /d %%d in ("app\plugins*") do (
-        echo [Info] Copying %%~nxd to dist\start.dist\app\...
-        if exist "%%d" xcopy /e /y "%%d" "dist\start.dist\%%~nxd\"
     )
 )
 

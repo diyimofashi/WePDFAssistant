@@ -45,11 +45,12 @@ def check_storage_plugin():
         return _plugin_status_cache['has_storage_plugin']
 
     try:
-        # 检查存储插件目录是否存在
-        plugins_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                                   'plugins-storage')
+        # 使用 app_path 模块获取插件目录,支持编译后环境
+        from app.utils.app_path import get_plugin_dir
+        plugins_dir = get_plugin_dir('plugins-storage')
 
         if not os.path.exists(plugins_dir):
+            logger.debug(f"存储插件目录不存在: {plugins_dir}")
             _plugin_status_cache['has_storage_plugin'] = False
             return False
 
@@ -59,7 +60,7 @@ def check_storage_plugin():
 
         result = len(plugin_dirs) > 0
         _plugin_status_cache['has_storage_plugin'] = result
-        logger.debug(f"存储插件检查结果: {result}, 插件数: {len(plugin_dirs)}")
+        logger.debug(f"存储插件检查结果: {result}, 插件数: {len(plugin_dirs)}, 目录: {plugins_dir}")
         return result
     except Exception as e:
         logger.error(f"检查存储插件时出错: {e}")
