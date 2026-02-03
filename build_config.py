@@ -35,6 +35,7 @@ def get_base_command(output_dir: str = 'dist', incremental: bool = False):
         '--include-package=paramiko',
         '--include-data-dir=app/assets=assets',
         '--include-data-dir=app/config=config',
+        '--include-data-file=app/about.md=about.md',
     ]
 
     if incremental:

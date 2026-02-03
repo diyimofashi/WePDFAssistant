@@ -82,6 +82,11 @@ if %errorlevel% equ 0 (
             if exist "%%d" xcopy /e /y "%%d" "dist\start.dist\app\%%~nxd\"
         )
     )
+
+    echo [Info] Copying about.md to dist\start.dist\...
+    if exist "app\about.md" (
+        copy /y "app\about.md" "dist\start.dist\about.md" >nul
+    )
 )
 
 echo.

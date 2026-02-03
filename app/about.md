@@ -10,7 +10,7 @@
 
 如果您觉得这个工具对您有帮助，欢迎扫码赞助支持，您的鼓励是我们持续改进的动力。
 
-![赞助二维码](./images/sponsor_qrcode.png)
+![赞助二维码](./assets/sponsor_qrcode.png)
 
 ## 技术支持
 
@@ -18,11 +18,11 @@
 
 **微信公众号**
 
-![微信公众号](./images/wechat_gzh_qrcode.png)
+![微信公众号](./assets/wechat_gzh_qrcode.png)
 
 **联系微信**
 
-![联系微信](./images/wechat_contact_qrcode.png)
+![联系微信](./assets/wechat_contact_qrcode.png)
 
 ---
 

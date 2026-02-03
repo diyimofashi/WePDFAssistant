@@ -66,8 +66,15 @@ class OperationManagerMixin:
     
     def show_about(self):
         """显示关于对话框"""
-        # 读取Markdown文件
-        about_file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "about.md")
+        from app.utils.app_path import get_app_root
+        
+        # 使用 app_path 模块获取应用根目录,支持编译后环境
+        app_root = get_app_root()
+        about_file_path = os.path.join(app_root, "about.md")
+        
+        # 如果不存在,尝试 app 目录(开发环境)
+        if not os.path.exists(about_file_path):
+            about_file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "about.md")
 
         if not os.path.exists(about_file_path):
             logger.warning(f"关于文件不存在: {about_file_path}")
@@ -80,11 +87,37 @@ class OperationManagerMixin:
 
             # 转换Markdown为HTML
             html_content = markdown2.markdown(markdown_text, extras=['tables', 'fenced-code-blocks'])
+            
+            # 处理图片路径:将相对路径转换为绝对路径
+            from app.utils.app_path import get_assets_dir
+            import re
+            import platform
+
+            assets_dir = get_assets_dir()
+
+            # 在 Windows 上使用绝对路径,在 Linux/macOS 上使用 file:// URL
+            if platform.system() == 'Windows':
+                # Windows: 直接使用绝对路径,QTextBrowser 支持
+                assets_path = assets_dir.replace('\\', '/')
+                html_content = html_content.replace('./assets/', assets_path + '/')
+            else:
+                # Linux/macOS: 使用 file:// URL
+                assets_url = assets_dir.replace('\\', '/')
+                if not assets_url.startswith('/'):
+                    assets_url = '/' + assets_url
+                html_content = html_content.replace('./assets/', f'file://{assets_url}/')
+
+            # 添加固定尺寸的 img 标签
+            html_content = re.sub(
+                r'<img([^>]+)>',
+                r'<img width="200" height="200"\1>',
+                html_content
+            )
 
             # 创建对话框
             dialog = QDialog(self)
             dialog.setWindowTitle("关于")
-            dialog.resize(700, 700)
+            dialog.resize(600, 550)
 
             layout = QVBoxLayout()
 
@@ -98,6 +131,14 @@ class OperationManagerMixin:
                 QTextBrowser {
                     font-size: 12px;
                     padding: 10px;
+                }
+                QTextBrowser img {
+                    max-width: 200px;
+                    max-height: 200px;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    padding: 4px;
+                    margin: 10px 0;
                 }
                 h1 {
                     color: #2c3e50;

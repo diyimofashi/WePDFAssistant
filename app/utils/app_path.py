@@ -59,15 +59,16 @@ def get_assets_dir() -> str:
     """
     获取资源目录
     开发环境：app 目录/assets
-    编译后：执行目录/app/assets
+    编译后：执行目录/assets (因为 --include-data-dir=app/assets=assets 会将 assets 放到根目录)
     """
     # 检查是否编译后环境
     is_frozen = getattr(sys, 'frozen', False)
     has_meipass = hasattr(sys, '_MEIPASS')
 
     if is_frozen or has_meipass:
-        # 编译后环境：assets 在 app 目录下
-        return os.path.join(get_app_root(), 'app', 'assets')
+        # 编译后环境：assets 在可执行文件所在目录
+        # 因为编译时使用 --include-data-dir=app/assets=assets
+        return os.path.join(get_app_root(), 'assets')
     else:
         # 开发环境：assets 在 app 目录下
         return os.path.join(get_app_root(), 'assets')
