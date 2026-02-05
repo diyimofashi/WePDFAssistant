@@ -100,6 +100,17 @@ class MenuManager(QObject):
             self.parent.file_list_panel_visible_action.triggered.connect(self.toggle_file_list_panel_visible)
             view_menu.addAction(self.parent.file_list_panel_visible_action)
 
+        # 历史记录面板
+        from app.utils.plugin_checker import check_history_plugin
+        if check_history_plugin():
+            self.parent.history_panel_visible_action = QAction("📜 历史记录面板", self.parent)
+            self.parent.history_panel_visible_action.setCheckable(True)
+            # 读取设置
+            history_visible = AppSettings.get_history_panel_visible()
+            self.parent.history_panel_visible_action.setChecked(history_visible)
+            self.parent.history_panel_visible_action.triggered.connect(self.toggle_history_panel_visible)
+            view_menu.addAction(self.parent.history_panel_visible_action)
+
         # 缩放子菜单
         view_menu.addSeparator()
         zoom_menu = view_menu.addMenu("🔍 缩放")
@@ -301,3 +312,22 @@ class MenuManager(QObject):
 
         logger = get_logger('menu_manager')
         logger.info(f"文件列表面板可见性设置已更改为: {'显示' if new_value else '隐藏'}")
+
+    def toggle_history_panel_visible(self):
+        """切换历史记录面板的可见性设置"""
+        current = AppSettings.get_history_panel_visible()
+        new_value = not current
+        AppSettings.set_history_panel_visible(new_value)
+
+        # 更新菜单项状态
+        self.parent.history_panel_visible_action.setChecked(new_value)
+
+        # 如果设置为显示且面板当前不可见，则显示它
+        if new_value and self.parent.history_dock and not self.parent.history_dock.isVisible():
+            self.parent.history_dock.show()
+        # 如果设置为隐藏且面板当前可见，则隐藏它
+        elif not new_value and self.parent.history_dock and self.parent.history_dock.isVisible():
+            self.parent.history_dock.hide()
+
+        logger = get_logger('menu_manager')
+        logger.info(f"历史记录面板可见性设置已更改为: {'显示' if new_value else '隐藏'}")

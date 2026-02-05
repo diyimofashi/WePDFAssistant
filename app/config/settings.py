@@ -181,3 +181,251 @@ class AppSettings:
         settings = cls._load_settings()
         settings['file_list_panel_width'] = int(width)
         cls._save_settings()
+
+    # ==================== 文件历史记录相关设置 ====================
+
+    @classmethod
+    def get_file_history(cls):
+        """获取文件历史记录"""
+        settings = cls._load_settings()
+        return settings.get('file_history', {
+            'max_recent': 20,
+            'max_per_category': 10,
+            'categories': {},
+            'category_mapping': {},
+            'custom_categories': []
+        })
+
+    @classmethod
+    def _save_file_history(cls, history_data):
+        """保存文件历史记录"""
+        settings = cls._load_settings()
+        settings['file_history'] = history_data
+        cls._save_settings()
+
+    @classmethod
+    def get_recent_files(cls):
+        """获取最近文件列表"""
+        history = cls.get_file_history()
+        return history.get('recent_files', [])
+
+    @classmethod
+    def add_recent_file(cls, file_path, filename, page_count=0):
+        """添加最近文件记录"""
+        import time
+        history = cls.get_file_history()
+        recent_files = history.get('recent_files', [])
+
+        # 检查是否已存在该文件
+        for record in recent_files:
+            if record.get('path') == file_path:
+                # 更新打开时间
+                record['open_time'] = int(time.time())
+                record['open_count'] = record.get('open_count', 0) + 1
+                # 移动到列表开头
+                recent_files.remove(record)
+                recent_files.insert(0, record)
+                cls._save_file_history(history)
+                return
+
+        # 创建新记录
+        new_record = {
+            'path': file_path,
+            'filename': filename,
+            'open_time': int(time.time()),
+            'open_count': 1,
+            'last_page': 0,
+            'page_count': page_count
+        }
+
+        # 添加到列表开头
+        recent_files.insert(0, new_record)
+
+        # 检查数量限制
+        max_recent = history.get('max_recent', 20)
+        if len(recent_files) > max_recent:
+            recent_files = recent_files[:max_recent]
+
+        history['recent_files'] = recent_files
+        cls._save_file_history(history)
+
+    @classmethod
+    def clear_recent_files(cls):
+        """清除所有最近文件记录"""
+        history = cls.get_file_history()
+        history['recent_files'] = []
+        cls._save_file_history(history)
+
+    @classmethod
+    def get_file_categories(cls):
+        """获取分类记录"""
+        history = cls.get_file_history()
+        return history.get('categories', {})
+
+    @classmethod
+    def add_file_to_category(cls, file_path, filename, category_name, page_count=0):
+        """添加文件到分类"""
+        import time
+        history = cls.get_file_history()
+        categories = history.get('categories', {})
+
+        if category_name not in categories:
+            categories[category_name] = []
+
+        category_files = categories[category_name]
+
+        # 检查是否已存在该文件
+        for record in category_files:
+            if record.get('path') == file_path:
+                # 更新打开时间
+                record['open_time'] = int(time.time())
+                record['open_count'] = record.get('open_count', 0) + 1
+                # 移动到列表开头
+                category_files.remove(record)
+                category_files.insert(0, record)
+                history['categories'] = categories
+                cls._save_file_history(history)
+                return
+
+        # 创建新记录
+        new_record = {
+            'path': file_path,
+            'filename': filename,
+            'open_time': int(time.time()),
+            'open_count': 1,
+            'last_page': 0,
+            'page_count': page_count
+        }
+
+        # 添加到列表开头
+        category_files.insert(0, new_record)
+
+        # 检查数量限制
+        max_per_category = history.get('max_per_category', 10)
+        if len(category_files) > max_per_category:
+            category_files = category_files[:max_per_category]
+
+        categories[category_name] = category_files
+        history['categories'] = categories
+        cls._save_file_history(history)
+
+    @classmethod
+    def get_category_mapping(cls):
+        """获取目录到分类的映射"""
+        history = cls.get_file_history()
+        return history.get('category_mapping', {})
+
+    @classmethod
+    def set_category_mapping(cls, category_mapping):
+        """设置目录到分类的映射"""
+        history = cls.get_file_history()
+        history['category_mapping'] = category_mapping
+        cls._save_file_history(history)
+
+    @classmethod
+    def get_custom_categories(cls):
+        """获取自定义分类列表"""
+        history = cls.get_file_history()
+        return history.get('custom_categories', [])
+
+    @classmethod
+    def add_custom_category(cls, category_name):
+        """添加自定义分类"""
+        history = cls.get_file_history()
+        custom_categories = history.get('custom_categories', [])
+        if category_name not in custom_categories:
+            custom_categories.append(category_name)
+            history['custom_categories'] = custom_categories
+            cls._save_file_history(history)
+
+    @classmethod
+    def remove_custom_category(cls, category_name):
+        """移除自定义分类"""
+        history = cls.get_file_history()
+        custom_categories = history.get('custom_categories', [])
+        if category_name in custom_categories:
+            custom_categories.remove(category_name)
+            history['custom_categories'] = custom_categories
+            cls._save_file_history(history)
+
+    @classmethod
+    def clear_category(cls, category_name):
+        """清空指定分类的文件记录"""
+        history = cls.get_file_history()
+        categories = history.get('categories', {})
+        if category_name in categories:
+            categories[category_name] = []
+            history['categories'] = categories
+            cls._save_file_history(history)
+
+    @classmethod
+    def remove_file_from_recent(cls, file_path):
+        """从最近文件中移除指定文件"""
+        history = cls.get_file_history()
+        recent_files = history.get('recent_files', [])
+        recent_files = [f for f in recent_files if f.get('path') != file_path]
+        history['recent_files'] = recent_files
+        cls._save_file_history(history)
+
+    @classmethod
+    def remove_file_from_category(cls, category_name, file_path):
+        """从指定分类中移除文件"""
+        history = cls.get_file_history()
+        categories = history.get('categories', {})
+        if category_name in categories:
+            categories[category_name] = [f for f in categories[category_name] if f.get('path') != file_path]
+            history['categories'] = categories
+            cls._save_file_history(history)
+
+    @classmethod
+    def update_file_last_page(cls, file_path, page_num):
+        """更新文件的最后阅读页码"""
+        history = cls.get_file_history()
+        recent_files = history.get('recent_files', [])
+        for record in recent_files:
+            if record.get('path') == file_path:
+                record['last_page'] = page_num
+                break
+        history['recent_files'] = recent_files
+        cls._save_file_history(history)
+
+    @classmethod
+    def get_history_panel_visible(cls):
+        """获取历史记录面板是否默认显示"""
+        settings = cls._load_settings()
+        return settings.get('history_panel_visible', False)  # 默认不显示
+
+    @classmethod
+    def set_history_panel_visible(cls, visible):
+        """设置历史记录面板是否默认显示"""
+        settings = cls._load_settings()
+        settings['history_panel_visible'] = bool(visible)
+        cls._save_settings()
+
+    @classmethod
+    def update_recent_file_page_count(cls, file_path, page_count):
+        """更新最近文件的页数"""
+        history = cls.get_file_history()
+        recent_files = history.get('recent_files', [])
+
+        for record in recent_files:
+            if record.get('path') == file_path:
+                record['page_count'] = page_count
+                history['recent_files'] = recent_files
+                cls._save_file_history(history)
+                return
+
+    @classmethod
+    def update_category_file_page_count(cls, category_name, file_path, page_count):
+        """更新分类中文件的页数"""
+        history = cls.get_file_history()
+        categories = history.get('categories', {})
+
+        if category_name in categories:
+            category_files = categories[category_name]
+            for record in category_files:
+                if record.get('path') == file_path:
+                    record['page_count'] = page_count
+                    history['categories'] = categories
+                    cls._save_file_history(history)
+                    return

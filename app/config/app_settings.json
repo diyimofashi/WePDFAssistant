@@ -1,8 +1,172 @@
 {
-  "last_open_dir": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1103",
+  "last_open_dir": "D:/FNPData/FCUpload/2025-11NeedFinetuneFiles/1103",
   "log_level": "DEBUG",
   "ocr_highlight_mode": false,
   "file_list_panel_visible": false,
   "file_list_panel_width": 800,
-  "use_a4_scaling": true
+  "use_a4_scaling": true,
+  "file_history": {
+    "max_recent": 20,
+    "max_per_category": 10,
+    "categories": {
+      "1103": [
+        {
+          "path": "D:/FNPData/FCUpload/2025-11NeedFinetuneFiles/1103/023-007311_Manulife (International) Limited_HKD.pdf",
+          "filename": "023-007311_Manulife (International) Limited_HKD.pdf",
+          "open_time": 1770277972,
+          "open_count": 1,
+          "last_page": 0,
+          "page_count": 3
+        },
+        {
+          "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1103/052-005414_CITIBANK NA HA NOI BRANCH_VND_searchable.pdf",
+          "filename": "052-005414_CITIBANK NA HA NOI BRANCH_VND_searchable.pdf",
+          "open_time": 1770251597,
+          "open_count": 7,
+          "last_page": 0,
+          "page_count": 6
+        },
+        {
+          "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1103/023-007311_Manulife (International) Limited_HKD_searchable.pdf",
+          "filename": "023-007311_Manulife (International) Limited_HKD_searchable.pdf",
+          "open_time": 1770170606,
+          "open_count": 1,
+          "last_page": 0,
+          "page_count": 3
+        }
+      ],
+      "1104": [
+        {
+          "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1104/074-002119_Muhammad Hasan Hemani_PKR_searchable.pdf",
+          "filename": "074-002119_Muhammad Hasan Hemani_PKR_searchable.pdf",
+          "open_time": 1770187956,
+          "open_count": 1,
+          "last_page": 0,
+          "page_count": 7
+        },
+        {
+          "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1104/090-004914_BPJS Kesehatan_IDR_searchable.pdf",
+          "filename": "090-004914_BPJS Kesehatan_IDR_searchable.pdf",
+          "open_time": 1770187944,
+          "open_count": 1,
+          "last_page": 0,
+          "page_count": 1
+        },
+        {
+          "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1104/090-004913_BPJS Ketenagakerjaan_IDR_searchable.pdf",
+          "filename": "090-004913_BPJS Ketenagakerjaan_IDR_searchable.pdf",
+          "open_time": 1770187923,
+          "open_count": 2,
+          "last_page": 0,
+          "page_count": 1
+        }
+      ],
+      "1106": [
+        {
+          "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1106/074-002122_Mujeeb Alam_PKR_searchable.pdf",
+          "filename": "074-002122_Mujeeb Alam_PKR_searchable.pdf",
+          "open_time": 1770189459,
+          "open_count": 1,
+          "last_page": 0,
+          "page_count": 7
+        }
+      ],
+      "1110": [
+        {
+          "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1110/195-000689_BEI JING STARCO MANAGEMENT CONSULTING LTD._CNY_searchable.pdf",
+          "filename": "195-000689_BEI JING STARCO MANAGEMENT CONSULTING LTD._CNY_searchable.pdf",
+          "open_time": 1770192176,
+          "open_count": 2,
+          "last_page": 0,
+          "page_count": 3
+        }
+      ],
+      "1111": [
+        {
+          "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1111/023-007346_Gap International Sourcing Pte Ltd-SG_USD_searchable.pdf",
+          "filename": "023-007346_Gap International Sourcing Pte Ltd-SG_USD_searchable.pdf",
+          "open_time": 1770192168,
+          "open_count": 1,
+          "last_page": 0,
+          "page_count": 2
+        }
+      ]
+    },
+    "category_mapping": {},
+    "custom_categories": [],
+    "recent_files": [
+      {
+        "path": "D:/FNPData/FCUpload/2025-11NeedFinetuneFiles/1103/023-007311_Manulife (International) Limited_HKD.pdf",
+        "filename": "023-007311_Manulife (International) Limited_HKD.pdf",
+        "open_time": 1770277972,
+        "open_count": 1,
+        "last_page": 0,
+        "page_count": 3
+      },
+      {
+        "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1103/052-005414_CITIBANK NA HA NOI BRANCH_VND_searchable.pdf",
+        "filename": "052-005414_CITIBANK NA HA NOI BRANCH_VND_searchable.pdf",
+        "open_time": 1770251597,
+        "open_count": 7,
+        "last_page": 0,
+        "page_count": 6
+      },
+      {
+        "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1110/195-000689_BEI JING STARCO MANAGEMENT CONSULTING LTD._CNY_searchable.pdf",
+        "filename": "195-000689_BEI JING STARCO MANAGEMENT CONSULTING LTD._CNY_searchable.pdf",
+        "open_time": 1770192176,
+        "open_count": 2,
+        "last_page": 0,
+        "page_count": 3
+      },
+      {
+        "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1111/023-007346_Gap International Sourcing Pte Ltd-SG_USD_searchable.pdf",
+        "filename": "023-007346_Gap International Sourcing Pte Ltd-SG_USD_searchable.pdf",
+        "open_time": 1770192168,
+        "open_count": 1,
+        "last_page": 0,
+        "page_count": 2
+      },
+      {
+        "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1106/074-002122_Mujeeb Alam_PKR_searchable.pdf",
+        "filename": "074-002122_Mujeeb Alam_PKR_searchable.pdf",
+        "open_time": 1770189459,
+        "open_count": 1,
+        "last_page": 0,
+        "page_count": 7
+      },
+      {
+        "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1104/074-002119_Muhammad Hasan Hemani_PKR_searchable.pdf",
+        "filename": "074-002119_Muhammad Hasan Hemani_PKR_searchable.pdf",
+        "open_time": 1770187956,
+        "open_count": 1,
+        "last_page": 0,
+        "page_count": 7
+      },
+      {
+        "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1104/090-004914_BPJS Kesehatan_IDR_searchable.pdf",
+        "filename": "090-004914_BPJS Kesehatan_IDR_searchable.pdf",
+        "open_time": 1770187944,
+        "open_count": 1,
+        "last_page": 0,
+        "page_count": 1
+      },
+      {
+        "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1104/090-004913_BPJS Ketenagakerjaan_IDR_searchable.pdf",
+        "filename": "090-004913_BPJS Ketenagakerjaan_IDR_searchable.pdf",
+        "open_time": 1770187923,
+        "open_count": 2,
+        "last_page": 0,
+        "page_count": 1
+      },
+      {
+        "path": "D:/FNPData/FCUpload/NeedFinetuneFiles_Classify/Cover Sheet/1103/023-007311_Manulife (International) Limited_HKD_searchable.pdf",
+        "filename": "023-007311_Manulife (International) Limited_HKD_searchable.pdf",
+        "open_time": 1770170606,
+        "open_count": 1,
+        "last_page": 0,
+        "page_count": 3
+      }
+    ]
+  }
 }

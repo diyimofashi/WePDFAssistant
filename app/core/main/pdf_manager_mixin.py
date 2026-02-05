@@ -39,7 +39,15 @@ class PDFManagerMixin:
             
             # 更新缩放信息（页面信息和缩放信息已移除，此调用保留兼容性）
             # self.update_zoom_label() # 已注释掉实际调用
-            
+
+            # 更新历史记录中的页数
+            if hasattr(self, 'history_manager') and self.history_manager and self.pdf_processor.current_file:
+                try:
+                    total_pages = self.pdf_processor.get_total_pages()
+                    self.history_manager.update_file_page_count(self.pdf_processor.current_file, total_pages)
+                except Exception as e:
+                    logger.debug(f"更新文件历史页数失败: {e}")
+
             # 更新工具栏的总页数标签
             if hasattr(self, 'toolbar_total_pages_label') and self.pdf_processor:
                 try:
@@ -118,6 +126,21 @@ class PDFManagerMixin:
             self.update_save_actions_state()
         else:
             QMessageBox.critical(self, "错误", message)
+
+        # 更新欢迎界面显示
+        self._update_welcome_display()
+
+    def _update_welcome_display(self):
+        """更新欢迎界面显示"""
+        # 如果有PDF文档，显示PDF显示区域
+        if self.pdf_processor.fitz_document:
+            if hasattr(self, 'stacked_widget') and hasattr(self, 'virtual_scroll'):
+                self.stacked_widget.setCurrentWidget(self.virtual_scroll)
+        else:
+            # 没有PDF文档，显示欢迎界面
+            if hasattr(self, 'welcome_widget') and self.welcome_widget and hasattr(self, 'stacked_widget'):
+                self.stacked_widget.setCurrentWidget(self.welcome_widget)
+                # 不再自动刷新，避免重复加载
     
     def _render_current_page_immediately(self):
         """立即渲染当前页面"""

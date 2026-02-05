@@ -12,12 +12,39 @@ from PyQt5.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QProgressBar, QComboBox, QDialog, QTreeWidget, QTreeWidgetItem,
                              QFileDialog, QCheckBox, QStyle, QStyleOptionButton,
                              QStyledItemDelegate, QApplication)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QRect
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QRect, QMutex, QWaitCondition
 from PyQt5.QtGui import QFont, QPainter, QPalette, QColor
 from typing import Dict, Any
 from app.utils.logger import get_logger
 
 logger = get_logger('file_list_panel')
+
+
+class PluginInitThread(QThread):
+    """插件初始化线程"""
+    init_complete = pyqtSignal(bool, str, object)  # success, message, plugin_instance
+
+    def __init__(self, plugin_manager, plugin_name, config):
+        super().__init__()
+        self.plugin_manager = plugin_manager
+        self.plugin_name = plugin_name
+        self.config = config
+
+    def run(self):
+        """在后台线程中初始化插件"""
+        try:
+            logger.info(f"开始异步初始化插件: {self.plugin_name}")
+            result = self.plugin_manager.initialize_plugin(self.plugin_name, self.config)
+            if result.is_success():
+                plugin = self.plugin_manager.get_plugin(self.plugin_name)
+                logger.info(f"插件 {self.plugin_name} 异步初始化成功")
+                self.init_complete.emit(True, "初始化成功", plugin)
+            else:
+                logger.error(f"插件 {self.plugin_name} 异步初始化失败: {result.message}")
+                self.init_complete.emit(False, result.message, None)
+        except Exception as e:
+            logger.error(f"插件 {self.plugin_name} 异步初始化异常: {e}")
+            self.init_complete.emit(False, str(e), None)
 
 
 class CenterItemDelegate(QStyledItemDelegate):
@@ -268,7 +295,9 @@ class FileListPanel(QDockWidget):
         self.path_history = []  # 路径历史，用于返回上一级
 
         self.setup_ui()
-        self.load_current_plugin_info()
+        # 延迟加载插件信息，避免阻塞UI初始化
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(100, self.load_current_plugin_info)
 
         # 初始化路径标签（在setup_ui之后调用）
         self.update_path_label()
@@ -593,6 +622,7 @@ class FileListPanel(QDockWidget):
                 return
 
             logger.info(f"当前插件名称: {plugin_name}")
+            self.plugin_name = plugin_name
             logger.info("获取插件实例...")
             plugin = storage_plugin_manager.get_plugin(plugin_name)
             if not plugin:
@@ -600,20 +630,39 @@ class FileListPanel(QDockWidget):
                 return
 
             logger.info(f"插件实例获取成功: {plugin}")
-            # 检查插件是否已初始化，如果没有则初始化
+            # 检查插件是否已初始化，如果没有则异步初始化
             if not plugin.is_initialized:
-                logger.info("插件未初始化，开始初始化...")
+                logger.info("插件未初始化，开始异步初始化...")
                 config = storage_config_manager.get_plugin_config(plugin_name)
                 logger.info(f"插件配置: {config}")
-                init_result = storage_plugin_manager.initialize_plugin(plugin_name, config)
-                if not init_result.is_success():
-                    logger.error(f"存储插件 {plugin_name} 初始化失败: {init_result.message}")
-                    return
-                logger.info("插件初始化成功")
+                # 使用工作线程异步初始化插件
+                self.init_thread = PluginInitThread(storage_plugin_manager, plugin_name, config)
+                self.init_thread.init_complete.connect(self._on_plugin_init_complete)
+                self.init_thread.start()
+                logger.info("插件异步初始化线程已启动")
+                return
 
+            # 插件已初始化，直接使用
+            self._on_plugin_initialized(plugin, plugin_name)
+
+        except Exception as e:
+            logger.error(f"加载当前插件失败: {e}", exc_info=True)
+            import traceback
+            traceback.print_exc()
+
+    def _on_plugin_init_complete(self, success, message, plugin):
+        """插件初始化完成的回调"""
+        if success and plugin:
+            logger.info(f"插件 {self.plugin_name} 异步初始化成功")
+            self._on_plugin_initialized(plugin, self.plugin_name)
+        else:
+            logger.error(f"插件 {self.plugin_name} 异步初始化失败: {message}")
+
+    def _on_plugin_initialized(self, plugin, plugin_name):
+        """插件初始化成功后的处理"""
+        try:
             # 使用插件实例
             self.plugin = plugin
-            self.plugin_name = plugin_name
 
             if hasattr(plugin, 'PluginInfo'):
                 plugin_info = plugin.PluginInfo
@@ -634,7 +683,7 @@ class FileListPanel(QDockWidget):
 
             logger.info(f"成功加载下载插件: {plugin_name}")
         except Exception as e:
-            logger.error(f"加载当前插件失败: {e}", exc_info=True)
+            logger.error(f"插件初始化后处理失败: {e}", exc_info=True)
             import traceback
             traceback.print_exc()
 
@@ -671,14 +720,30 @@ class FileListPanel(QDockWidget):
             if not plugin:
                 return
 
-            # 检查插件是否已初始化，如果没有则初始化
+            # 检查插件是否已初始化，如果没有则异步初始化
             if not plugin.is_initialized:
                 config = storage_config_manager.get_plugin_config(plugin_name)
-                init_result = storage_plugin_manager.initialize_plugin(plugin_name, config)
-                if not init_result.is_success():
-                    logger.error(f"存储插件 {plugin_name} 初始化失败: {init_result.message}")
-                    return
+                # 使用工作线程异步初始化插件
+                self.init_thread = PluginInitThread(storage_plugin_manager, plugin_name, config)
+                self.init_thread.init_complete.connect(self._on_plugin_load_complete)
+                self.init_thread.start()
+                return
 
+            # 插件已初始化，直接使用
+            self._on_plugin_loaded(plugin, plugin_name)
+        except Exception as e:
+            logger.error(f"加载当前插件失败: {e}")
+
+    def _on_plugin_load_complete(self, success, message, plugin):
+        """插件初始化完成的回调（用于load_current_plugin）"""
+        if success and plugin:
+            self._on_plugin_loaded(plugin, self.plugin_name)
+        else:
+            logger.error(f"插件 {self.plugin_name} 异步初始化失败: {message}")
+
+    def _on_plugin_loaded(self, plugin, plugin_name):
+        """插件加载完成后的处理（用于load_current_plugin）"""
+        try:
             # 使用插件实例
             self.plugin = plugin
             self.plugin_name = plugin_name
@@ -705,7 +770,7 @@ class FileListPanel(QDockWidget):
             # 自动加载文件列表
             self.load_files()
         except Exception as e:
-            logger.error(f"加载当前插件失败: {e}")
+            logger.error(f"插件加载后处理失败: {e}")
 
     def set_plugin(self, plugin):
         """设置插件（保留用于手动设置的场景）"""
@@ -1482,7 +1547,8 @@ class FileListPanel(QDockWidget):
 
         # 添加根目录 "./"
         root_label = QLabel("./")
-        root_label.setStyleSheet("color: #1890ff; font-size: 12px; text-decoration: underline; cursor: pointer;")
+        root_label.setStyleSheet("color: #1890ff; font-size: 12px; text-decoration: underline;")
+        root_label.setCursor(Qt.PointingHandCursor)
         root_label.mousePressEvent = lambda e: self.navigate_to_path("")
         root_label.setToolTip("点击返回根目录")
         self.path_layout.addWidget(root_label)

@@ -162,11 +162,29 @@ class ToolbarManager(QObject):
             file_list_btn.triggered.connect(self.parent.toggle_file_list_panel)
             toolbar.addAction(file_list_btn)
 
+        # 历史记录按钮
+        from app.utils.plugin_checker import check_history_plugin
+        if check_history_plugin():
+            history_btn = QAction("📜 历史记录", self.parent)
+            history_btn.setToolTip("显示历史记录面板 (Ctrl+H)")
+            history_btn.triggered.connect(self.parent.toggle_history_panel)
+            toolbar.addAction(history_btn)
+
         # 搜索按钮（打开搜索面板）
         search_btn = QAction("🔍 搜索", self.parent)
         search_btn.setToolTip("搜索文本 (Ctrl+F)")
         search_btn.triggered.connect(self.parent.show_search_panel)
         toolbar.addAction(search_btn)
+
+    def _get_recent_files_for_menu(self):
+        """获取最近的文件列表（用于工具栏菜单）"""
+        try:
+            from app.managers.history_manager import HistoryManager
+            if not hasattr(self.parent, 'history_manager') or not self.parent.history_manager:
+                self.parent.history_manager = HistoryManager(self.parent)
+            return self.parent.history_manager.get_recent_files()
+        except Exception:
+            return []
     
     def _add_convert_actions(self, toolbar):
         """添加转换工具按钮"""
