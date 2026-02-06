@@ -14,7 +14,6 @@ from app.ui.menu_manager import MenuManager
 from app.ui.toolbar_manager import ToolbarManager
 from app.ui.context_menu_manager import ContextMenuManager
 from app.ui.file_list_panel import FileListPanel
-from app.managers.file_manager import FileManager
 from app.managers.history_manager import HistoryManager
 from app.managers.view_controller import ViewController
 from app.managers.search_manager import SearchManager
@@ -45,11 +44,10 @@ class PDFEditorWidget(QWidget):
         self.pdf_processor = PDFProcessor()
 
         # 初始化管理器
-        self.file_manager = FileManager(self.pdf_processor, self)
         self.view_controller = ViewController(self)
-        self.search_manager = SearchManager(self, self.pdf_processor)
-        self.split_manager = SplitManager(self.pdf_processor, self)
-        self.merge_manager = MergeManager(self.pdf_processor, self)
+        self.search_manager = SearchManager(self)
+        self.split_manager = SplitManager(self)
+        self.merge_manager = MergeManager(self)
         self.history_manager = HistoryManager(self)
         self.context_menu_manager = ContextMenuManager(self)
 
@@ -118,7 +116,7 @@ class PDFEditorWidget(QWidget):
     def open_file(self, file_path):
         """打开文件"""
         try:
-            success = self.file_manager.open_file(file_path)
+            success, message = self.pdf_processor.open_pdf(file_path, async_mode=True)
             if success:
                 self.file_path = file_path
                 self.unsaved_changes = False
@@ -127,7 +125,7 @@ class PDFEditorWidget(QWidget):
                 self.file_opened.emit(file_path)
                 logger.info(f"文件打开成功: {file_path}")
             else:
-                QMessageBox.warning(self, "打开失败", f"无法打开文件: {file_path}")
+                QMessageBox.warning(self, "打开失败", f"无法打开文件: {file_path}\n{message}")
         except Exception as e:
             logger.error(f"打开文件失败: {e}")
             QMessageBox.critical(self, "错误", f"打开文件时出错: {str(e)}")
@@ -139,7 +137,7 @@ class PDFEditorWidget(QWidget):
             if not save_path:
                 return False
 
-            success = self.file_manager.save_file(save_path)
+            success, message = self.pdf_processor.save_pdf(save_path)
             if success:
                 self.file_path = save_path
                 self.unsaved_changes = False
@@ -148,7 +146,7 @@ class PDFEditorWidget(QWidget):
                 logger.info(f"文件保存成功: {save_path}")
                 return True
             else:
-                QMessageBox.warning(self, "保存失败", f"无法保存文件: {save_path}")
+                QMessageBox.warning(self, "保存失败", f"无法保存文件: {save_path}\n{message}")
                 return False
         except Exception as e:
             logger.error(f"保存文件失败: {e}")
