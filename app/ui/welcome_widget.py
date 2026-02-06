@@ -131,8 +131,8 @@ class ThumbnailGenerator(QThread):
             doc = fitz.open(file_path)
             if len(doc) > 0:
                 page = doc[0]
-                # 降低缩放比例以提高性能，目标尺寸是120x160
-                # 120/缩放 = 原始宽度，所以缩放约0.5-0.8足够
+                # 降低缩放比例以提高性能，目标尺寸是180x240
+                # 180/缩放 = 原始宽度，所以缩放约0.5-0.8足够
                 zoom = 0.5
                 matrix = fitz.Matrix(zoom, zoom)
                 pix = page.get_pixmap(matrix=matrix)
@@ -140,15 +140,18 @@ class ThumbnailGenerator(QThread):
                 img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888)
                 pixmap = QPixmap.fromImage(img)
 
-                target_size = QSize(120, 160)
+                target_size = QSize(180, 240)
                 return pixmap.scaled(target_size, Qt.KeepAspectRatio, Qt.FastTransformation)  # 使用快速缩放
         except Exception as e:
             logger.error(f"生成缩略图异常 {file_path}: {e}")
         return None
 
     def stop(self):
+        """停止生成（非阻塞）"""
+        logger.debug("ThumbnailGenerator.stop: 设置停止标志")
         self._is_running = False
-        self.wait()
+        # 不调用 wait()，避免阻塞主线程
+        # 线程会在下一次迭代时检测到 _is_running 为 False 并退出
 
 
 class WelcomeWidget(QWidget):
@@ -328,8 +331,8 @@ class WelcomeWidget(QWidget):
             QSizePolicy.Expanding
         )
         self.file_list.setViewMode(QListWidget.IconMode)
-        self.file_list.setIconSize(QSize(120, 160))
-        self.file_list.setGridSize(QSize(150, 220))
+        self.file_list.setIconSize(QSize(180, 240))
+        self.file_list.setGridSize(QSize(210, 310))  # 增加单元格大小，给item留出空间
         self.file_list.setResizeMode(QListWidget.Adjust)
         self.file_list.setSpacing(10)
         self.file_list.setMovement(QListWidget.Static)
@@ -383,14 +386,31 @@ class WelcomeWidget(QWidget):
             directories_item.setData(0, Qt.UserRole, {'type': 'all_categories'})
 
             sorted_categories = sorted(categories.keys(), key=str.lower)
-            for category_name in sorted_categories:
+            for category_key in sorted_categories:
+                category_info = categories[category_key]
+                # 兼容新旧格式
+                if isinstance(category_info, dict):
+                    category_name = category_info.get('name', category_key.split('|||')[0] if '|||' in category_key else category_key)
+                    category_path = category_info.get('path', '')
+                    files = category_info.get('files', [])
+                else:
+                    # 旧格式，只有文件列表
+                    category_name = category_key.split('|||')[0] if '|||' in category_key else category_key
+                    category_path = category_key.split('|||')[1] if '|||' in category_key else ''
+                    files = category_info
+
                 category_item = QTreeWidgetItem(directories_item)
-                file_count = len(categories[category_name])
+                file_count = len(files)
                 category_item.setText(0, f"📁 {category_name} ({file_count})")
                 category_item.setData(0, Qt.UserRole, {
                     'type': 'category',
-                    'name': category_name
+                    'name': category_name,
+                    'path': category_path,
+                    'key': category_key
                 })
+                # 设置悬停提示（显示完整路径）
+                if category_path:
+                    category_item.setToolTip(0, f"{category_path}")
 
         # 3. 按月份归档
         monthly_item = QTreeWidgetItem(self.directory_tree)
@@ -458,15 +478,28 @@ class WelcomeWidget(QWidget):
         else:
             self._start_thumbnail_generation(recent_files)
 
-    def _load_category_files_to_list(self, category_name):
+    def _load_category_files_to_list(self, category_name, category_key=None):
         """加载指定分类的文件到右侧列表"""
-        self.current_category = category_name
+        self.current_category = category_key or category_name
         self.file_list_title.setText(f"📄 {category_name}")
         self.file_list.clear()
         self.thumbnail_cache.clear()  # 只清空内存缓存
 
         categories = self.history_manager.get_categories()
-        files = categories.get(category_name, [])
+        # 查找对应的分类数据
+        files = []
+        if category_key and category_key in categories:
+            category_info = categories[category_key]
+            files = category_info.get('files', []) if isinstance(category_info, dict) else category_info
+        else:
+            # 兼容旧格式，直接用分类名查找
+            for key, value in categories.items():
+                if isinstance(value, dict) and value.get('name') == category_name:
+                    files = value.get('files', [])
+                    break
+                elif not isinstance(value, dict) and key == category_name:
+                    files = value
+                    break
 
         if not files:
             item = QListWidgetItem(f"分类 '{category_name}' 下暂无文件")
@@ -515,8 +548,12 @@ class WelcomeWidget(QWidget):
 
         categories = self.history_manager.get_categories()
         all_files = []
-        for files in categories.values():
-            all_files.extend(files)
+        for category_info in categories.values():
+            # 兼容新旧格式
+            if isinstance(category_info, dict):
+                all_files.extend(category_info.get('files', []))
+            else:
+                all_files.extend(category_info)
 
         if not all_files:
             item = QListWidgetItem("暂无分类文件")
@@ -551,17 +588,37 @@ class WelcomeWidget(QWidget):
 
         item = QListWidgetItem()
         item.setData(Qt.UserRole, record)
-        item.setSizeHint(QSize(150, 220))  # 设置固定大小，与 gridSize 匹配
+        item.setSizeHint(QSize(210, 310))  # 设置固定大小，与 gridSize 匹配
 
         item_widget = QWidget()
-        item_widget.setFixedSize(150, 220)
+        item_widget.setFixedSize(210, 310)
+        item_widget.setToolTip(file_path)  # 设置 tooltip 显示完整路径
+
         item_layout = QVBoxLayout(item_widget)
-        item_layout.setAlignment(Qt.AlignCenter)
+        item_layout.setAlignment(Qt.AlignCenter)  # 垂直和水平都居中
         item_layout.setSpacing(5)
-        item_layout.setContentsMargins(5, 5, 5, 5)
+        item_layout.setContentsMargins(0, 0, 0, 0)  # 无边距
+
+        # 文件类型标签（红色加粗）
+        file_ext = os.path.splitext(filename)[1].upper().lstrip('.')
+        if not file_ext:
+            file_ext = 'FILE'
+        type_label = QLabel(file_ext)
+        type_label.setStyleSheet("""
+            QLabel {
+                color: #dc3545;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 2px 6px;
+            }
+        """)
+        type_label.setFixedSize(50, 24)
+        type_label.setAlignment(Qt.AlignCenter)
+        type_label.setToolTip(file_path)  # 设置 tooltip 显示完整路径
 
         thumbnail_label = QLabel()
-        thumbnail_label.setFixedSize(120, 160)
+        thumbnail_label.setFixedSize(180, 240)  # 与 iconSize 一致
+        thumbnail_label.setToolTip(file_path)  # 设置 tooltip 显示完整路径
         thumbnail_label.setStyleSheet("""
             QLabel {
                 border: 1px solid #ccc;
@@ -578,18 +635,25 @@ class WelcomeWidget(QWidget):
         else:
             thumbnail_label.setText("加载中...")
 
+        # 使用QLabel自带的父级布局，将类型标签移到左上角
+        thumbnail_label.setProperty("thumbnail", True)
+        type_label.setParent(thumbnail_label)
+        type_label.move(5, 5)
+        type_label.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+
         item_layout.addWidget(thumbnail_label)
 
-        name_label = QLabel(filename[:15] + "..." if len(filename) > 15 else filename)
+        name_label = QLabel(filename[:20] + "..." if len(filename) > 20 else filename)
         name_label.setWordWrap(True)
         name_label.setAlignment(Qt.AlignCenter)
-        name_label.setMaximumWidth(140)
-        name_label.setStyleSheet("font-size: 11px;")
+        name_label.setMaximumWidth(180)  # 与缩略图宽度一致
+        name_label.setToolTip(file_path)  # 设置 tooltip 显示完整路径
+        name_label.setStyleSheet("font-size: 12px;")
         item_layout.addWidget(name_label)
 
         info_label = QLabel(f"{time_str}")
         info_label.setAlignment(Qt.AlignCenter)
-        info_label.setStyleSheet("font-size: 9px; color: #666;")
+        info_label.setStyleSheet("font-size: 12px; color: #666;")
         item_layout.addWidget(info_label)
 
         self.file_list.addItem(item)
@@ -645,7 +709,8 @@ class WelcomeWidget(QWidget):
             self._load_recent_files_to_list()
         elif type_ == 'category':
             category_name = data.get('name')
-            self._load_category_files_to_list(category_name)
+            category_key = data.get('key')
+            self._load_category_files_to_list(category_name, category_key)
         elif type_ == 'month':
             month = data.get('month')
             self._load_month_files_to_list(month)
@@ -684,6 +749,12 @@ class WelcomeWidget(QWidget):
 
     def closeEvent(self, event):
         """关闭事件处理"""
+        logger.debug("WelcomeWidget.closeEvent 开始执行")
+
+        # 设置停止标志，但不等待线程结束（避免阻塞）
         if self.thumbnail_thread and self.thumbnail_thread.isRunning():
-            self.thumbnail_thread.stop()
-        super().closeEvent(event)
+            logger.debug("closeEvent: 设置缩略图线程停止标志")
+            self.thumbnail_thread._is_running = False
+
+        # 立即接受关闭事件
+        event.accept()

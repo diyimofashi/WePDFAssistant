@@ -141,6 +141,45 @@ class AppSettings:
         return settings.get('log_level', cls.LOG_LEVEL)
 
     @classmethod
+    def _migrate_to_sqlite_if_needed(cls, history):
+        """如果需要，将JSON数据迁移到SQLite"""
+        from app.managers.history_db import get_database
+
+        # 检查迁移标记
+        migration_key = '_sqlite_migrated'
+        settings = cls._load_settings()
+
+        if settings.get(migration_key):
+            return
+
+        # 检查是否有需要迁移的数据
+        categories = history.get('categories', {})
+        if not categories:
+            # 没有旧数据，标记为已迁移
+            settings[migration_key] = True
+            cls._save_settings()
+            return
+
+        # 执行迁移
+        try:
+            db = get_database()
+            success = db.migrate_from_json(history)
+
+            if success:
+                # 标记为已迁移
+                settings[migration_key] = True
+                cls._save_settings()
+                logger.info("JSON数据已迁移到SQLite数据库")
+
+                # 清空JSON中的categories数据以节省空间
+                history['categories'] = {}
+                cls._save_file_history(history)
+            else:
+                logger.warning("JSON数据迁移失败")
+        except Exception as e:
+            logger.error(f"数据迁移出错: {e}")
+
+    @classmethod
     def set_log_level(cls, level):
         """设置日志级别"""
         valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
@@ -188,13 +227,18 @@ class AppSettings:
     def get_file_history(cls):
         """获取文件历史记录"""
         settings = cls._load_settings()
-        return settings.get('file_history', {
+        history = settings.get('file_history', {
             'max_recent': 20,
             'max_per_category': 10,
             'categories': {},
             'category_mapping': {},
             'custom_categories': []
         })
+
+        # 检查是否需要迁移到SQLite
+        cls._migrate_to_sqlite_if_needed(history)
+
+        return history
 
     @classmethod
     def _save_file_history(cls, history_data):
@@ -258,21 +302,28 @@ class AppSettings:
 
     @classmethod
     def get_file_categories(cls):
-        """获取分类记录"""
-        history = cls.get_file_history()
-        return history.get('categories', {})
+        """获取分类记录（已废弃，保留用于兼容性）"""
+        # 现在使用SQLite存储，此方法返回空字典
+        return {}
 
     @classmethod
-    def add_file_to_category(cls, file_path, filename, category_name, page_count=0):
-        """添加文件到分类"""
+    def add_file_to_category_with_path(cls, file_path, filename, category_name, category_path, page_count=0):
+        """添加文件到分类（带完整路径）"""
         import time
         history = cls.get_file_history()
         categories = history.get('categories', {})
 
-        if category_name not in categories:
-            categories[category_name] = []
+        # 使用分类名称和路径的组合作为唯一键
+        category_key = f"{category_name}|||{category_path}"
 
-        category_files = categories[category_name]
+        if category_key not in categories:
+            categories[category_key] = {
+                'name': category_name,
+                'path': category_path,
+                'files': []
+            }
+
+        category_files = categories[category_key]['files']
 
         # 检查是否已存在该文件
         for record in category_files:
@@ -305,58 +356,87 @@ class AppSettings:
         if len(category_files) > max_per_category:
             category_files = category_files[:max_per_category]
 
-        categories[category_name] = category_files
+        categories[category_key] = {
+            'name': category_name,
+            'path': category_path,
+            'files': category_files
+        }
         history['categories'] = categories
         cls._save_file_history(history)
 
     @classmethod
-    def get_category_mapping(cls):
-        """获取目录到分类的映射"""
-        history = cls.get_file_history()
-        return history.get('category_mapping', {})
-
-    @classmethod
-    def set_category_mapping(cls, category_mapping):
-        """设置目录到分类的映射"""
-        history = cls.get_file_history()
-        history['category_mapping'] = category_mapping
-        cls._save_file_history(history)
-
-    @classmethod
-    def get_custom_categories(cls):
-        """获取自定义分类列表"""
-        history = cls.get_file_history()
-        return history.get('custom_categories', [])
-
-    @classmethod
-    def add_custom_category(cls, category_name):
-        """添加自定义分类"""
-        history = cls.get_file_history()
-        custom_categories = history.get('custom_categories', [])
-        if category_name not in custom_categories:
-            custom_categories.append(category_name)
-            history['custom_categories'] = custom_categories
-            cls._save_file_history(history)
-
-    @classmethod
-    def remove_custom_category(cls, category_name):
-        """移除自定义分类"""
-        history = cls.get_file_history()
-        custom_categories = history.get('custom_categories', [])
-        if category_name in custom_categories:
-            custom_categories.remove(category_name)
-            history['custom_categories'] = custom_categories
-            cls._save_file_history(history)
-
-    @classmethod
-    def clear_category(cls, category_name):
-        """清空指定分类的文件记录"""
+    def get_file_categories(cls):
+        """获取分类记录（包含完整路径）"""
         history = cls.get_file_history()
         categories = history.get('categories', {})
-        if category_name in categories:
-            categories[category_name] = []
-            history['categories'] = categories
+
+        # 检查是否需要迁移旧数据
+        needs_migration = False
+        for key, value in categories.items():
+            if not isinstance(value, dict) or 'files' not in value:
+                needs_migration = True
+                break
+
+        # 如果需要迁移，进行数据迁移
+        if needs_migration:
+            logger.info("检测到旧格式分类数据，开始迁移...")
+            migrated_categories = {}
+            for old_key, files in categories.items():
+                if isinstance(files, dict) and 'files' in files:
+                    # 已经是新格式
+                    migrated_categories[old_key] = files
+                else:
+                    # 旧格式，需要迁移
+                    # 旧格式中，键是目录名（如 "1103"），文件列表中包含多个不同路径的文件
+                    # 需要按完整路径重新分组
+                    for file_record in files:
+                        file_path = file_record.get('path', '')
+                        if not file_path:
+                            continue
+
+                        # 获取文件的完整目录路径
+                        file_dir = os.path.dirname(file_path)
+                        dir_name = os.path.basename(file_dir)
+                        parent_dir = os.path.basename(os.path.dirname(file_dir))
+
+                        # 生成新格式的键和分类信息
+                        if parent_dir:
+                            new_key = f"{parent_dir}/{dir_name}|||{file_dir}"
+                            category_name = f"{parent_dir}/{dir_name}"
+                        else:
+                            new_key = f"{dir_name}|||{file_dir}"
+                            category_name = dir_name
+
+                        if new_key not in migrated_categories:
+                            migrated_categories[new_key] = {
+                                'name': category_name,
+                                'path': file_dir,
+                                'files': []
+                            }
+
+                        # 添加文件到对应的分类
+                        migrated_categories[new_key]['files'].append(file_record)
+
+            # 保存迁移后的数据
+            history['categories'] = migrated_categories
             cls._save_file_history(history)
+            logger.info(f"数据迁移完成，共 {len(migrated_categories)} 个分类")
+
+            return migrated_categories
+
+        # 不需要迁移，直接返回新格式数据
+        result = {}
+        for key, value in categories.items():
+            if isinstance(value, dict) and 'name' in value and 'path' in value:
+                result[key] = value
+            else:
+                # 兼容旧格式（只有文件列表）
+                result[key] = {
+                    'name': key.split('|||')[0] if '|||' in key else key,
+                    'path': key.split('|||')[1] if '|||' in key else '',
+                    'files': value
+                }
+        return result
 
     @classmethod
     def remove_file_from_recent(cls, file_path):
@@ -400,6 +480,19 @@ class AppSettings:
         """设置历史记录面板是否默认显示"""
         settings = cls._load_settings()
         settings['history_panel_visible'] = bool(visible)
+        cls._save_settings()
+
+    @classmethod
+    def get_category_mapping(cls):
+        """获取用户自定义的目录分类映射"""
+        settings = cls._load_settings()
+        return settings.get('category_mapping', {})
+
+    @classmethod
+    def set_category_mapping(cls, mapping):
+        """设置用户自定义的目录分类映射"""
+        settings = cls._load_settings()
+        settings['category_mapping'] = mapping
         cls._save_settings()
 
     @classmethod

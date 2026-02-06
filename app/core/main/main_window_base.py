@@ -18,7 +18,6 @@ from app.ui.menu_manager import MenuManager
 from app.ui.toolbar_manager import ToolbarManager
 from app.ui.context_menu_manager import ContextMenuManager
 from app.ui.file_list_panel import FileListPanel
-from app.ui.history_panel import HistoryPanel
 from app.ui.welcome_widget import WelcomeWidget
 from app.managers.file_manager import FileManager
 from app.managers.history_manager import HistoryManager
@@ -76,7 +75,6 @@ class MainWindowBase(QMainWindow):
 
         # 历史记录面板相关属性
         self.history_panel = None
-        self.history_dock = None
         self.history_manager = None
 
         # 欢迎界面相关属性
@@ -143,7 +141,6 @@ class MainWindowBase(QMainWindow):
 
         # 延迟初始化历史记录面板
         self.history_panel = None
-        self.history_dock = None
         
     def _connect_signals(self):
         """连接PDF处理器信号"""
@@ -209,9 +206,6 @@ class MainWindowBase(QMainWindow):
             # 创建文件列表面板区域
             self.create_file_list_area(main_layout)
 
-            # 创建历史记录面板区域
-            self.create_history_area(main_layout)
-
             # 创建PDF显示区域（添加到堆叠部件）
             self.create_pdf_display_area(self.stacked_widget)
 
@@ -261,9 +255,6 @@ class MainWindowBase(QMainWindow):
         # 立即开始初始化文件列表面板
         QTimer.singleShot(0, self._init_file_list_panel)
 
-        # 历史记录面板延迟更长时间，确保文件列表面板先完成
-        QTimer.singleShot(100, self._init_history_panel)
-
         logger.debug("_delayed_init_panels 调度完成")
 
     def _init_file_list_panel(self):
@@ -278,19 +269,6 @@ class MainWindowBase(QMainWindow):
             logger.debug("FileListPanel 创建完成，开始创建停靠区域...")
             self.create_file_list_area_dock()
             logger.debug("文件列表面板延迟初始化完成")
-
-    def _init_history_panel(self):
-        """延迟初始化历史记录面板"""
-        logger = get_logger('main')
-        logger.debug("_init_history_panel 开始执行")
-        from app.ui.history_panel import HistoryPanel
-
-        if not self.history_panel:
-            logger.debug("开始创建 HistoryPanel...")
-            self.history_panel = HistoryPanel(self, self.history_manager)
-            logger.debug("HistoryPanel 创建完成，开始创建停靠区域...")
-            self.create_history_area_dock()
-            logger.debug("历史记录面板延迟初始化完成")
 
     def create_file_list_area_dock(self):
         """创建文件列表面板的停靠区域（延迟调用）"""
@@ -318,29 +296,9 @@ class MainWindowBase(QMainWindow):
         self.file_list_dock = self.file_list_panel
 
     def create_history_area_dock(self):
-        """创建历史记录面板的停靠区域（延迟调用）"""
-        from app.utils.plugin_checker import check_history_plugin
-
-        # 只有启用历史记录功能时才创建
-        if not check_history_plugin():
-            return
-
-        # 读取设置：是否默认显示历史记录面板
-        show_history = AppSettings.get_history_panel_visible()
-
-        # 连接历史记录面板信号
-        self.history_panel.file_opened.connect(self.open_history_file)
-        self.history_panel.refresh_needed.connect(self._on_history_refresh_needed)
-
-        # 根据设置显示或隐藏面板
-        if show_history:
-            self.history_panel.show()
-        else:
-            self.history_panel.hide()
-
-        # 添加到左侧停靠区域（放在缩略图后面）
-        self.addDockWidget(Qt.LeftDockWidgetArea, self.history_panel)
-        self.history_dock = self.history_panel
+        """创建历史记录面板的停靠区域（延迟调用）- 已弃用"""
+        # 历史记录功能已移至欢迎界面，不再创建独立的停靠面板
+        pass
     
     def create_thumbnail_area(self, main_layout):
         """创建缩略图区域"""
@@ -376,16 +334,29 @@ class MainWindowBase(QMainWindow):
         pass
 
     def create_history_area(self, main_layout):
-        """创建历史记录面板区域（已改为延迟初始化）"""
-        # 面板已在 _delayed_init_panels 中延迟创建
+        """创建历史记录面板区域（已移至欢迎界面）"""
+        # 历史记录功能已移至欢迎界面，不再创建独立区域
         pass
 
     def toggle_history_panel(self):
-        """切换历史记录面板的显示/隐藏"""
-        if hasattr(self, 'stacked_widget') and hasattr(self, 'welcome_widget') and hasattr(self, 'virtual_scroll'):
+        """切换历史记录面板的显示/隐藏（已移至欢迎界面）"""
+        # 历史记录功能已移至欢迎界面，切换显示/隐藏欢迎界面
+        if hasattr(self, 'stacked_widget') and hasattr(self, 'welcome_widget'):
+            # 检查当前是否显示欢迎界面
+            current_widget = self.stacked_widget.currentWidget()
+            if current_widget == self.welcome_widget:
+                # 当前显示欢迎界面，切换回PDF视图
+                if hasattr(self, 'virtual_scroll'):
+                    self.stacked_widget.setCurrentWidget(self.virtual_scroll)
+            else:
+                # 当前显示PDF视图，切换到欢迎界面
+                self.show_welcome_panel()
+
+    def show_welcome_panel(self):
+        """显示欢迎界面（包含历史记录）"""
+        if hasattr(self, 'stacked_widget') and hasattr(self, 'welcome_widget'):
             # 显示欢迎界面（历史记录面板）
             self.stacked_widget.setCurrentWidget(self.welcome_widget)
-            # 不再每次都刷新，只有首次加载时才刷新
 
     def open_history_file(self, file_path):
         """打开历史记录中的文件"""
@@ -403,11 +374,9 @@ class MainWindowBase(QMainWindow):
         from app.ui.history_dialog import HistoryDialog
         dialog = HistoryDialog(self, self.history_manager)
         if dialog.exec_() == HistoryDialog.Accepted:
-            self.history_panel.refresh_history()
-
-    def _on_history_refresh_needed(self):
-        """历史记录刷新需要的回调"""
-        pass
+            # 历史记录功能已移至欢迎界面，刷新欢迎界面
+            if hasattr(self, 'welcome_widget') and self.welcome_widget:
+                self.welcome_widget.refresh_history()
 
     def _show_welcome_if_needed(self):
         """如果需要则显示欢迎界面"""

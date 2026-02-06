@@ -17,7 +17,6 @@ class FileManager:
 
     def __init__(self, parent_window):
         self.parent = parent_window
-        self.history_manager = None  # 延迟初始化
 
     def _play_success_sound(self):
         """播放成功提示音"""
@@ -442,9 +441,6 @@ class FileManager:
 
         if success:
             logger.info("异步加载启动成功")
-
-            # 记录到历史
-            self._record_file_history(file_path)
         else:
             logger.error(f"异步加载启动失败: {message}")
             self.parent.hide_progress_dialog()
@@ -852,22 +848,6 @@ class FileManager:
         else:
             self.parent.show_message("ℹ️ 没有需要放弃的更改")
 
-    def _record_file_history(self, file_path):
-        """记录文件到历史"""
-        try:
-            if not self.history_manager:
-                from app.managers.history_manager import HistoryManager
-                self.history_manager = HistoryManager(self.parent)
-
-            # 获取文件页数
-            page_count = 0
-            if self.parent.pdf_processor and self.parent.pdf_processor.fitz_document:
-                page_count = len(self.parent.pdf_processor.fitz_document)
-
-            self.history_manager.add_file_to_history(file_path, page_count)
-        except Exception as e:
-            logger.error(f"记录文件历史失败: {e}")
-    
     def import_images(self):
         """导入图片到PDF"""
         formats_filter = self.parent.pdf_processor.get_supported_image_formats_filter()

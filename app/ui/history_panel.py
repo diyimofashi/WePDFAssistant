@@ -21,6 +21,7 @@ class ThumbnailGenerator(QThread):
     """缩略图生成线程"""
 
     thumbnail_ready = pyqtSignal(str, QPixmap)  # file_path, thumbnail
+    finished = pyqtSignal()  # 生成完成
 
     def __init__(self, file_paths, disk_cache):
         super().__init__()
@@ -76,6 +77,9 @@ class ThumbnailGenerator(QThread):
         total_elapsed = time.time() - total_start
         logger.info(f"缩略图生成线程完成，总耗时 {total_elapsed:.2f}秒")
 
+        # 发送完成信号
+        self.finished.emit()
+
     def _generate_thumbnail(self, file_path):
         """生成PDF文件第一页缩略图"""
         import time
@@ -104,7 +108,7 @@ class ThumbnailGenerator(QThread):
                 step_times['after_qimage'] = (time.time() - start) * 1000
 
                 # 缩放到目标尺寸
-                target_size = QSize(120, 160)
+                target_size = QSize(180, 240)
                 step_times['before_scale'] = (time.time() - start) * 1000
                 scaled = pixmap.scaled(target_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 step_times['after_scale'] = (time.time() - start) * 1000
@@ -140,6 +144,7 @@ class HistoryPanel(QDockWidget):
         self.thumbnail_cache = {}
         self.thumbnail_thread = None
         self.current_category = None
+        self._is_generating = False  # 缩略图生成标志
 
         # 初始化磁盘缓存
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -228,16 +233,6 @@ class HistoryPanel(QDockWidget):
 
         # 标题
         title_label = QLabel("📁 目录分类")
-
-    def _create_directory_tree(self):
-        """创建左侧目录树"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 5, 0)
-        layout.setSpacing(5)
-
-        # 标题
-        title_label = QLabel("📁 目录分类")
         title_label.setStyleSheet("font-weight: bold; font-size: 12px; padding: 5px;")
         layout.addWidget(title_label)
 
@@ -287,17 +282,19 @@ class HistoryPanel(QDockWidget):
         self.file_list_title.setStyleSheet("font-weight: bold; font-size: 12px; padding: 5px;")
         layout.addWidget(self.file_list_title)
 
-        # 创建列表控件（使用List模式而不是Icon模式，减少布局计算）
+        # 创建列表控件（使用Icon模式显示缩略图）
         self.file_list = QListWidget()
-        self.file_list.setViewMode(QListWidget.ListMode)  # 使用列表模式，减少布局开销
+        self.file_list.setViewMode(QListWidget.IconMode)  # 使用图标模式显示缩略图
         self.file_list.setResizeMode(QListWidget.Adjust)  # 自动调整
-        self.file_list.setSpacing(2)  # 减小间距
+        self.file_list.setSpacing(10)  # 增加间距
         self.file_list.setMovement(QListWidget.Static)  # 禁止拖动
         self.file_list.setWordWrap(True)  # 文字换行
         self.file_list.setTextElideMode(Qt.ElideRight)  # 文字过长时省略
         self.file_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.file_list.customContextMenuRequested.connect(self._show_file_context_menu)
         self.file_list.itemDoubleClicked.connect(self._on_file_item_double_clicked)
+        self.file_list.setIconSize(QSize(180, 240))
+        self.file_list.setGridSize(QSize(210, 310))  # 增加单元格大小，给item留出空间
 
         # 监听滚动事件，实现懒加载缩略图
         self.file_list.verticalScrollBar().valueChanged.connect(self._on_scroll)
@@ -313,9 +310,9 @@ class HistoryPanel(QDockWidget):
             QListWidget::item {
                 border: 1px solid #e0e0e0;
                 border-radius: 4px;
-                padding: 8px;
+                padding: 5px;
                 background-color: white;
-                min-height: 60px;
+                text-align: center;
             }
             QListWidget::item:hover {
                 border: 2px solid #0078d4;
@@ -358,14 +355,31 @@ class HistoryPanel(QDockWidget):
 
             # 按分类名称排序
             sorted_categories = sorted(categories.keys(), key=str.lower)
-            for category_name in sorted_categories:
+            for category_key in sorted_categories:
+                category_info = categories[category_key]
+                # 兼容新旧格式
+                if isinstance(category_info, dict) and 'name' in category_info:
+                    category_name = category_info['name']
+                    category_path = category_info.get('path', '')
+                    files = category_info.get('files', [])
+                else:
+                    # 旧格式，只有文件列表
+                    category_name = category_key.split('|||')[0] if '|||' in category_key else category_key
+                    category_path = category_key.split('|||')[1] if '|||' in category_key else ''
+                    files = category_info
+
                 category_item = QTreeWidgetItem(directories_item)
-                file_count = len(categories[category_name])
+                file_count = len(files)
                 category_item.setText(0, f"📁 {category_name} ({file_count})")
                 category_item.setData(0, Qt.UserRole, {
                     'type': 'category',
-                    'name': category_name
+                    'name': category_name,
+                    'path': category_path,
+                    'key': category_key
                 })
+                # 设置悬停提示（显示完整路径）
+                if category_path:
+                    category_item.setToolTip(0, f"{category_path}")
 
         # 3. 按月份归档
         logger.debug("_load_directory_tree: 开始按月份归档...")
@@ -484,15 +498,28 @@ class HistoryPanel(QDockWidget):
         # 继续添加下一批，使用50ms间隔让UI有更多时间刷新
         QTimer.singleShot(50, self._add_next_batch)
 
-    def _load_category_files_to_list(self, category_name):
+    def _load_category_files_to_list(self, category_name, category_key=None):
         """加载指定分类的文件到右侧列表"""
-        self.current_category = category_name
+        self.current_category = category_key or category_name
         self.file_list_title.setText(f"📄 {category_name}")
         self.file_list.clear()
         self.thumbnail_cache = {}  # 清空缩略图缓存
 
         categories = self.history_manager.get_categories()
-        files = categories.get(category_name, [])
+        # 查找对应的分类数据
+        files = []
+        if category_key and category_key in categories:
+            category_info = categories[category_key]
+            files = category_info.get('files', []) if isinstance(category_info, dict) else category_info
+        else:
+            # 兼容旧格式，直接用分类名查找
+            for key, value in categories.items():
+                if isinstance(value, dict) and value.get('name') == category_name:
+                    files = value.get('files', [])
+                    break
+                elif not isinstance(value, dict) and key == category_name:
+                    files = value
+                    break
 
         if not files:
             item = QListWidgetItem(f"分类 '{category_name}' 下暂无文件")
@@ -543,15 +570,16 @@ class HistoryPanel(QDockWidget):
 
         # 格式化显示
         time_str = self.history_manager.format_open_time(open_time)
-        page_str = f"({page_count}页)" if page_count > 0 else ""
 
-        # 创建简单列表项，不使用复杂widget，加快加载速度
+        # 创建列表项
         item = QListWidgetItem()
-        item.setText(f"{filename}\n{time_str} {page_str}")
         item.setData(Qt.UserRole, record)  # 存储完整记录
-        item.setTextAlignment(Qt.AlignCenter)
+        item.setSizeHint(QSize(210, 310))  # 设置固定大小，与 gridSize 匹配
 
-        # 添加到列表（不使用setItemWidget，大幅提升速度）
+        # 添加tooltip显示完整路径
+        item.setToolTip(file_path)
+
+        # 添加到列表
         self.file_list.addItem(item)
 
         # 缓存记录以便后续创建widget更新缩略图
@@ -568,21 +596,37 @@ class HistoryPanel(QDockWidget):
     def _start_thumbnail_generation(self, files):
         """启动缩略图生成线程"""
         logger.debug("HistoryPanel._start_thumbnail_generation 开始执行")
+
+        # 检查是否正在生成缩略图
+        if self._is_generating:
+            logger.debug("_start_thumbnail_generation: 已有缩略图生成任务，跳过")
+            return
+
         # 不停止之前的线程，让它自然结束（避免阻塞）
         if self.thumbnail_thread and self.thumbnail_thread.isRunning():
-            logger.debug("_start_thumbnail_generation: 之前线程仍在运行，不停止，直接创建新线程")
+            logger.debug("_start_thumbnail_generation: 之前线程仍在运行，设置停止标志")
+            self.thumbnail_thread._is_running = False
 
         # 直接传递所有文件路径，存在性检查移到后台线程中
         file_paths = [f.get('path') for f in files if f.get('path')]
         logger.debug(f"_start_thumbnail_generation: 准备为 {len(file_paths)} 个文件生成缩略图")
 
         if file_paths:
+            self._is_generating = True
             self.thumbnail_thread = ThumbnailGenerator(file_paths, self.disk_cache)
             self.thumbnail_thread.thumbnail_ready.connect(self._on_thumbnail_ready)
+            self.thumbnail_thread.finished.connect(self._on_thumbnail_finished)
             self.thumbnail_thread.start()
             logger.debug("_start_thumbnail_generation: 缩略图生成线程已启动")
 
         logger.debug("HistoryPanel._start_thumbnail_generation 完成")
+
+    def _on_thumbnail_finished(self):
+        """缩略图生成完成回调"""
+        logger.debug("_on_thumbnail_finished: 缩略图生成线程完成")
+        self._is_generating = False
+        if self.thumbnail_thread:
+            self.thumbnail_thread = None
 
     def _on_thumbnail_ready(self, file_path, thumbnail):
         """缩略图生成完成的回调 - 只缓存，不更新UI"""
@@ -662,38 +706,67 @@ class HistoryPanel(QDockWidget):
     def _create_thumbnail_widget(self, record, thumbnail):
         """创建带缩略图的widget"""
         filename = record.get('filename', '')
+        file_path = record.get('path', '')
         open_time = record.get('open_time', 0)
         page_count = record.get('page_count', 0)
 
         # 格式化显示
         time_str = self.history_manager.format_open_time(open_time)
-        page_str = f"({page_count}页)" if page_count > 0 else ""
 
         # 创建widget
         widget = QWidget()
+        widget.setFixedSize(210, 310)
+        widget.setToolTip(file_path)  # 设置 tooltip 显示完整路径
         layout = QVBoxLayout(widget)
-        layout.setAlignment(Qt.AlignCenter)
+        layout.setAlignment(Qt.AlignCenter)  # 垂直和水平都居中
         layout.setSpacing(5)
+        layout.setContentsMargins(0, 0, 0, 0)  # 无边距
+
+        # 文件类型标签（红色加粗）
+        file_ext = os.path.splitext(filename)[1].upper().lstrip('.')
+        if not file_ext:
+            file_ext = 'FILE'
+        type_label = QLabel(file_ext)
+        type_label.setStyleSheet("""
+            QLabel {
+                color: #dc3545;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 2px 6px;
+            }
+        """)
+        type_label.setFixedSize(50, 24)
+        type_label.setAlignment(Qt.AlignCenter)
+        type_label.setToolTip(file_path)  # 设置 tooltip 显示完整路径
 
         # 缩略图
         thumbnail_label = QLabel()
-        thumbnail_label.setFixedSize(120, 160)
+        thumbnail_label.setFixedSize(180, 240)  # 与 iconSize 一致
         thumbnail_label.setPixmap(thumbnail)
+        thumbnail_label.setToolTip(file_path)  # 设置 tooltip 显示完整路径
         thumbnail_label.setStyleSheet(self._thumbnail_style)
         thumbnail_label.setAlignment(Qt.AlignCenter)
+
+        # 将类型标签作为子控件放在缩略图左上角
+        type_label.setParent(thumbnail_label)
+        type_label.move(5, 5)
+        type_label.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+
         layout.addWidget(thumbnail_label)
 
         # 文件名
         name_label = QLabel(filename[:20] + "..." if len(filename) > 20 else filename)
         name_label.setWordWrap(True)
         name_label.setAlignment(Qt.AlignCenter)
+        name_label.setMaximumWidth(180)  # 与缩略图宽度一致
+        name_label.setToolTip(file_path)  # 设置 tooltip 显示完整路径
         name_label.setStyleSheet(self._name_label_style)
         layout.addWidget(name_label)
 
-        # 时间和页数
-        info_label = QLabel(f"{time_str} {page_str}")
+        # 时间
+        info_label = QLabel(f"{time_str}")
         info_label.setAlignment(Qt.AlignCenter)
-        info_label.setStyleSheet(self._info_label_style)
+        info_label.setStyleSheet("font-size: 12px; color: #666;")
         layout.addWidget(info_label)
 
         return widget
@@ -710,7 +783,8 @@ class HistoryPanel(QDockWidget):
             self._load_recent_files_to_list()
         elif type_ == 'category':
             category_name = data.get('name')
-            self._load_category_files_to_list(category_name)
+            category_key = data.get('key')
+            self._load_category_files_to_list(category_name, category_key)
         elif type_ == 'month':
             month = data.get('month')
             self._load_month_files_to_list(month)
@@ -804,13 +878,14 @@ class HistoryPanel(QDockWidget):
 
         elif type_ == 'category':
             category_name = data.get('name')
+            category_key = data.get('key')
             refresh_action = menu.addAction("🔄 刷新")
-            refresh_action.triggered.connect(lambda: self._load_category_files_to_list(category_name))
+            refresh_action.triggered.connect(lambda: self._load_category_files_to_list(category_name, category_key))
 
             menu.addSeparator()
 
             clear_action = menu.addAction("🗑️ 清除此分类")
-            clear_action.triggered.connect(lambda: self._clear_category(category_name))
+            clear_action.triggered.connect(lambda: self._clear_category(category_key or category_name))
 
         elif type_ == 'month':
             month = data.get('month')
@@ -933,8 +1008,28 @@ class HistoryPanel(QDockWidget):
 
     def closeEvent(self, event):
         """关闭事件处理"""
-        # 设置停止标志，但不等待线程结束（避免阻塞）
+        logger.debug("HistoryPanel.closeEvent 开始执行")
+
+        # 设置停止标志
         if self.thumbnail_thread and self.thumbnail_thread.isRunning():
             logger.debug("closeEvent: 设置缩略图线程停止标志")
             self.thumbnail_thread._is_running = False
-        super().closeEvent(event)
+
+            # 给线程一点时间自然退出，但不阻塞
+            # 使用定时器延迟执行实际关闭
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(100, lambda: self._cleanup_thread())
+
+        # 立即接受关闭事件
+        event.accept()
+
+    def _cleanup_thread(self):
+        """清理线程资源"""
+        if self.thumbnail_thread and not self.thumbnail_thread.isRunning():
+            logger.debug("_cleanup_thread: 线程已停止，可以清理")
+            self.thumbnail_thread = None
+        elif self.thumbnail_thread and self.thumbnail_thread.isRunning():
+            logger.debug("_cleanup_thread: 线程仍在运行，等待其自然结束")
+            # 再次检查，最多等待3次（300ms）
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(100, self._cleanup_thread)

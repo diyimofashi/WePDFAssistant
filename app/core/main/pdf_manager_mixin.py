@@ -28,25 +28,27 @@ class PDFManagerMixin:
     def _on_pdf_loading_finished(self, success, message):
         """PDF/图片加载完成"""
         self.hide_progress_dialog()
-        
+
         if success:
             if hasattr(self, 'thumbnail_list') and self.thumbnail_list:
                 logger.debug("更新缩略图管理器中的PDF处理器")
                 self.thumbnail_list.set_pdf_processor(self.pdf_processor)
-            
+
             if self.pdf_processor.current_file:
                 self.setWindowTitle(f"{AppSettings.APP_NAME} - {os.path.basename(self.pdf_processor.current_file)}")
-            
-            # 更新缩放信息（页面信息和缩放信息已移除，此调用保留兼容性）
-            # self.update_zoom_label() # 已注释掉实际调用
 
-            # 更新历史记录中的页数
+            # 异步添加文件到历史记录（不阻塞UI）
             if hasattr(self, 'history_manager') and self.history_manager and self.pdf_processor.current_file:
                 try:
+                    file_path = self.pdf_processor.current_file
                     total_pages = self.pdf_processor.get_total_pages()
-                    self.history_manager.update_file_page_count(self.pdf_processor.current_file, total_pages)
+                    # 使用QTimer延迟执行，确保不阻塞渲染
+                    QTimer.singleShot(100, lambda: self._async_add_to_history(file_path, total_pages))
                 except Exception as e:
-                    logger.debug(f"更新文件历史页数失败: {e}")
+                    logger.debug(f"准备添加历史记录失败: {e}")
+
+            # 更新缩放信息（页面信息和缩放信息已移除，此调用保留兼容性）
+            # self.update_zoom_label() # 已注释掉实际调用
 
             # 更新工具栏的总页数标签
             if hasattr(self, 'toolbar_total_pages_label') and self.pdf_processor:
@@ -129,6 +131,21 @@ class PDFManagerMixin:
 
         # 更新欢迎界面显示
         self._update_welcome_display()
+
+    def _async_add_to_history(self, file_path, page_count):
+        """异步添加文件到历史记录"""
+        try:
+            logger.debug(f"准备添加到历史记录: file_path={file_path}, page_count={page_count}")
+            if hasattr(self, 'history_manager') and self.history_manager:
+                self.history_manager.add_file_to_history(file_path, page_count)
+                logger.info(f"已异步添加到历史记录: {os.path.basename(file_path)}")
+                # 如果欢迎界面正在显示，刷新历史记录
+                if hasattr(self, 'welcome_widget') and self.welcome_widget:
+                    self.welcome_widget.refresh_history()
+            else:
+                logger.warning("history_manager 未初始化，无法添加历史记录")
+        except Exception as e:
+            logger.error(f"异步添加历史记录失败: {e}")
 
     def _update_welcome_display(self):
         """更新欢迎界面显示"""
