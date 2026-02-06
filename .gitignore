@@ -196,3 +196,9 @@ cache/
 .codebuddy/
 installer/
 release/
+
+# Database files
+app/config/file_history.db
+*.db
+*.db-shm
+*.db-wal
