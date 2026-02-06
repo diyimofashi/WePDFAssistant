@@ -164,7 +164,7 @@ class WelcomeWidget(QWidget):
 
     def __init__(self, parent=None, history_manager=None):
         super().__init__(parent)
-        self.history_manager = history_manager
+        self.history_manager = history_manager or (HistoryManager(parent) if parent else None)
         self.thumbnail_cache = {}  # 内存缓存：file_path -> QLabel
         self.persistent_cache = ThumbnailCache()  # 持久化缓存
         self.thumbnail_thread = None

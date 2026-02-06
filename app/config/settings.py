@@ -221,7 +221,21 @@ class AppSettings:
         settings['file_list_panel_width'] = int(width)
         cls._save_settings()
 
+    @classmethod
+    def get_use_tabbed_mode(cls):
+        """获取是否使用多标签页模式"""
+        settings = cls._load_settings()
+        return settings.get('use_tabbed_mode', False)  # 默认使用单窗口模式
+
+    @classmethod
+    def set_use_tabbed_mode(cls, enabled):
+        """设置是否使用多标签页模式"""
+        settings = cls._load_settings()
+        settings['use_tabbed_mode'] = bool(enabled)
+        cls._save_settings()
+
     # ==================== 文件历史记录相关设置 ====================
+
 
     @classmethod
     def get_file_history(cls):

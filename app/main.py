@@ -1,5 +1,7 @@
 
 
+
+
 import sys
 import os
 from PyQt5.QtGui import QPixmap, QPainter, QColor, QPen, QFont, QIcon
@@ -17,6 +19,7 @@ from app.core.main.ocr_manager_mixin import OCRManagerMixin
 from app.core.main.operation_manager_mixin import OperationManagerMixin
 from app.core.main.shortcut_manager_mixin import ShortcutManagerMixin
 from app.core.main.storage_manager_mixin import StorageManagerMixin
+from app.core.main.tabbed_window import TabbedMainWindow
 from app.config.settings import AppSettings
 
 # 全局窗口列表，用于管理所有打开的窗口
@@ -230,20 +233,44 @@ def main():
     app_icon = get_app_icon()
     app.setWindowIcon(app_icon)
 
-    # 创建第一个窗口
-    viewer = create_new_window()
+    # 检查是否使用多标签页模式
+    use_tabbed_mode = AppSettings.get_use_tabbed_mode()
 
-    # 处理命令行参数（打开指定文件）
-    if len(sys.argv) > 1:
-        file_path = sys.argv[1]
-        # 处理可能的路径格式（如带引号的路径）
-        if file_path.startswith('"') and file_path.endswith('"'):
-            file_path = file_path[1:-1]
+    if use_tabbed_mode:
+        # 使用多标签页模式
+        from app.utils.logger import get_logger
+        logger = get_logger('main')
+        logger.info("启动多标签页模式")
+        viewer = TabbedMainWindow()
+        viewer.setWindowIcon(app_icon)
+        viewer.show()
+        open_windows.append(viewer)
 
-        if os.path.exists(file_path) and file_path.lower().endswith('.pdf'):
-            # 使用延迟调用，确保UI完全加载
-            from PyQt5.QtCore import QTimer
-            QTimer.singleShot(100, lambda: viewer.file_manager._open_pdf_file(file_path))
+        # 处理命令行参数（打开指定文件）
+        if len(sys.argv) > 1:
+            file_path = sys.argv[1]
+            # 处理可能的路径格式（如带引号的路径）
+            if file_path.startswith('"') and file_path.endswith('"'):
+                file_path = file_path[1:-1]
+
+            if os.path.exists(file_path) and file_path.lower().endswith('.pdf'):
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(100, lambda: viewer.open_file_in_new_tab(file_path))
+    else:
+        # 使用单窗口模式
+        viewer = create_new_window()
+
+        # 处理命令行参数（打开指定文件）
+        if len(sys.argv) > 1:
+            file_path = sys.argv[1]
+            # 处理可能的路径格式（如带引号的路径）
+            if file_path.startswith('"') and file_path.endswith('"'):
+                file_path = file_path[1:-1]
+
+            if os.path.exists(file_path) and file_path.lower().endswith('.pdf'):
+                # 使用延迟调用，确保UI完全加载
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(100, lambda: viewer.file_manager._open_pdf_file(file_path))
 
     sys.exit(app.exec_())
 
