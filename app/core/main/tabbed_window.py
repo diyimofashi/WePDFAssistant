@@ -1,13 +1,14 @@
 """多标签页主窗口"""
 
-from PyQt5.QtWidgets import (QMainWindow, QTabWidget, QPushButton,
-                             QVBoxLayout, QWidget, QMessageBox, QStatusBar)
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QIcon, QKeySequence
+from PyQt5.QtWidgets import (QMainWindow, QTabWidget, QMessageBox,
+                             QStatusBar, QWidget)
+from PyQt5.QtCore import QTimer
 import os
 
 from app.ui.custom_tab_bar import CustomTabBar
 from app.ui.pdf_editor_widget import PDFEditorWidget
+from app.ui.welcome_widget import WelcomeWidget
+from app.managers.history_manager import HistoryManager
 from app.utils.logger import get_logger
 
 
@@ -19,18 +20,20 @@ class TabbedMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        logger.info("TabbedMainWindow.__init__ 开始")
 
         # 窗口标题
         self.setWindowTitle("PDFAssistant - 多标签页模式")
         self.resize(1400, 900)
+        logger.info("窗口标题和大小设置完成")
 
         # 标签页容器
         self.tab_widget = QTabWidget()
         self.tab_widget.setDocumentMode(True)
         self.tab_widget.setTabBarAutoHide(False)
-        self.tab_widget.setTabsClosable(True)
+        self.tab_widget.setTabsClosable(True)  # 使用原生关闭按钮
+        self.tab_widget.tabCloseRequested.connect(self.close_tab)  # 连接关闭信号
         self.tab_widget.setMovable(True)
-        self.tab_widget.tabCloseRequested.connect(self.close_tab)
         self.tab_widget.currentChanged.connect(self.on_tab_changed)
         self.tab_widget.setAcceptDrops(True)
         self.tab_widget.dragEnterEvent = self.drag_enter_event
@@ -40,19 +43,21 @@ class TabbedMainWindow(QMainWindow):
         self.custom_tab_bar = CustomTabBar()
         self.tab_widget.setTabBar(self.custom_tab_bar)
 
-        # 历史记录按钮
-        self.history_button = QPushButton("📜 历史")
-        self.history_button.setToolTip("显示历史记录")
-        self.history_button.setFixedSize(80, 28)
-        self.history_button.clicked.connect(self.toggle_history_panel)
-        self.custom_tab_bar.add_left_widget(self.history_button)
+        # 标记最后一个tab为新建标签页按钮
+        self._new_tab_button_index = -1
+        self._is_updating = False
 
-        # 新建Tab按钮
-        self.new_tab_button = QPushButton("+")
-        self.new_tab_button.setToolTip("新建标签页")
-        self.new_tab_button.setFixedSize(30, 28)
-        self.new_tab_button.clicked.connect(self.new_tab)
-        self.custom_tab_bar.add_right_widget(self.new_tab_button)
+        # 连接tab数量变化信号
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)
+
+        # 历史记录tab（index 0，可关闭，显示WelcomeWidget）
+        self.history_manager = HistoryManager(self)
+        self.welcome_widget = WelcomeWidget(self, self.history_manager)
+        self.welcome_widget.file_open_requested.connect(self.open_file_in_new_tab)
+        self.tab_widget.addTab(self.welcome_widget, "📜 历史")
+
+        # 添加新建标签页按钮tab
+        self._add_new_tab_button_tab()
 
         # 设置中央组件
         self.setCentralWidget(self.tab_widget)
@@ -60,14 +65,52 @@ class TabbedMainWindow(QMainWindow):
         # 状态栏
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-
-        # 默认添加一个空白tab
-        self.new_tab()
+        logger.info("状态栏设置完成")
 
         logger.info("多标签页主窗口初始化完成")
 
+    def _add_new_tab_button_tab(self):
+        """添加新建标签页按钮tab"""
+        # 创建一个空widget作为按钮
+        button_widget = QWidget()
+        self._new_tab_button_index = self.tab_widget.addTab(button_widget, "+")
+
+        # 移除按钮tab的关闭按钮
+        if self.custom_tab_bar:
+            left_button = self.custom_tab_bar.tabButton(self._new_tab_button_index, CustomTabBar.LeftSide)
+            right_button = self.custom_tab_bar.tabButton(self._new_tab_button_index, CustomTabBar.RightSide)
+
+            if left_button:
+                self.custom_tab_bar.setTabButton(self._new_tab_button_index, CustomTabBar.LeftSide, None)
+
+            if right_button:
+                self.custom_tab_bar.setTabButton(self._new_tab_button_index, CustomTabBar.RightSide, None)
+
+        logger.debug(f"添加新建标签页按钮tab, index={self._new_tab_button_index}")
+
+    def _is_new_tab_button_tab(self, index):
+        """判断是否是新建标签页按钮tab"""
+        return index == self._new_tab_button_index
+
+    def _on_tab_changed(self, index):
+        """tab切换事件处理"""
+        # 如果点击的是新建标签页按钮tab，则新建tab
+        if self._is_new_tab_button_tab(index):
+            self.new_tab()
+            # 切换回前一个tab
+            if self.tab_widget.count() > 1:
+                self.tab_widget.setCurrentIndex(self.tab_widget.count() - 2)
+            return
+
+        self.on_tab_changed(index)
+
     def new_tab(self, file_path=None):
         """新建标签页"""
+        if self._is_updating:
+            return
+
+        self._is_updating = True
+        logger.debug(f"new_tab: file_path={file_path}")
         editor = PDFEditorWidget(file_path, self)
 
         # 设置标签页标题
@@ -76,8 +119,20 @@ class TabbedMainWindow(QMainWindow):
         else:
             title = "未命名"
 
-        # 添加到标签页容器
-        index = self.tab_widget.addTab(editor, title)
+        # 在新建标签页按钮tab之前插入新tab
+        if self._new_tab_button_index > 0:
+            index = self.tab_widget.insertTab(self._new_tab_button_index, editor, title)
+            # 更新新建标签页按钮tab的索引
+            self._new_tab_button_index += 1
+        else:
+            index = self.tab_widget.addTab(editor, title)
+            # 将新建标签页按钮tab移到最后
+            button_widget = self.tab_widget.widget(self._new_tab_button_index)
+            button_text = self.tab_widget.tabText(self._new_tab_button_index)
+            self.tab_widget.removeTab(self._new_tab_button_index)
+            self._new_tab_button_index = self.tab_widget.addTab(button_widget, button_text)
+
+        logger.debug(f"  addTab返回index={index}, total_tabs={self.tab_widget.count()}")
         self.tab_widget.setCurrentIndex(index)
 
         # 保存编辑器引用
@@ -91,6 +146,7 @@ class TabbedMainWindow(QMainWindow):
         # 更新状态栏
         self.update_status_bar()
 
+        self._is_updating = False
         logger.debug(f"新建标签页: {title}, 索引: {index}")
 
         return index
@@ -104,11 +160,25 @@ class TabbedMainWindow(QMainWindow):
 
     def close_tab(self, index):
         """关闭标签页"""
+        # 不允许关闭新建标签页按钮tab
+        if self._is_new_tab_button_tab(index):
+            return
+
         editor = self.tab_widget.widget(index)
+
+        # 如果是历史记录tab（WelcomeWidget），关闭后重新创建
+        if isinstance(editor, WelcomeWidget):
+            self.tab_widget.removeTab(index)
+            self._new_tab_button_index -= 1
+            # 重新创建历史记录tab
+            self._create_history_tab()
+            logger.debug("关闭历史记录tab，重新创建")
+            return
 
         if not isinstance(editor, PDFEditorWidget):
             # 不是PDF编辑器，直接关闭
             self.tab_widget.removeTab(index)
+            self._new_tab_button_index -= 1
             return
 
         # 检查未保存的更改
@@ -133,10 +203,7 @@ class TabbedMainWindow(QMainWindow):
 
         # 移除标签页
         self.tab_widget.removeTab(index)
-
-        # 如果所有tab都关闭了，创建一个空白tab
-        if self.tab_widget.count() == 0:
-            self.new_tab()
+        self._new_tab_button_index -= 1
 
         # 更新状态栏
         self.update_status_bar()
@@ -149,9 +216,23 @@ class TabbedMainWindow(QMainWindow):
         if current_index >= 0:
             self.close_tab(current_index)
 
+    def _create_history_tab(self):
+        """创建历史记录tab"""
+        self.history_manager = HistoryManager(self)
+        self.welcome_widget = WelcomeWidget(self, self.history_manager)
+        self.welcome_widget.file_open_requested.connect(self.open_file_in_new_tab)
+        self.tab_widget.insertTab(0, self.welcome_widget, "📜 历史")
+
     def on_tab_changed(self, index):
         """标签页切换事件"""
         if index < 0:
+            return
+
+        # index 0 是历史记录tab
+        if index == 0:
+            self.setWindowTitle("PDFAssistant - 多标签页模式")
+            self.update_status_bar()
+            logger.debug("切换到历史记录tab")
             return
 
         editor = self.tab_widget.widget(index)
@@ -168,11 +249,6 @@ class TabbedMainWindow(QMainWindow):
 
         logger.debug(f"切换到标签页: {index}")
 
-    def toggle_history_panel(self):
-        """切换历史记录面板"""
-        current_editor = self.tab_widget.currentWidget()
-        if isinstance(current_editor, PDFEditorWidget):
-            current_editor.toggle_history()
 
     def update_tab_title(self, index, title):
         """更新标签页标题"""

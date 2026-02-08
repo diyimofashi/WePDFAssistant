@@ -15,9 +15,14 @@ class MenuManager(QObject):
         super().__init__()
         self.parent = parent_window
         
-    def create_menubar(self):
-        """创建菜单栏"""
-        menubar = self.parent.menuBar()
+    def create_menubar(self, menubar=None):
+        """创建菜单栏
+
+        Args:
+            menubar: 可选的菜单栏对象。如果不提供，则从 parent.menuBar() 获取
+        """
+        if menubar is None:
+            menubar = self.parent.menuBar()
 
         # 文件菜单
         self._create_file_menu(menubar)

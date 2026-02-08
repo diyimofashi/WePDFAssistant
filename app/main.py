@@ -243,7 +243,7 @@ def main():
         logger.info("启动多标签页模式")
         viewer = TabbedMainWindow()
         viewer.setWindowIcon(app_icon)
-        viewer.show()
+        viewer.showMaximized()  # 默认最大化（不隐藏任务栏）
         open_windows.append(viewer)
 
         # 处理命令行参数（打开指定文件）

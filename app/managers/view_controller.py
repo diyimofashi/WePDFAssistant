@@ -69,20 +69,20 @@ class ViewController:
     def previous_page(self):
         """上一页"""
         # 获取当前页面，VirtualScrollArea的get_current_page返回1基索引
-        current_page = self.parent.virtual_scroll.get_current_page() - 1  # 转换为0基索引
+        current_page = self.parent.scroll_area.get_current_page() - 1  # 转换为0基索引
         if current_page > 0:
-            self.parent.virtual_scroll.scroll_to_page(current_page - 1)  # 滚动到上一页（0基索引）
+            self.parent.scroll_area.scroll_to_page(current_page - 1)  # 滚动到上一页（0基索引）
             self.parent.show_message("已跳转到上一页")
         else:
             self.parent.show_message("已是第一页")
-    
+
     def next_page(self):
         """下一页"""
         # 获取当前页面，VirtualScrollArea的get_current_page返回1基索引
-        current_page = self.parent.virtual_scroll.get_current_page() - 1  # 转换为0基索引
+        current_page = self.parent.scroll_area.get_current_page() - 1  # 转换为0基索引
         total_pages = self.parent.pdf_processor.get_total_pages()
         if current_page < total_pages - 1:
-            self.parent.virtual_scroll.scroll_to_page(current_page + 1)  # 滚动到下一页（0基索引）
+            self.parent.scroll_area.scroll_to_page(current_page + 1)  # 滚动到下一页（0基索引）
             self.parent.show_message("已跳转到下一页")
         else:
             self.parent.show_message("已是最后一页")
@@ -92,10 +92,10 @@ class ViewController:
         try:
             if page_number is None:
                 page_number = self.parent.page_spinbox.value()
-            
+
             if 1 <= page_number <= self.parent.pdf_processor.get_total_pages():
                 self.parent.pdf_processor.go_to_page(page_number)
-                self.parent.virtual_scroll.scroll_to_page(page_number - 1)
+                self.parent.scroll_area.scroll_to_page(page_number - 1)
                 self.parent.show_message(f"跳转到第 {page_number} 页")
                 
                 current_page = self.parent.pdf_processor.get_current_page()
@@ -149,5 +149,5 @@ class ViewController:
     
     def update_thumbnail_selection(self, current_page):
         """更新缩略图选中状态"""
-        if self.parent.thumbnail_list:
-            self.parent.thumbnail_list.update_thumbnail_selection(current_page)
+        if self.parent.thumbnail_manager:
+            self.parent.thumbnail_manager.update_thumbnail_selection(current_page)

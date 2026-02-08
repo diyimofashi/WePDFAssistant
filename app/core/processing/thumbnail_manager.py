@@ -30,22 +30,33 @@ class AsyncThumbnailLoader(QThread):
     def run(self):
         """异步加载缩略图"""
         try:
+            logger.info(f"开始异步加载缩略图，页数: {len(self.page_nums)}")
             for page_num in self.page_nums:
                 if self.is_cancelled:
+                    logger.info("缩略图加载已取消")
                     break
-                    
-                # 生成缩略图
-                thumbnail_pixmap = self.pdf_processor.render_thumbnail(page_num, 200, 234)
-                if thumbnail_pixmap:
-                    self.thumbnail_ready.emit(page_num, thumbnail_pixmap)
-                    
+
+                try:
+                    # 生成缩略图
+                    thumbnail_pixmap = self.pdf_processor.render_thumbnail(page_num, 200, 234)
+                    if thumbnail_pixmap:
+                        self.thumbnail_ready.emit(page_num, thumbnail_pixmap)
+                        logger.debug(f"第 {page_num + 1} 页缩略图生成成功")
+                    else:
+                        logger.warning(f"第 {page_num + 1} 页缩略图生成失败，返回None")
+                except Exception as e:
+                    logger.error(f"生成第 {page_num + 1} 页缩略图时出错: {e}")
+
                 # 短暂延迟，避免阻塞UI
                 self.msleep(10)
-                
+
             if not self.is_cancelled:
+                logger.info("所有缩略图加载完成")
                 self.loading_finished.emit()
         except Exception as e:
             logger.error(f"异步加载缩略图失败: {e}")
+            import traceback
+            traceback.print_exc()
             
     def cancel(self):
         """取消加载"""
@@ -73,7 +84,7 @@ class ThumbnailManager(QListWidget):
         # 设置缩略图列表属性
         self.setIconSize(QSize(200, 234))  # 缩略图尺寸 (增加30%高度)
         self.setSpacing(5)  # 增加项目间距
-        
+
         # 设置布局和显示模式
         self.setFlow(QListWidget.LeftToRight)  # 从左到右排列
         self.setResizeMode(QListWidget.Adjust)
@@ -81,15 +92,19 @@ class ThumbnailManager(QListWidget):
         self.setMovement(QListWidget.Static)
         self.setViewMode(QListWidget.IconMode)  # 图标模式
         self.setUniformItemSizes(True)  # 统一项目大小
-        
+
+        # 设置最小和最大宽度，确保容器宽度合适
+        self.setMinimumWidth(280)
+        self.setMaximumWidth(280)  # 固定宽度，确保水平居中
+
         # 设置滚动条策略
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # 隐藏水平滚动条
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # 垂直滚动条按需显示
-        
+
         # 设置对齐方式
         self.setProperty("alignment", Qt.AlignCenter)
         self.setUniformItemSizes(True)  # 统一项目大小以确保正确布局
-        
+
         # 设置样式
         self.setStyleSheet("""
             QListWidget {
@@ -158,14 +173,21 @@ class ThumbnailManager(QListWidget):
     def load_thumbnails(self):
         """加载PDF页面缩略图"""
         if not self.pdf_processor or not self.pdf_processor.fitz_document:
+            logger.warning("无法加载缩略图: PDF处理器或文档不存在")
             return
-            
+
+        logger.info(f"开始加载缩略图，总页数: {self.pdf_processor.get_total_pages()}")
+        logger.info(f"缩略图面板可见性: {self.isVisible()}")
+        logger.info(f"缩略图面板尺寸: {self.size().width()}x{self.size().height()}")
+        logger.info(f"缩略图面板最小宽度: {self.minimumWidth()}")
+
         # 清空现有缩略图
         self.clear()
         self.thumbnails = []
-        
+
         total_pages = self.pdf_processor.get_total_pages()
-        
+        logger.debug(f"PDF总页数: {total_pages}")
+
         # 生成每页的缩略图占位符
         for page_num in range(total_pages):
             # 创建列表项
@@ -176,22 +198,32 @@ class ThumbnailManager(QListWidget):
             item.setText(f"第 {page_num + 1} 页")  # 显示页码
             item.setData(Qt.UserRole, page_num)  # 存储页码信息
             item.setTextAlignment(Qt.AlignCenter)  # 文字居中
-            
+
             self.addItem(item)
             self.thumbnails.append(None)  # 占位符
-            
+
             # 如果是当前页面，设置为选中状态
             current_page = self.pdf_processor.get_current_page()  # 获取当前页面
             if page_num == current_page - 1:  # current_page从1开始，page_num从0开始
                 item.setSelected(True)
                 # 确保选中的项可见
                 self.scrollToItem(item)
-                
+
+        logger.debug(f"添加了{total_pages}个缩略图占位符")
+        logger.debug(f"当前列表项数量: {self.count()}")
+
         # 确保整个列表居中显示
         self.center_content()
-        
+
+        # 强制更新显示
+        self.updateGeometry()
+        self.update()
+        self.repaint()
+
         # 异步加载缩略图
+        logger.debug("开始异步加载缩略图")
         self._load_thumbnails_async()
+        logger.info("缩略图加载请求已发送")
                     
     def _create_placeholder(self):
         """创建占位符缩略图"""
@@ -224,11 +256,17 @@ class ThumbnailManager(QListWidget):
         
     def _on_thumbnail_ready(self, page_num, pixmap):
         """缩略图就绪回调"""
+        logger.debug(f"缩略图就绪: 页码 {page_num}, 尺寸: {pixmap.width()}x{pixmap.height()}")
         if page_num < self.count():
             item = self.item(page_num)
             if item:
                 item.setIcon(QIcon(pixmap))
                 self.thumbnails[page_num] = pixmap
+                logger.debug(f"已更新第 {page_num + 1} 页的缩略图")
+            else:
+                logger.warning(f"未找到页码 {page_num} 的列表项")
+        else:
+            logger.warning(f"页码 {page_num} 超出范围，总页数: {self.count()}")
                 
     def _on_loading_finished(self):
         """加载完成回调"""
