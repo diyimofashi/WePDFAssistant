@@ -1309,22 +1309,107 @@ class PDFRenderer(QObject):
             if not self.fitz_document or self.current_page < 0 or self.current_page >= len(self.fitz_document):
                 return False, "没有打开的文档"
 
-            # 获取当前页面尺寸
+            # 获取当前页面尺寸(以点为单位)
             page = self.fitz_document[self.current_page]
             rect = page.rect
             page_width = rect.width
 
             # 计算需要的缩放比例
+            # PDF渲染: 显示宽度 = page_width * zoom_factor * base_zoom
+            # 所以: zoom_factor = container_width / (page_width * base_zoom)
             if page_width > 0:
-                new_zoom = container_width / page_width
-                self.set_zoom(new_zoom / self.base_zoom)
-                return True, f"已适应宽度，缩放比例为 {int(new_zoom / self.base_zoom * 100)}%"
+                target_zoom_factor = container_width / (page_width * self.base_zoom)
+
+                # 确保缩放比例在有效范围内
+                target_zoom_factor = max(0.25, min(4.0, target_zoom_factor))
+
+                # 应用缩放
+                actual_zoom = target_zoom_factor * self.base_zoom
+                self.zoom_factor = actual_zoom
+
+                # 清除渲染缓存
+                self.clear_render_cache()
+
+                return True, f"已适应宽度，缩放比例为 {int(target_zoom_factor * 100)}%"
 
             return False, "页面宽度无效"
 
         except Exception as e:
             logger.error(f"适应宽度时出错: {e}")
             return False, f"适应宽度失败: {str(e)}"
+
+    def fit_to_height(self, container_height):
+        """适应高度"""
+        try:
+            if not self.fitz_document or self.current_page < 0 or self.current_page >= len(self.fitz_document):
+                return False, "没有打开的文档"
+
+            # 获取当前页面尺寸(以点为单位)
+            page = self.fitz_document[self.current_page]
+            rect = page.rect
+            page_height = rect.height
+
+            # 计算需要的缩放比例
+            # PDF渲染: 显示高度 = page_height * zoom_factor * base_zoom
+            # 所以: zoom_factor = container_height / (page_height * base_zoom)
+            if page_height > 0:
+                target_zoom_factor = container_height / (page_height * self.base_zoom)
+
+                # 确保缩放比例在有效范围内
+                target_zoom_factor = max(0.25, min(4.0, target_zoom_factor))
+
+                # 应用缩放
+                actual_zoom = target_zoom_factor * self.base_zoom
+                self.zoom_factor = actual_zoom
+
+                # 清除渲染缓存
+                self.clear_render_cache()
+
+                return True, f"已适应高度，缩放比例为 {int(target_zoom_factor * 100)}%"
+
+            return False, "页面高度无效"
+
+        except Exception as e:
+            logger.error(f"适应高度时出错: {e}")
+            return False, f"适应高度失败: {str(e)}"
+
+    def fit_to_container(self, container_width, container_height):
+        """适应容器"""
+        try:
+            if not self.fitz_document or self.current_page < 0 or self.current_page >= len(self.fitz_document):
+                return False, "没有打开的文档"
+
+            # 获取当前页面尺寸(以点为单位)
+            page = self.fitz_document[self.current_page]
+            rect = page.rect
+            page_width = rect.width
+            page_height = rect.height
+
+            if page_width > 0 and page_height > 0:
+                # 计算宽度和高度各自需要的缩放比例
+                zoom_for_width = container_width / (page_width * self.base_zoom)
+                zoom_for_height = container_height / (page_height * self.base_zoom)
+
+                # 选择较小的缩放比例以确保完整显示
+                target_zoom_factor = min(zoom_for_width, zoom_for_height)
+
+                # 确保缩放比例在有效范围内
+                target_zoom_factor = max(0.25, min(4.0, target_zoom_factor))
+
+                # 应用缩放
+                actual_zoom = target_zoom_factor * self.base_zoom
+                self.zoom_factor = actual_zoom
+
+                # 清除渲染缓存
+                self.clear_render_cache()
+
+                return True, f"已适应容器，缩放比例为 {int(target_zoom_factor * 100)}%"
+
+            return False, "页面尺寸无效"
+
+        except Exception as e:
+            logger.error(f"适应容器时出错: {e}")
+            return False, f"适应容器失败: {str(e)}"
 
     def _is_file_locked(self, filepath, timeout=2):
         """检查文件是否被锁定"""

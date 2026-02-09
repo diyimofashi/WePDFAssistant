@@ -342,11 +342,21 @@ class PDFEditorWidget(QWidget):
 
     def fit_to_width(self):
         """适应宽度"""
-        self.view_controller.fit_to_width()
+        # 获取容器宽度
+        container_width = None
+        if hasattr(self, 'scroll_area') and hasattr(self.scroll_area, 'get_container_size'):
+            width, _ = self.scroll_area.get_container_size()
+            container_width = width
+        self.view_controller.fit_to_width(container_width)
 
     def fit_to_height(self):
         """适应高度"""
-        self.view_controller.fit_to_height()
+        # 获取容器高度
+        container_height = None
+        if hasattr(self, 'scroll_area') and hasattr(self.scroll_area, 'get_container_size'):
+            _, height = self.scroll_area.get_container_size()
+            container_height = height
+        self.view_controller.fit_to_height(container_height)
 
     def set_actual_size(self):
         """原始尺寸"""
@@ -376,6 +386,55 @@ class PDFEditorWidget(QWidget):
         if '%' in text:
             level = float(text.rstrip('%'))
             self.set_zoom_level(level)
+
+    def _update_zoom_combo_display(self):
+        """更新工具栏缩放比例显示"""
+        if hasattr(self, 'zoom_combo') and hasattr(self.pdf_processor, 'get_zoom'):
+            try:
+                # 获取当前缩放比例
+                current_zoom = self.pdf_processor.get_zoom()
+                zoom_percent = int(current_zoom * 100)
+                # 阻止信号，避免循环触发
+                self.zoom_combo.blockSignals(True)
+
+                # 检查是否在预设值列表中
+                zoom_text = f"{zoom_percent}%"
+                index = self.zoom_combo.findText(zoom_text)
+
+                if index >= 0:
+                    # 如果在预设值中，选择该项
+                    self.zoom_combo.setCurrentIndex(index)
+                else:
+                    # 如果不在预设值中，查找最接近的预设值
+                    closest_zoom = self._find_closest_zoom_level(zoom_percent)
+                    if closest_zoom is not None:
+                        self.zoom_combo.setCurrentText(f"{closest_zoom}%")
+                    else:
+                        # 如果找不到合适的预设值，直接设置文本
+                        self.zoom_combo.setCurrentText(zoom_text)
+
+                self.zoom_combo.blockSignals(False)
+            except Exception as e:
+                logger.error(f"更新工具栏缩放显示失败: {e}")
+
+    def _find_closest_zoom_level(self, target_percent):
+        """查找最接近目标缩放比例的预设值"""
+        if not hasattr(self, 'zoom_combo'):
+            return None
+
+        # 获取所有预设的缩放比例
+        preset_zooms = []
+        for i in range(self.zoom_combo.count()):
+            text = self.zoom_combo.itemText(i)
+            if '%' in text:
+                preset_zooms.append(int(text.rstrip('%')))
+
+        if not preset_zooms:
+            return None
+
+        # 找到最接近的预设值
+        closest = min(preset_zooms, key=lambda x: abs(x - target_percent))
+        return closest
 
     def previous_page(self):
         """上一页"""

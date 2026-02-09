@@ -15,54 +15,134 @@ class ViewController:
         """放大"""
         current_zoom = self.parent.pdf_processor.get_zoom()
         new_zoom = min(current_zoom * 1.2, 4.0)
+
+        # 获取最接近的预设缩放值
+        closest_zoom = self._find_closest_zoom_level(int(new_zoom * 100))
+        if closest_zoom is not None:
+            new_zoom = closest_zoom / 100.0
+
         success, message = self.parent.pdf_processor.set_zoom(new_zoom)
         if success:
-            self.parent.update_preview()
+            if hasattr(self.parent, 'scroll_area') and hasattr(self.parent.scroll_area, 'update_content'):
+                self.parent.scroll_area.update_content()
+            # 更新工具栏缩放比例显示
+            if hasattr(self.parent, 'zoom_combo'):
+                self.parent._update_zoom_combo_display()
         self.parent.show_message(message)
-    
+
     def zoom_out(self):
         """缩小"""
         current_zoom = self.parent.pdf_processor.get_zoom()
         new_zoom = max(current_zoom / 1.2, 0.25)
+
+        # 获取最接近的预设缩放值
+        closest_zoom = self._find_closest_zoom_level(int(new_zoom * 100))
+        if closest_zoom is not None:
+            new_zoom = closest_zoom / 100.0
+
         success, message = self.parent.pdf_processor.set_zoom(new_zoom)
         if success:
-            self.parent.update_preview()
+            if hasattr(self.parent, 'scroll_area') and hasattr(self.parent.scroll_area, 'update_content'):
+                self.parent.scroll_area.update_content()
+            # 更新工具栏缩放比例显示
+            if hasattr(self.parent, 'zoom_combo'):
+                self.parent._update_zoom_combo_display()
         self.parent.show_message(message)
-    
+
+    def _find_closest_zoom_level(self, target_percent):
+        """查找最接近目标缩放比例的预设值"""
+        if not hasattr(self.parent, 'zoom_combo'):
+            return None
+
+        # 获取所有预设的缩放比例
+        preset_zooms = []
+        for i in range(self.parent.zoom_combo.count()):
+            text = self.parent.zoom_combo.itemText(i)
+            if '%' in text:
+                try:
+                    preset_zooms.append(int(text.rstrip('%')))
+                except ValueError:
+                    continue
+
+        if not preset_zooms:
+            return None
+
+        # 找到最接近的预设值
+        closest = min(preset_zooms, key=lambda x: abs(x - target_percent))
+        return closest
+
     def fit_to_width(self, container_width=None):
         """适应宽度"""
         success, message = self.parent.pdf_processor.fit_to_width(container_width)
         if success:
-            self.parent.update_preview()
+            # 获取当前缩放比例并调整为最接近的预设值
+            current_zoom = self.parent.pdf_processor.get_zoom()
+            closest_zoom = self._find_closest_zoom_level(int(current_zoom * 100))
+            if closest_zoom is not None:
+                self.parent.pdf_processor.set_zoom(closest_zoom / 100.0)
+
+            if hasattr(self.parent, 'scroll_area') and hasattr(self.parent.scroll_area, 'update_content'):
+                self.parent.scroll_area.update_content()
+            # 更新工具栏缩放比例显示
+            if hasattr(self.parent, 'zoom_combo'):
+                self.parent._update_zoom_combo_display()
         self.parent.show_message("已适应宽度显示")
-    
+
     def fit_to_height(self, container_height=None):
         """适应页面"""
         success, message = self.parent.pdf_processor.fit_to_height(container_height)
         if success:
-            self.parent.update_preview()
+            # 获取当前缩放比例并调整为最接近的预设值
+            current_zoom = self.parent.pdf_processor.get_zoom()
+            closest_zoom = self._find_closest_zoom_level(int(current_zoom * 100))
+            if closest_zoom is not None:
+                self.parent.pdf_processor.set_zoom(closest_zoom / 100.0)
+
+            if hasattr(self.parent, 'scroll_area') and hasattr(self.parent.scroll_area, 'update_content'):
+                self.parent.scroll_area.update_content()
+            # 更新工具栏缩放比例显示
+            if hasattr(self.parent, 'zoom_combo'):
+                self.parent._update_zoom_combo_display()
         self.parent.show_message("已适应高度显示")
-    
+
     def fit_to_container(self, container_width=None, container_height=None):
         """适应容器"""
         success, message = self.parent.pdf_processor.fit_to_container(container_width, container_height)
         if success:
-            self.parent.update_preview()
+            # 获取当前缩放比例并调整为最接近的预设值
+            current_zoom = self.parent.pdf_processor.get_zoom()
+            closest_zoom = self._find_closest_zoom_level(int(current_zoom * 100))
+            if closest_zoom is not None:
+                self.parent.pdf_processor.set_zoom(closest_zoom / 100.0)
+
+            if hasattr(self.parent, 'scroll_area') and hasattr(self.parent.scroll_area, 'update_content'):
+                self.parent.scroll_area.update_content()
+            # 更新工具栏缩放比例显示
+            if hasattr(self.parent, 'zoom_combo'):
+                self.parent._update_zoom_combo_display()
         self.parent.show_message("已适应容器显示")
-    
+
     def set_actual_size(self):
         """设置原始尺寸"""
         success, message = self.parent.pdf_processor.set_zoom(1.0)
         if success:
-            self.parent.update_preview()
+            if hasattr(self.parent, 'scroll_area') and hasattr(self.parent.scroll_area, 'update_content'):
+                self.parent.scroll_area.update_content()
+            # 更新工具栏缩放比例显示
+            if hasattr(self.parent, 'zoom_combo'):
+                self.parent._update_zoom_combo_display()
         self.parent.show_message("显示原始尺寸")
-    
+
     def set_zoom_level(self, level):
         """设置缩放级别"""
         zoom_factor = level / 100.0
         success, message = self.parent.pdf_processor.set_zoom(zoom_factor)
         if success:
-            self.parent.update_preview()
+            if hasattr(self.parent, 'scroll_area') and hasattr(self.parent.scroll_area, 'update_content'):
+                self.parent.scroll_area.update_content()
+            # 更新工具栏缩放比例显示
+            if hasattr(self.parent, 'zoom_combo'):
+                self.parent._update_zoom_combo_display()
         self.parent.show_message(f"缩放到 {level}%")
         # 状态栏缩放显示已移除
     
