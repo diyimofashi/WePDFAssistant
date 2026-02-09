@@ -325,10 +325,11 @@ class PDFEditorWidget(QWidget):
     def open_file(self):
         """打开文件（菜单管理器调用）"""
         from PyQt5.QtWidgets import QFileDialog
+        last_open_dir = AppSettings.get_last_open_dir()
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "打开PDF文件",
-            "",
+            last_open_dir,
             "PDF文件 (*.pdf);;所有文件 (*.*)"
         )
         if file_path:
@@ -735,11 +736,6 @@ class PDFEditorWidget(QWidget):
         self.tool_bar.addSeparator()
 
         # 工具
-        history_btn = QAction("📋 历史", self)
-        history_btn.setToolTip("历史记录")
-        history_btn.triggered.connect(self.toggle_history)
-        self.tool_bar.addAction(history_btn)
-
         search_btn = QAction("🔍 搜索", self)
         search_btn.setToolTip("搜索 (Ctrl+F)")
         search_btn.triggered.connect(self.show_search_panel)
