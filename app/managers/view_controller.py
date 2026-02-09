@@ -71,7 +71,14 @@ class ViewController:
         # 获取当前页面，VirtualScrollArea的get_current_page返回1基索引
         current_page = self.parent.scroll_area.get_current_page() - 1  # 转换为0基索引
         if current_page > 0:
-            self.parent.scroll_area.scroll_to_page(current_page - 1)  # 滚动到上一页（0基索引）
+            new_page = current_page - 1
+            self.parent.scroll_area.scroll_to_page(new_page)  # 滚动到上一页（0基索引）
+            # 立即更新工具栏页码显示
+            self.parent.page_spinbox.blockSignals(True)
+            self.parent.page_spinbox.setValue(new_page + 1)  # 转换为1基索引
+            self.parent.page_spinbox.blockSignals(False)
+            # 更新缩略图选中状态
+            self.parent.update_thumbnail_selection(new_page + 1)
             self.parent.show_message("已跳转到上一页")
         else:
             self.parent.show_message("已是第一页")
@@ -82,7 +89,14 @@ class ViewController:
         current_page = self.parent.scroll_area.get_current_page() - 1  # 转换为0基索引
         total_pages = self.parent.pdf_processor.get_total_pages()
         if current_page < total_pages - 1:
-            self.parent.scroll_area.scroll_to_page(current_page + 1)  # 滚动到下一页（0基索引）
+            new_page = current_page + 1
+            self.parent.scroll_area.scroll_to_page(new_page)  # 滚动到下一页（0基索引）
+            # 立即更新工具栏页码显示
+            self.parent.page_spinbox.blockSignals(True)
+            self.parent.page_spinbox.setValue(new_page + 1)  # 转换为1基索引
+            self.parent.page_spinbox.blockSignals(False)
+            # 更新缩略图选中状态
+            self.parent.update_thumbnail_selection(new_page + 1)
             self.parent.show_message("已跳转到下一页")
         else:
             self.parent.show_message("已是最后一页")

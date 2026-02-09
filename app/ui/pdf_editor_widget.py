@@ -104,6 +104,8 @@ class PDFEditorWidget(QWidget):
         self.scroll_area = VirtualScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setMouseTracking(True)
+        # 连接页面变更信号，用于更新工具栏页码显示
+        self.scroll_area.page_changed.connect(self._on_scroll_page_changed)
         self.main_splitter.addWidget(self.scroll_area)
 
         # 设置分割器比例
@@ -390,6 +392,19 @@ class PDFEditorWidget(QWidget):
     def _on_page_spinbox_changed(self, value):
         """页码框变化"""
         self.view_controller.on_page_spinbox_changed(value)
+
+    def _on_scroll_page_changed(self, page_num):
+        """滚动时页面变更"""
+        """更新工具栏页码显示"""
+        if hasattr(self, 'page_spinbox'):
+            # 阻止信号，避免循环触发
+            self.page_spinbox.blockSignals(True)
+            self.page_spinbox.setValue(page_num)
+            self.page_spinbox.blockSignals(False)
+
+        # 更新缩略图选中状态
+        if hasattr(self, 'thumbnail_manager'):
+            self.thumbnail_manager.update_thumbnail_selection(page_num)
 
     def toggle_thumbnails(self, checked):
         """切换缩略图显示/隐藏"""
