@@ -7,5 +7,6 @@
   "use_a4_scaling": true,
   "_sqlite_migrated": true,
   "history_panel_visible": true,
-  "use_tabbed_mode": true
+  "use_tabbed_mode": true,
+  "show_thumbnails_default": false
 }

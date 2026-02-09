@@ -90,8 +90,10 @@ class MenuManager(QObject):
         # 缩略图
         self.parent.thumbnail_action = QAction("🖼️ 缩略图", self.parent)
         self.parent.thumbnail_action.setCheckable(True)
-        self.parent.thumbnail_action.setChecked(True)
-        self.parent.thumbnail_action.triggered.connect(self.parent.toggle_thumbnails)
+        # 读取设置:打开新文件时是否默认显示缩略图
+        is_checked = AppSettings.get_show_thumbnails_default()
+        self.parent.thumbnail_action.setChecked(is_checked)
+        self.parent.thumbnail_action.triggered.connect(self.toggle_thumbnails_default)
         view_menu.addAction(self.parent.thumbnail_action)
 
         # 文件列表面板
@@ -306,3 +308,15 @@ class MenuManager(QObject):
 
         logger = get_logger('menu_manager')
         logger.info(f"文件列表面板可见性设置已更改为: {'显示' if new_value else '隐藏'}")
+
+    def toggle_thumbnails_default(self):
+        """切换打开新文件时是否默认显示缩略图"""
+        current = AppSettings.get_show_thumbnails_default()
+        new_value = not current
+        AppSettings.set_show_thumbnails_default(new_value)
+
+        # 更新菜单项状态
+        self.parent.thumbnail_action.setChecked(new_value)
+
+        logger = get_logger('menu_manager')
+        logger.info(f"缩略图默认显示设置已更改为: {'显示' if new_value else '隐藏'}")

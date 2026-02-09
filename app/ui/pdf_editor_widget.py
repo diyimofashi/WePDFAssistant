@@ -20,6 +20,7 @@ from app.managers.split_manager import SplitManager
 from app.managers.merge_manager import MergeManager
 from app.ui.welcome_widget import WelcomeWidget
 from app.utils.logger import get_logger
+from app.config.settings import AppSettings
 
 
 logger = get_logger('pdf_editor_widget')
@@ -187,38 +188,54 @@ class PDFEditorWidget(QWidget):
                         from PyQt5.QtCore import QTimer
                         QTimer.singleShot(200, lambda: self.scroll_area.scroll_to_page(0) if hasattr(self.scroll_area, 'scroll_to_page') else None)
 
-                        # 显示缩略图面板并加载缩略图
-                        logger.debug("显示缩略图面板")
-                        # 确保thumbnail_panel可见
-                        self.thumbnail_panel.setVisible(True)
-                        self.thumbnail_panel.show()
-                        self.thumbnail_panel.raise_()
-                        # 设置分割器大小，使用更大的值确保缩略图面板有足够宽度
-                        self.main_splitter.setSizes([220, 1000])
-                        # 延迟再次设置，确保生效
-                        from PyQt5.QtCore import QTimer
-                        QTimer.singleShot(50, lambda: self.main_splitter.setSizes([220, 1000]))
-                        sizes = self.main_splitter.sizes()
-                        logger.info(f"设置分割器大小: {sizes} (缩略图: {sizes[0]}, 文档: {sizes[1]})")
-                        logger.info(f"缩略图面板可见性: {self.thumbnail_panel.isVisible()}")
-                        logger.info(f"缩略图面板尺寸: {self.thumbnail_panel.size().width()}x{self.thumbnail_panel.size().height()}")
-                        # 强制更新
-                        self.main_splitter.updateGeometry()
-                        self.main_splitter.update()
-                        self.thumbnail_panel.updateGeometry()
-                        self.thumbnail_panel.update()
-                        # 更新工具栏缩略图按钮为选中状态（不触发信号）
-                        if hasattr(self, 'tool_bar'):
-                            for action in self.tool_bar.actions():
-                                if action.text().startswith("🖼️ 缩略图"):
-                                    action.blockSignals(True)
-                                    action.setChecked(True)
-                                    action.blockSignals(False)
-                                    break
-                        logger.debug("开始加载缩略图")
-                        self.load_thumbnails()
-                        # 延迟检查，确保缩略图已经加载
-                        QTimer.singleShot(500, self._check_thumbnail_panel)
+                        # 根据设置决定是否显示缩略图
+                        show_thumbnails = AppSettings.get_show_thumbnails_default()
+                        if show_thumbnails:
+                            # 显示缩略图面板并加载缩略图
+                            logger.debug("显示缩略图面板")
+                            # 确保thumbnail_panel可见
+                            self.thumbnail_panel.setVisible(True)
+                            self.thumbnail_panel.show()
+                            self.thumbnail_panel.raise_()
+                            # 设置分割器大小，使用更大的值确保缩略图面板有足够宽度
+                            self.main_splitter.setSizes([220, 1000])
+                            # 延迟再次设置，确保生效
+                            QTimer.singleShot(50, lambda: self.main_splitter.setSizes([220, 1000]))
+                            sizes = self.main_splitter.sizes()
+                            logger.info(f"设置分割器大小: {sizes} (缩略图: {sizes[0]}, 文档: {sizes[1]})")
+                            logger.info(f"缩略图面板可见性: {self.thumbnail_panel.isVisible()}")
+                            logger.info(f"缩略图面板尺寸: {self.thumbnail_panel.size().width()}x{self.thumbnail_panel.size().height()}")
+                            # 强制更新
+                            self.main_splitter.updateGeometry()
+                            self.main_splitter.update()
+                            self.thumbnail_panel.updateGeometry()
+                            self.thumbnail_panel.update()
+                            # 更新工具栏缩略图按钮为选中状态（不触发信号）
+                            if hasattr(self, 'tool_bar'):
+                                for action in self.tool_bar.actions():
+                                    if action.text().startswith("🖼️ 缩略图"):
+                                        action.blockSignals(True)
+                                        action.setChecked(True)
+                                        action.blockSignals(False)
+                                        break
+                            logger.debug("开始加载缩略图")
+                            self.load_thumbnails()
+                            # 延迟检查，确保缩略图已经加载
+                            QTimer.singleShot(500, self._check_thumbnail_panel)
+                        else:
+                            # 不显示缩略图
+                            logger.debug("不显示缩略图面板")
+                            self.thumbnail_panel.setVisible(False)
+                            self.thumbnail_panel.hide()
+                            self.main_splitter.setSizes([0, 1000])
+                            # 更新工具栏缩略图按钮为未选中状态（不触发信号）
+                            if hasattr(self, 'tool_bar'):
+                                for action in self.tool_bar.actions():
+                                    if action.text().startswith("🖼️ 缩略图"):
+                                        action.blockSignals(True)
+                                        action.setChecked(False)
+                                        action.blockSignals(False)
+                                        break
                     except Exception as e:
                         logger.error(f"设置虚拟滚动页面数据失败: {e}")
                         import traceback
@@ -479,6 +496,12 @@ class PDFEditorWidget(QWidget):
                 self.thumbnail_panel.setVisible(True)
                 self.thumbnail_panel.show()
                 logger.info("显示缩略图面板")
+                # 检查是否需要加载缩略图
+                if self.thumbnail_panel.count() == 0 and self.pdf_processor and self.pdf_processor.fitz_document:
+                    logger.info("缩略图列表为空，开始加载缩略图")
+                    self.load_thumbnails()
+                else:
+                    logger.info(f"缩略图已存在，数量: {self.thumbnail_panel.count()}")
             else:
                 # 隐藏缩略图：设置为0
                 self.main_splitter.setSizes([0, 1000])

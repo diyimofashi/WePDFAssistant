@@ -234,6 +234,19 @@ class AppSettings:
         settings['use_tabbed_mode'] = bool(enabled)
         cls._save_settings()
 
+    @classmethod
+    def get_show_thumbnails_default(cls):
+        """获取打开新文件时是否默认显示缩略图"""
+        settings = cls._load_settings()
+        return settings.get('show_thumbnails_default', True)  # 默认显示缩略图
+
+    @classmethod
+    def set_show_thumbnails_default(cls, enabled):
+        """设置打开新文件时是否默认显示缩略图"""
+        settings = cls._load_settings()
+        settings['show_thumbnails_default'] = bool(enabled)
+        cls._save_settings()
+
     # ==================== 文件历史记录相关设置 ====================
 
 
