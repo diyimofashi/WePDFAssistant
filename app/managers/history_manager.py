@@ -251,8 +251,8 @@ class HistoryManager:
                     return f"{hours}小时前"
             elif delta.days == 1:
                 return "昨天"
-            elif delta.days < 7:
-                return f"{delta.days}天前"
+            elif delta.days == 2:
+                return "前天"
             else:
                 return dt.strftime("%Y-%m-%d")
         except Exception as e:
