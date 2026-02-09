@@ -143,6 +143,18 @@ class TabbedMainWindow(QMainWindow):
             lambda t, idx=index: self.update_tab_title(idx, t)
         )
 
+        # 连接文件打开和保存信号，用于更新tooltip
+        editor.file_opened.connect(
+            lambda path, idx=index: self.tab_widget.setTabToolTip(idx, path)
+        )
+        editor.file_saved.connect(
+            lambda path, idx=index: self.tab_widget.setTabToolTip(idx, path)
+        )
+
+        # 设置tooltip显示文件全路径（如果已提供）
+        if file_path:
+            self.tab_widget.setTabToolTip(index, file_path)
+
         # 更新状态栏
         self.update_status_bar()
 
