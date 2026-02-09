@@ -110,61 +110,73 @@ class RenderCache(QObject):
     def _get_cache_key(self, page_num, zoom_factor, render_size):
         """生成缓存键"""
         return f"page_{page_num}_zoom_{zoom_factor:.2f}_size_{render_size[0]}x{render_size[1]}"
-        
-    def get_rendered_page(self, page_num, zoom_factor, render_size):
+
+    def _get_render_key(self, page_num, zoom_factor, render_size, file_id=None):
+        """生成页面渲染缓存键"""
+        if file_id:
+            return f"{file_id}_page_{page_num}_zoom_{zoom_factor:.2f}_size_{render_size[0]}x{render_size[1]}"
+        return self._get_cache_key(page_num, zoom_factor, render_size)
+
+    def get_rendered_page(self, page_num, zoom_factor, render_size, file_id=None):
         """获取渲染的页面"""
-        key = self._get_cache_key(page_num, zoom_factor, render_size)
+        key = self._get_render_key(page_num, zoom_factor, render_size, file_id)
         pixmap = self.page_cache.get(key)
-        
+
         if pixmap:
             # 更新内存使用估算（如果需要）
             if key not in self.cache_memory_map:
                 self.cache_memory_map[key] = self._estimate_memory_usage(pixmap)
-                
+
         return pixmap
-        
-    def put_rendered_page(self, page_num, zoom_factor, render_size, pixmap):
+
+    def put_rendered_page(self, page_num, zoom_factor, render_size, pixmap, file_id=None):
         """缓存渲染的页面"""
-        key = self._get_cache_key(page_num, zoom_factor, render_size)
+        key = self._get_render_key(page_num, zoom_factor, render_size, file_id)
         estimated_size = self._estimate_memory_usage(pixmap)
-        
+
         # 检查内存限制
         if self.current_memory_usage + estimated_size > self.max_memory_bytes:
             self._cleanup_memory(estimated_size)
-            
+
         # 如果还是放不下，不缓存
         if self.current_memory_usage + estimated_size > self.max_memory_bytes:
             return False
-            
+
         # 更新内存使用
         if key in self.cache_memory_map:
             self.current_memory_usage -= self.cache_memory_map[key]
-            
+
         self.page_cache.put(key, pixmap)
         self.cache_memory_map[key] = estimated_size
         self.current_memory_usage += estimated_size
-        
+
         return True
-        
-    def get_thumbnail(self, page_num, size):
+
+    def get_thumbnail(self, page_num, size, file_id=None):
         """获取缩略图"""
-        key = f"thumb_{page_num}_size_{size[0]}x{size[1]}"
+        key = self._get_thumbnail_key(page_num, size, file_id)
         return self.thumbnail_cache.get(key)
-        
-    def put_thumbnail(self, page_num, size, pixmap):
+
+    def put_thumbnail(self, page_num, size, pixmap, file_id=None):
         """缓存缩略图"""
-        key = f"thumb_{page_num}_size_{size[0]}x{size[1]}"
+        key = self._get_thumbnail_key(page_num, size, file_id)
         estimated_size = self._estimate_memory_usage(pixmap)
-        
+
         # 缩略图缓存相对宽松，但仍需控制总内存
         if self.current_memory_usage + estimated_size > self.max_memory_bytes * 1.5:
             self._cleanup_memory(estimated_size)
-            
+
         self.thumbnail_cache.put(key, pixmap)
-        
+
         if key not in self.cache_memory_map:
             self.cache_memory_map[key] = estimated_size
             self.current_memory_usage += estimated_size
+
+    def _get_thumbnail_key(self, page_num, size, file_id=None):
+        """生成缩略图缓存键"""
+        if file_id:
+            return f"{file_id}_thumb_{page_num}_size_{size[0]}x{size[1]}"
+        return f"thumb_{page_num}_size_{size[0]}x{size[1]}"
             
     def _cleanup_memory(self, needed_bytes):
         """清理内存以满足需求"""

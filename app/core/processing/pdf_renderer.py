@@ -85,6 +85,7 @@ class PDFRenderer(QObject):
         self.zoom_factor = 2.0  # 缩放因子（设置为2.0，即200%作为新的100%基准）
         self.base_zoom = 2.0  # 基准缩放因子（用户看到的100%实际是200%基准）
         self.page_editor = None  # 页面编辑器
+        self._file_id = None  # 文件唯一标识，用于缓存键
 
         # A4缩放设置
         self.use_a4_scaling = AppSettings.get_use_a4_scaling()  # 是否使用A4缩放
@@ -151,6 +152,9 @@ class PDFRenderer(QObject):
         if not self.fitz_document:
             return None
 
+        # 生成文件唯一标识
+        file_id = self._get_file_id()
+
         try:
             # 获取页面实际尺寸
             page = self.fitz_document[self.current_page]
@@ -171,18 +175,18 @@ class PDFRenderer(QObject):
 
             # 首先检查内存缓存
             cached_pixmap = self.render_cache.get_rendered_page(
-                self.current_page, zoom, (render_width, render_height)
+                self.current_page, zoom, (render_width, render_height), file_id
             )
             if cached_pixmap:
                 return cached_pixmap
 
             # 检查磁盘缓存
-            disk_key = f"page_{self.current_page}_zoom_{zoom:.2f}_size_{render_width}x{render_height}"
+            disk_key = f"{file_id}_page_{self.current_page}_zoom_{zoom:.2f}_size_{render_width}x{render_height}"
             disk_pixmap = self.disk_cache.get(disk_key)
             if disk_pixmap:
                 # 将磁盘缓存的内容放入内存缓存
                 self.render_cache.put_rendered_page(
-                    self.current_page, zoom, (render_width, render_height), disk_pixmap
+                    self.current_page, zoom, (render_width, render_height), disk_pixmap, file_id
                 )
                 return disk_pixmap
 
@@ -591,36 +595,39 @@ class PDFRenderer(QObject):
         """渲染指定页面的缩略图 - 优化版本"""
         if not self.fitz_document or page_num < 0 or page_num >= len(self.fitz_document):
             return None
-        
+
+        # 生成文件唯一标识
+        file_id = self._get_file_id()
+
         try:
             # 首先检查缓存
-            cached_thumb = self.render_cache.get_thumbnail(page_num, (width, height))
+            cached_thumb = self.render_cache.get_thumbnail(page_num, (width, height), file_id)
             if cached_thumb:
                 return cached_thumb
-            
+
             # 检查磁盘缓存
-            disk_key = f"thumb_{page_num}_size_{width}x{height}"
+            disk_key = f"{file_id}_thumb_{page_num}_size_{width}x{height}"
             disk_thumb = self.disk_cache.get(disk_key)
             if disk_thumb:
                 # 将磁盘缓存的内容放入内存缓存
-                self.render_cache.put_thumbnail(page_num, (width, height), disk_thumb)
+                self.render_cache.put_thumbnail(page_num, (width, height), disk_thumb, file_id)
                 return disk_thumb
-            
+
             # 缓存未命中，生成缩略图
             thumbnail = self._render_thumbnail_sync(page_num, width, height)
-            
+
             if thumbnail:
                 # 缓存结果
-                self.render_cache.put_thumbnail(page_num, (width, height), thumbnail)
-                
+                self.render_cache.put_thumbnail(page_num, (width, height), thumbnail, file_id)
+
                 # 缓存到磁盘
                 try:
                     self.disk_cache.put(disk_key, thumbnail)
                 except:
                     pass
-            
+
             return thumbnail
-            
+
         except Exception as e:
             logger.error(f"渲染缩略图失败: {e}")
             return None
@@ -1113,6 +1120,18 @@ class PDFRenderer(QObject):
         file_ext = os.path.splitext(file_path)[1].lower()
         return file_ext in image_extensions
 
+    def _generate_file_id(self, file_path):
+        """生成文件唯一标识"""
+        if file_path:
+            return os.path.abspath(file_path)
+        return str(id(self))
+
+    def _get_file_id(self):
+        """获取当前文件唯一标识"""
+        if self._file_id is None:
+            return f"temp_{id(self)}"
+        return self._file_id
+
     def open_pdf(self, file_path, async_mode=False, password=None):
         """打开PDF文件或图片文件"""
         try:
@@ -1126,6 +1145,9 @@ class PDFRenderer(QObject):
             # 关闭现有文档
             if self.fitz_document:
                 self.fitz_document.close()
+
+            # 更新文件ID（用于缓存键）
+            self._file_id = self._generate_file_id(file_path)
 
             # 如果是图片文件，创建临时PDF
             if is_image:
