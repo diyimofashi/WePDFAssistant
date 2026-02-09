@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout,
                              QMenuBar, QToolBar, QSplitter,
                              QStackedWidget,
                              QLabel, QMessageBox, QAction,
-                             QSizePolicy)
+                             QSizePolicy, QFileDialog)
 from PyQt5.QtCore import Qt, pyqtSignal
 import os
 
@@ -13,6 +13,7 @@ from app.core.processing.thumbnail_manager import ThumbnailManager
 from app.ui.virtual_scroll import VirtualScrollArea
 from app.ui.menu_manager import MenuManager
 from app.ui.context_menu_manager import ContextMenuManager
+from app.ui.password_dialog import PasswordDialog
 from app.managers.history_manager import HistoryManager
 from app.managers.view_controller import ViewController
 from app.managers.search_manager import SearchManager
@@ -340,14 +341,60 @@ class PDFEditorWidget(QWidget):
         self._save_as_file_dialog()
 
     def encrypt_save_file(self):
-        """加密保存"""
-        logger.warning("加密保存功能暂未实现")
-        QMessageBox.information(self, "提示", "加密保存功能暂未实现")
+        """加密保存（直接覆盖源文档）"""
+        if not self.file_path:
+            QMessageBox.information(self, "提示", "📝 请先打开PDF文件")
+            return
+
+        password = PasswordDialog.get_user_password(self, "请输入加密密码")
+        if password is None:
+            return
+
+        if not password:
+            QMessageBox.warning(self, "提示", "密码不能为空")
+            return
+
+        success, message = self.pdf_processor.encrypt_pdf(password, self.file_path)
+        if success:
+            QMessageBox.information(self, "保存成功", "文件已加密保存")
+            logger.info(f"文件加密保存成功: {self.file_path}")
+        else:
+            QMessageBox.critical(self, "加密保存失败", message)
 
     def encrypt_save_as_file(self):
-        """加密另存为"""
-        logger.warning("加密另存为功能暂未实现")
-        QMessageBox.information(self, "提示", "加密另存为功能暂未实现")
+        """加密另存为（选择新目录存储成新文档）"""
+        if not self.file_path:
+            QMessageBox.information(self, "提示", "📝 请先打开PDF文件")
+            return
+
+        # 获取默认保存路径
+        last_save_dir = AppSettings.get_last_save_dir()
+        default_path = os.path.join(last_save_dir if last_save_dir else os.path.expanduser("~"),
+                                   os.path.basename(self.file_path))
+
+        # 选择保存路径
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "加密另存为PDF文件", default_path, "PDF文件 (*.pdf)")
+
+        if not file_path:
+            return
+
+        # 输入密码
+        password = PasswordDialog.get_user_password(self, "请输入加密密码")
+        if password is None:
+            return
+
+        if not password:
+            QMessageBox.warning(self, "提示", "密码不能为空")
+            return
+
+        success, message = self.pdf_processor.encrypt_pdf(password, file_path)
+        if success:
+            QMessageBox.information(self, "保存成功", message)
+            AppSettings.set_last_save_dir(os.path.dirname(file_path))
+            logger.info(f"文件加密另存为成功: {file_path}")
+        else:
+            QMessageBox.critical(self, "加密保存失败", message)
 
     # === 视图控制方法 ===
     def zoom_in(self):
