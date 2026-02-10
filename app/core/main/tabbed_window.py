@@ -43,6 +43,13 @@ class TabbedMainWindow(QMainWindow):
         self.custom_tab_bar = CustomTabBar()
         self.tab_widget.setTabBar(self.custom_tab_bar)
 
+        # 连接标签栏右键菜单信号
+        self.custom_tab_bar.close_tab_requested.connect(self._close_tab_by_index)
+        self.custom_tab_bar.close_other_tabs_requested.connect(self._close_other_tabs)
+        self.custom_tab_bar.close_tabs_to_right_requested.connect(self._close_tabs_to_right)
+        self.custom_tab_bar.close_tabs_to_left_requested.connect(self._close_tabs_to_left)
+        self.custom_tab_bar.close_all_requested.connect(self._close_all_tabs)
+
         # 标记最后一个tab为新建标签页按钮
         self._new_tab_button_index = -1
         self._is_updating = False
@@ -170,11 +177,50 @@ class TabbedMainWindow(QMainWindow):
         else:
             QMessageBox.warning(self, "文件不存在", f"文件不存在: {file_path}")
 
+    def open_file(self):
+        """打开文件对话框，在新标签页打开选中的文件"""
+        from PyQt5.QtWidgets import QFileDialog
+        from app.config.settings import AppSettings
+
+        last_dir = AppSettings.get_last_open_dir()
+
+        # 弹出文件选择对话框，支持多选
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self, "选择文件", last_dir,
+            "所有支持的文件 (*.pdf *.jpg *.jpeg *.png *.bmp *.gif *.tiff *.tif *.webp *.ico);;PDF文件 (*.pdf);;图片文件 (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;所有文件 (*.*)"
+        )
+
+        # 如果用户没有选择文件，直接返回
+        if not file_paths:
+            logger.info("用户取消了文件选择")
+            return
+
+        # 如果选择了多个文件，只打开第一个（或者可以创建一个临时PDF）
+        if len(file_paths) > 1:
+            # 目前只处理第一个文件，后续可以扩展为合并打开
+            file_path = file_paths[0]
+            logger.info(f"选择了多个文件，只打开第一个: {file_path}")
+        else:
+            file_path = file_paths[0]
+
+        # 保存最后打开的目录
+        AppSettings.set_last_open_dir(file_path)
+
+        # 在新标签页打开文件
+        if os.path.exists(file_path):
+            self.new_tab(file_path)
+        else:
+            QMessageBox.warning(self, "文件不存在", f"文件不存在: {file_path}")
+
     def close_tab(self, index):
         """关闭标签页"""
         # 不允许关闭新建标签页按钮tab
         if self._is_new_tab_button_tab(index):
             return
+
+        # 记录当前是否是激活的标签页
+        current_index = self.tab_widget.currentIndex()
+        is_current_tab = (index == current_index)
 
         editor = self.tab_widget.widget(index)
 
@@ -191,6 +237,9 @@ class TabbedMainWindow(QMainWindow):
             # 不是PDF编辑器，直接关闭
             self.tab_widget.removeTab(index)
             self._new_tab_button_index -= 1
+            # 如果关闭的是当前标签页，自动选择上一个标签页
+            if is_current_tab:
+                self._select_previous_tab(index)
             return
 
         # 检查未保存的更改
@@ -216,6 +265,10 @@ class TabbedMainWindow(QMainWindow):
         # 移除标签页
         self.tab_widget.removeTab(index)
         self._new_tab_button_index -= 1
+
+        # 如果关闭的是当前标签页，自动选择上一个标签页
+        if is_current_tab:
+            self._select_previous_tab(index)
 
         # 更新状态栏
         self.update_status_bar()
@@ -294,6 +347,72 @@ class TabbedMainWindow(QMainWindow):
                 file_path = url.toLocalFile()
                 if file_path and os.path.exists(file_path):
                     self.open_file_in_new_tab(file_path)
+
+    def _close_tab_by_index(self, index):
+        """关闭指定标签页"""
+        self.close_tab(index)
+
+    def _close_other_tabs(self, current_index):
+        """关闭除当前标签页外的所有标签页"""
+        if self._is_new_tab_button_tab(current_index):
+            return
+
+        # 从后往前关闭,避免索引变化
+        for i in range(self.tab_widget.count() - 1, -1, -1):
+            if i != current_index and not self._is_new_tab_button_tab(i):
+                self.close_tab(i)
+
+    def _close_tabs_to_right(self, current_index):
+        """关闭当前标签页右侧的所有标签页"""
+        if self._is_new_tab_button_tab(current_index):
+            return
+
+        # 从后往前关闭,避免索引变化
+        for i in range(self.tab_widget.count() - 1, current_index, -1):
+            if not self._is_new_tab_button_tab(i):
+                self.close_tab(i)
+
+    def _close_tabs_to_left(self, current_index):
+        """关闭当前标签页左侧的所有标签页"""
+        if self._is_new_tab_button_tab(current_index):
+            return
+
+        # 从后往前关闭,避免索引变化
+        for i in range(current_index - 1, -1, -1):
+            if not self._is_new_tab_button_tab(i):
+                self.close_tab(i)
+
+    def _close_all_tabs(self):
+        """关闭所有标签页"""
+        # 从后往前关闭,避免索引变化
+        for i in range(self.tab_widget.count() - 1, -1, -1):
+            if not self._is_new_tab_button_tab(i):
+                self.close_tab(i)
+
+    def _select_previous_tab(self, closed_index):
+        """关闭标签页后，自动选择上一个标签页
+        
+        Args:
+            closed_index: 被关闭的标签页索引
+        """
+        # 优先选择左侧（上一个）标签页
+        previous_index = closed_index - 1
+
+        # 如果左侧没有标签页，则选择右侧（下一个）标签页
+        if previous_index < 0:
+            previous_index = 0
+
+        # 确保索引有效且不是新建标签页按钮
+        if previous_index < self.tab_widget.count() and not self._is_new_tab_button_tab(previous_index):
+            self.tab_widget.setCurrentIndex(previous_index)
+            logger.debug(f"自动选择标签页: {previous_index}")
+        elif self.tab_widget.count() > 0:
+            # 如果上一个索引无效，尝试选择第一个有效标签页
+            for i in range(self.tab_widget.count()):
+                if not self._is_new_tab_button_tab(i):
+                    self.tab_widget.setCurrentIndex(i)
+                    logger.debug(f"自动选择第一个有效标签页: {i}")
+                    break
 
     def closeEvent(self, event):
         """窗口关闭事件"""

@@ -183,10 +183,6 @@ class WelcomeWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # 顶部标题栏（带关闭按钮）
-        title_bar = self._create_title_bar()
-        layout.addWidget(title_bar)
-
         # 内容区域（左右布局）
         content_widget = QWidget()
         content_layout = QHBoxLayout(content_widget)
@@ -215,52 +211,6 @@ class WelcomeWidget(QWidget):
             self._load_recent_files_to_list(delay_thumbnails=True)
             self._is_initialized = True
             logger.debug("欢迎界面数据初始化完成")
-
-    def _create_title_bar(self):
-        """创建顶部标题栏"""
-        widget = QWidget()
-        widget.setStyleSheet("""
-            QWidget {
-                background-color: #f5f5f5;
-                border-bottom: 1px solid #ccc;
-            }
-        """)
-
-        layout = QHBoxLayout(widget)
-        layout.setContentsMargins(10, 5, 10, 5)
-        layout.setSpacing(5)
-
-        # 标题
-        title_label = QLabel("📜 历史记录")
-        title_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #333;")
-        layout.addWidget(title_label, stretch=1)
-
-        # 关闭按钮
-        close_btn = QToolButton()
-        close_btn.setText("✕")
-        close_btn.setStyleSheet("""
-            QToolButton {
-                background-color: transparent;
-                border: none;
-                font-size: 18px;
-                color: #666;
-                min-width: 24px;
-                min-height: 24px;
-                padding: 0px;
-            }
-            QToolButton:hover {
-                background-color: #e0e0e0;
-                color: #333;
-            }
-            QToolButton:pressed {
-                background-color: #d0d0d0;
-            }
-        """)
-        close_btn.setToolTip("返回文档")
-        close_btn.clicked.connect(self.close_requested)
-        layout.addWidget(close_btn)
-
-        return widget
 
     def _create_directory_tree(self):
         """创建左侧目录树"""
