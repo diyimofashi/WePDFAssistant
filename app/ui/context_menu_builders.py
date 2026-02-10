@@ -2,6 +2,7 @@
 import tempfile
 import uuid
 import os
+import sys
 import traceback
 from PyQt5.QtWidgets import QMenu, QAction
 from PyQt5.QtCore import Qt
@@ -450,15 +451,50 @@ class ContextMenuBuilder:
         """导出页面为图片"""
         if hasattr(self.main_window, 'pdf_processor') and self.main_window.pdf_processor.fitz_document:
             try:
-                default_name = f"page_{page_num + 1}.png"
+                # 获取当前文件名，如果不存在则使用默认名称
+                current_file = getattr(self.main_window.pdf_processor, 'current_file', None)
+                if current_file:
+                    # 提取文件名（不带扩展名）
+                    file_base = os.path.splitext(os.path.basename(current_file))[0]
+                    default_name = f"{file_base}_page_{page_num + 1}.png"
+                else:
+                    default_name = f"page_{page_num + 1}.png"
+                
+                # 获取保存目录，优先使用last_save_dir，其次使用last_open_dir，最后使用用户家目录
+                last_save_dir = AppSettings.get_last_save_dir()
+                last_open_dir = AppSettings.get_last_open_dir()
+                
+                logger.debug(f"导出图片：last_save_dir={last_save_dir}, last_open_dir={last_open_dir}, default_name={default_name}")
+                
+                # 确定要使用的目录
+                target_dir = None
+                if last_save_dir and os.path.isdir(last_save_dir):
+                    target_dir = last_save_dir
+                    logger.debug(f"导出图片：使用last_save_dir目录: {target_dir}")
+                elif last_open_dir and os.path.isdir(last_open_dir):
+                    target_dir = last_open_dir
+                    logger.debug(f"导出图片：last_save_dir不可用，使用last_open_dir目录: {target_dir}")
+                else:
+                    target_dir = os.path.expanduser("~")
+                    logger.debug(f"导出图片：使用用户家目录: {target_dir}")
+                
+                # 规范化路径（确保使用正确的路径分隔符）
+                target_dir = os.path.normpath(target_dir)
+                
+                # 提供完整路径作为默认路径
+                default_path = os.path.join(target_dir, default_name)
+                default_path = os.path.normpath(default_path)
+                logger.debug(f"导出图片：默认保存路径={default_path}")
+                
                 file_path, _ = QFileDialog.getSaveFileName(
                     self.main_window,
                     "保存图片",
-                    default_name,
+                    default_path,
                     "PNG图片 (*.png);;JPEG图片 (*.jpg);;所有文件 (*.*)"
                 )
 
                 if file_path:
+                    logger.debug(f"导出图片：用户选择路径={file_path}")
                     page = self.main_window.pdf_processor.fitz_document.load_page(page_num)
                     pix = page.get_pixmap()
                     if file_path.lower().endswith('.jpg') or file_path.lower().endswith('.jpeg'):
@@ -466,10 +502,42 @@ class ContextMenuBuilder:
                     else:
                         pix.save(file_path, "PNG")
 
+                    # 保存成功后才更新last_save_dir
+                    AppSettings.set_last_save_dir(file_path)
                     self.main_window.show_message(f"✅ 第{page_num + 1}页已导出为图片")
                     logger.debug(f"导出页面{page_num}为图片成功: {file_path}")
+                    
+                    # 询问是否打开保存目录
+                    reply = QMessageBox.question(
+                        self.main_window,
+                        "打开目录",
+                        f"图片已保存到：\n{file_path}\n\n是否打开保存目录？",
+                        QMessageBox.Yes | QMessageBox.No,
+                        QMessageBox.No
+                    )
+                    
+                    if reply == QMessageBox.Yes:
+                        try:
+                            # 打开文件所在目录
+                            import subprocess
+                            directory = os.path.dirname(file_path)
+                            if os.path.exists(directory):
+                                if sys.platform == "win32":
+                                    os.startfile(directory)
+                                elif sys.platform == "darwin":
+                                    subprocess.Popen(["open", directory])
+                                else:
+                                    subprocess.Popen(["xdg-open", directory])
+                                logger.debug(f"已打开目录：{directory}")
+                            else:
+                                logger.warning(f"目录不存在：{directory}")
+                        except Exception as e:
+                            logger.error(f"打开目录失败：{e}")
+                else:
+                    logger.debug("导出图片：用户取消了保存")
             except Exception as e:
                 logger.error(f"导出页面{page_num}为图片失败: {e}")
+                logger.error(traceback.format_exc())
                 self.main_window.show_message(f"❌ 导出图片失败: {str(e)}")
         else:
             self.main_window.show_message("❌ 未打开PDF文档")
