@@ -126,7 +126,8 @@ class PDFEditorWidget(QWidget):
 
         # 5. 欢迎界面（历史记录）
         self.welcome_widget = WelcomeWidget(self, self.history_manager)
-        self.welcome_widget.file_open_requested.connect(self.open_pdf)
+        # 连接到请求主窗口打开文件的方法
+        self.welcome_widget.file_open_requested.connect(self._request_open_file_from_history)
         self.welcome_widget.close_requested.connect(self.show_pdf_viewer)
         self.content_stack.addWidget(self.welcome_widget)
 
@@ -135,6 +136,26 @@ class PDFEditorWidget(QWidget):
             self.show_pdf_viewer()
         else:
             self.show_welcome()
+
+    def _request_open_file_from_history(self, file_path):
+        """请求从历史记录打开文件，让主窗口检查是否已打开
+
+        Args:
+            file_path: 要打开的文件路径
+        """
+        # 查找主窗口
+        parent = self.parent()
+        while parent and not hasattr(parent, 'open_file_in_new_tab'):
+            parent = parent.parent()
+
+        if parent and hasattr(parent, 'open_file_in_new_tab'):
+            # 让主窗口处理，主窗口会检查是否已打开
+            parent.open_file_in_new_tab(file_path)
+            logger.debug(f"请求主窗口打开历史文件: {file_path}")
+        else:
+            # 如果找不到主窗口，直接打开
+            self.open_pdf(file_path)
+            logger.warning(f"未找到主窗口，直接打开文件: {file_path}")
 
     def open_pdf(self, file_path):
         """打开指定的PDF文件"""
@@ -434,7 +455,8 @@ class PDFEditorWidget(QWidget):
             "PDF文件 (*.pdf);;所有文件 (*.*)"
         )
         if file_path:
-            self.open_pdf(file_path)
+            # 请求主窗口处理，主窗口会检查是否已打开
+            self._request_open_file_from_history(file_path)
 
     def save_as_file(self):
         """另存为（菜单管理器调用）"""
@@ -939,18 +961,6 @@ class PDFEditorWidget(QWidget):
     def show_message(self, message):
         """显示消息到状态栏（如果有）"""
         logger.info(message)
-
-    def _open_file_dialog(self):
-        """打开文件对话框"""
-        from PyQt5.QtWidgets import QFileDialog
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "打开PDF文件",
-            "",
-            "PDF文件 (*.pdf);;所有文件 (*.*)"
-        )
-        if file_path:
-            self.open_file(file_path)
 
     def _save_file(self):
         """保存文件"""

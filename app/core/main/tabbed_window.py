@@ -170,12 +170,58 @@ class TabbedMainWindow(QMainWindow):
 
         return index
 
+    def _find_tab_index_by_file_path(self, file_path):
+        """根据文件路径查找标签页索引
+
+        Args:
+            file_path: 文件路径
+
+        Returns:
+            找到返回标签页索引，未找到返回 None
+        """
+        # 标准化文件路径（处理大小写和路径分隔符）
+        file_path_normalized = os.path.normpath(os.path.abspath(file_path))
+        logger.debug(f"[_find_tab_index_by_file_path] 查找文件: {file_path}")
+        logger.debug(f"[_find_tab_index_by_file_path] 标准化路径: {file_path_normalized}")
+
+        for index in range(self.tab_widget.count()):
+            # 跳过新建按钮tab和历史tab
+            if self._is_new_tab_button_tab(index):
+                logger.debug(f"[_find_tab_index_by_file_path] 跳过新标签页按钮tab: index={index}")
+                continue
+
+            widget = self.tab_widget.widget(index)
+            logger.debug(f"[_find_tab_index_by_file_path] index={index}, widget={widget}, type={type(widget)}")
+
+            if isinstance(widget, PDFEditorWidget):
+                logger.debug(f"[_find_tab_index_by_file_path] index={index}, widget.file_path={widget.file_path}")
+
+            if isinstance(widget, PDFEditorWidget) and widget.file_path:
+                # 标准化已打开文件的路径
+                opened_path_normalized = os.path.normpath(os.path.abspath(widget.file_path))
+                logger.debug(f"[_find_tab_index_by_file_path] 已打开文件标准化路径: {opened_path_normalized}")
+                if opened_path_normalized == file_path_normalized:
+                    logger.debug(f"[_find_tab_index_by_file_path] 找到已打开的文件: {file_path}, 标签页索引: {index}")
+                    return index
+
+        logger.debug(f"[_find_tab_index_by_file_path] 未找到文件: {file_path}")
+        return None
+
     def open_file_in_new_tab(self, file_path):
-        """在新标签页打开文件"""
-        if os.path.exists(file_path):
-            self.new_tab(file_path)
-        else:
+        """在新标签页打开文件，如果文件已打开则切换到该标签页"""
+        if not os.path.exists(file_path):
             QMessageBox.warning(self, "文件不存在", f"文件不存在: {file_path}")
+            return
+
+        # 检查文件是否已经在其他标签页中打开
+        existing_tab_index = self._find_tab_index_by_file_path(file_path)
+        if existing_tab_index is not None:
+            # 切换到已打开的标签页
+            self.tab_widget.setCurrentIndex(existing_tab_index)
+            logger.info(f"文件已在标签页 {existing_tab_index} 中打开，切换到该标签页: {file_path}")
+        else:
+            # 在新标签页中打开文件
+            self.new_tab(file_path)
 
     def open_file(self):
         """打开文件对话框，在新标签页打开选中的文件"""
@@ -208,7 +254,15 @@ class TabbedMainWindow(QMainWindow):
 
         # 在新标签页打开文件
         if os.path.exists(file_path):
-            self.new_tab(file_path)
+            # 检查文件是否已经在其他标签页中打开
+            existing_tab_index = self._find_tab_index_by_file_path(file_path)
+            if existing_tab_index is not None:
+                # 切换到已打开的标签页
+                self.tab_widget.setCurrentIndex(existing_tab_index)
+                logger.info(f"文件已在标签页 {existing_tab_index} 中打开，切换到该标签页: {file_path}")
+            else:
+                # 在新标签页中打开文件
+                self.new_tab(file_path)
         else:
             QMessageBox.warning(self, "文件不存在", f"文件不存在: {file_path}")
 
