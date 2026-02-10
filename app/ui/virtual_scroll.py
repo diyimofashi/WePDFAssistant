@@ -88,6 +88,26 @@ class VirtualScrollArea(QScrollArea):
 
     def update_content(self):
         """更新内容显示"""
+        logger.debug(f"[update_content] 开始更新内容")
+
+        # 获取父窗口以访问PDF处理器
+        parent = self.parent()
+        pdf_processor = None
+        while parent and not hasattr(parent, 'pdf_processor'):
+            parent = parent.parent()
+        if parent and hasattr(parent, 'pdf_processor'):
+            pdf_processor = parent.pdf_processor
+
+        # 更新所有页面的zoom_factor为当前值
+        if pdf_processor and self.pages_data:
+            logger.debug(f"[update_content] 更新所有页面的zoom_factor为: {pdf_processor.zoom_factor}")
+            for page_data in self.pages_data:
+                page_data['zoom_factor'] = pdf_processor.zoom_factor
+
+        # 清除已渲染的页面缓存，强制重新渲染
+        logger.debug(f"[update_content] 清除渲染缓存")
+        self.clear_cache()
+
         if self.pages_data:
             self._calculate_layout()
             self._update_virtual_widget()
@@ -95,40 +115,32 @@ class VirtualScrollArea(QScrollArea):
             QTimer.singleShot(150, self._render_visible_pages)
         else:
             # 如果没有页面数据，尝试从父窗口获取
-            parent = self.parent()
-            while parent and not hasattr(parent, 'pdf_processor'):
-                parent = parent.parent()
-                
-                if parent and hasattr(parent, 'pdf_processor'):
-                    pdf_processor = parent.pdf_processor
-                    if pdf_processor and pdf_processor.fitz_document:
-                        # 构建页面数据
-                        total_pages = pdf_processor.get_total_pages()
-                        pages_data = []
-                        for page_num in range(total_pages):
-                            # 获取页面尺寸（应用自动缩放，但不乘zoom_factor）
-                            page_dimensions = pdf_processor.get_page_dimensions(page_num, apply_auto_scaling=True)
-                            if page_dimensions:
-                                # 存储应用了自动缩放后的尺寸，render_page_at会乘以zoom_factor
-                                width = int(page_dimensions['width'])
-                                height = int(page_dimensions['height'])
-                                logger.debug(f"[VirtualScroll] 页面{page_num+1}尺寸: {width}x{height}, zoom_factor={pdf_processor.zoom_factor}")
-                            else:
-                                width = 800  # 默认宽度
-                                height = 1100  # 默认高度
-
-                            pages_data.append({
-                                'page_num': page_num,
-                                'width': width,
-                                'height': height,
-                                'zoom_factor': pdf_processor.zoom_factor
-                            })
-
-                        self.set_pages_data(pages_data)
+            if pdf_processor and pdf_processor.fitz_document:
+                # 构建页面数据
+                total_pages = pdf_processor.get_total_pages()
+                pages_data = []
+                for page_num in range(total_pages):
+                    # 获取页面尺寸（不应用自动缩放，获取原始尺寸）
+                    page_dimensions = pdf_processor.get_page_dimensions(page_num, apply_auto_scaling=False)
+                    if page_dimensions:
+                        # 存储原始尺寸，render_page_at会乘以zoom_factor和A4缩放
+                        width = int(page_dimensions['width'])
+                        height = int(page_dimensions['height'])
+                        logger.debug(f"[VirtualScroll] 页面{page_num+1}原始尺寸: {width}x{height}, zoom_factor={pdf_processor.zoom_factor}")
                     else:
-                        logger.warning("PDF处理器未准备好")
+                        width = 800  # 默认宽度
+                        height = 1100  # 默认高度
+
+                    pages_data.append({
+                        'page_num': page_num,
+                        'width': width,
+                        'height': height,
+                        'zoom_factor': pdf_processor.zoom_factor
+                    })
+
+                self.set_pages_data(pages_data)
             else:
-                logger.warning("父窗口没有PDF处理器")
+                logger.warning("PDF处理器未准备好")
                 
     def set_pages_data(self, pages_data):
         """设置页面数据"""
@@ -144,27 +156,53 @@ class VirtualScrollArea(QScrollArea):
         self.page_positions = []
         self.total_height = 0
 
+        # 获取父窗口以访问PDF处理器
+        parent = self.parent()
+        pdf_processor = None
+        while parent and not hasattr(parent, 'pdf_processor'):
+            parent = parent.parent()
+        if parent and hasattr(parent, 'pdf_processor'):
+            pdf_processor = parent.pdf_processor
+
         # 预估页面高度（可以基于实际内容动态调整）
         default_height = 1100  # 默认页面高度
         page_spacing = 35  # 进一步增大页面间距到35像素，使页面之间有更明显的间隔
 
+        A4_WIDTH = 595  # A4标准宽度
+
+        logger.debug(f"[_calculate_layout] 开始计算布局，共{len(self.pages_data)}页")
+
         for i, page_data in enumerate(self.pages_data):
-            # 获取应用了自动缩放后的高度
-            height = page_data.get('height', default_height)
-            # 获取zoom_factor，计算实际渲染高度
+            # 获取原始高度
+            original_height = page_data.get('height', default_height)
+            original_width = page_data.get('width', 800)
             zoom_factor = page_data.get('zoom_factor', 2.0)
-            actual_height = int(height * zoom_factor)
+
+            # 计算实际渲染高度，与render_page_at方法保持一致
+            if pdf_processor and pdf_processor.use_a4_scaling:
+                # 使用A4缩放：所有页面统一缩放到A4宽度，然后应用zoom_factor
+                a4_scale = A4_WIDTH / original_width
+                actual_height = int(original_height * a4_scale * zoom_factor)
+                logger.debug(f"[_calculate_layout] 第{i}页: 原始={original_width}x{original_height}, A4缩放={a4_scale:.2f}, zoom={zoom_factor:.2f}, 计算高度={actual_height}")
+            else:
+                # 不使用A4缩放，直接使用原始尺寸乘以zoom_factor
+                actual_height = int(original_height * zoom_factor)
+                logger.debug(f"[_calculate_layout] 第{i}页: 原始={original_width}x{original_height}, zoom={zoom_factor:.2f}, 计算高度={actual_height}")
 
             self.page_heights.append(actual_height)
             self.page_positions.append(self.total_height)
             # 计算页面位置时只增加页面高度和间距，不额外增加空间
             self.total_height += actual_height + page_spacing
 
+        logger.debug(f"[_calculate_layout] 总高度: {self.total_height}")
+
         # 设置虚拟容器的高度，确保使用整数，并增加一些额外空间
         self.virtual_widget.setMinimumHeight(int(self.total_height + 60))  # 增加额外空间到60像素
         
     def _update_virtual_widget(self):
         """更新虚拟容器"""
+        logger.debug(f"[_update_virtual_widget] 开始更新虚拟容器，共{len(self.pages_data)}页")
+
         # 清除现有子控件
         for i in reversed(range(self.virtual_widget_layout.count())):
             child = self.virtual_widget_layout.itemAt(i).widget()
@@ -185,12 +223,15 @@ class VirtualScrollArea(QScrollArea):
 
             # 设置容器位置和高度，宽度不限制（自适应）
             height = self.page_heights[i] if i < len(self.page_heights) else 1100
-            adjusted_height = height + 40  # 增加额外空间到40像素
+            # 调整高度以匹配实际渲染的图片高度，不额外增加空间
+            adjusted_height = height
             y_position = self.page_positions[i]
+            logger.debug(f"[_update_virtual_widget] 第{i}页容器: Y={y_position}, 高度={adjusted_height}")
             # 只设置Y位置和高度，宽度不设置，使用-1表示自适应
             page_container.setGeometry(0, int(y_position), -1, int(adjusted_height))
-            # 设置最小高度
+            # 设置最小高度和最大高度一致，确保容器大小精确匹配
             page_container.setMinimumHeight(int(adjusted_height))
+            page_container.setMaximumHeight(int(adjusted_height))
 
             # 使用水平布局实现居中
             container_layout = QHBoxLayout(page_container)
@@ -219,6 +260,8 @@ class VirtualScrollArea(QScrollArea):
 
             # 添加到布局
             self.virtual_widget_layout.addWidget(page_container)
+
+        logger.debug(f"[_update_virtual_widget] 虚拟容器更新完成")
         
     def update_page_ocr_layer(self, page_num, ocr_result, page_scale=1.0):
         """更新指定页面的OCR文本层"""
@@ -557,10 +600,8 @@ class VirtualScrollArea(QScrollArea):
         if parent and hasattr(parent, 'pdf_processor'):
             pdf_processor = parent.pdf_processor
             if pdf_processor:
-                # 使用实际的渲染尺寸
-                render_width = self.pages_data[page_num].get('width', 800)
-                render_height = self.pages_data[page_num].get('height', 1100)
-                pixmap = pdf_processor.render_page_at(page_num, render_width, render_height)
+                # 不传入具体的宽高参数，让render_page_at根据zoom_factor自动计算
+                pixmap = pdf_processor.render_page_at(page_num, 0, 0)
                 if pixmap:
                     self.on_page_rendered(page_num, pixmap)
                 else:
@@ -647,6 +688,7 @@ class VirtualScrollArea(QScrollArea):
 
             # 设置页面大小为固定大小，使用实际渲染的pixmap尺寸
             # pixmap.width() 和 pixmap.height() 已经包含了zoom_factor
+            logger.debug(f"[on_page_rendered] 第{page_num}页渲染尺寸: {pixmap.width()}x{pixmap.height()}")
             page_label.setFixedSize(int(pixmap.width()), int(pixmap.height()))
 
             # 获取页面容器

@@ -16,13 +16,17 @@ class ViewController:
         current_zoom = self.parent.pdf_processor.get_zoom()
         new_zoom = min(current_zoom * 1.2, 4.0)
 
+        logger.info(f"[zoom_in] 当前缩放: {current_zoom}, 新缩放: {new_zoom}")
+
         # 获取最接近的预设缩放值
         closest_zoom = self._find_closest_zoom_level(int(new_zoom * 100))
         if closest_zoom is not None:
             new_zoom = closest_zoom / 100.0
+            logger.info(f"[zoom_in] 调整为预设缩放: {new_zoom}")
 
         success, message = self.parent.pdf_processor.set_zoom(new_zoom)
         if success:
+            logger.info(f"[zoom_in] 设置zoom_factor后: {self.parent.pdf_processor.zoom_factor}")
             if hasattr(self.parent, 'scroll_area') and hasattr(self.parent.scroll_area, 'update_content'):
                 self.parent.scroll_area.update_content()
             # 更新工具栏缩放比例显示
@@ -35,13 +39,17 @@ class ViewController:
         current_zoom = self.parent.pdf_processor.get_zoom()
         new_zoom = max(current_zoom / 1.2, 0.25)
 
+        logger.info(f"[zoom_out] 当前缩放: {current_zoom}, 新缩放: {new_zoom}")
+
         # 获取最接近的预设缩放值
         closest_zoom = self._find_closest_zoom_level(int(new_zoom * 100))
         if closest_zoom is not None:
             new_zoom = closest_zoom / 100.0
+            logger.info(f"[zoom_out] 调整为预设缩放: {new_zoom}")
 
         success, message = self.parent.pdf_processor.set_zoom(new_zoom)
         if success:
+            logger.info(f"[zoom_out] 设置zoom_factor后: {self.parent.pdf_processor.zoom_factor}")
             if hasattr(self.parent, 'scroll_area') and hasattr(self.parent.scroll_area, 'update_content'):
                 self.parent.scroll_area.update_content()
             # 更新工具栏缩放比例显示
