@@ -1320,8 +1320,8 @@ class PDFRenderer(QObject):
             if page_width > 0:
                 target_zoom_factor = container_width / (page_width * self.base_zoom)
 
-                # 确保缩放比例在有效范围内
-                target_zoom_factor = max(0.25, min(4.0, target_zoom_factor))
+                # 确保缩放比例在有效范围内 (8%-6400%)
+                target_zoom_factor = max(0.08, min(64.0, target_zoom_factor))
 
                 # 应用缩放
                 actual_zoom = target_zoom_factor * self.base_zoom
@@ -1355,8 +1355,8 @@ class PDFRenderer(QObject):
             if page_height > 0:
                 target_zoom_factor = container_height / (page_height * self.base_zoom)
 
-                # 确保缩放比例在有效范围内
-                target_zoom_factor = max(0.25, min(4.0, target_zoom_factor))
+                # 确保缩放比例在有效范围内 (8%-6400%)
+                target_zoom_factor = max(0.08, min(64.0, target_zoom_factor))
 
                 # 应用缩放
                 actual_zoom = target_zoom_factor * self.base_zoom
@@ -1393,8 +1393,8 @@ class PDFRenderer(QObject):
                 # 选择较小的缩放比例以确保完整显示
                 target_zoom_factor = min(zoom_for_width, zoom_for_height)
 
-                # 确保缩放比例在有效范围内
-                target_zoom_factor = max(0.25, min(4.0, target_zoom_factor))
+                # 确保缩放比例在有效范围内 (8%-6400%)
+                target_zoom_factor = max(0.08, min(64.0, target_zoom_factor))
 
                 # 应用缩放
                 actual_zoom = target_zoom_factor * self.base_zoom

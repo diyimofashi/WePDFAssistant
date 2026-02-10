@@ -14,15 +14,20 @@ class ViewController:
     def zoom_in(self):
         """放大"""
         current_zoom = self.parent.pdf_processor.get_zoom()
-        new_zoom = min(current_zoom * 1.2, 4.0)
+        current_percent = int(current_zoom * 100)
 
-        logger.info(f"[zoom_in] 当前缩放: {current_zoom}, 新缩放: {new_zoom}")
+        logger.info(f"[zoom_in] 当前缩放: {current_zoom} ({current_percent}%)")
 
-        # 获取最接近的预设缩放值
-        closest_zoom = self._find_closest_zoom_level(int(new_zoom * 100))
-        if closest_zoom is not None:
-            new_zoom = closest_zoom / 100.0
-            logger.info(f"[zoom_in] 调整为预设缩放: {new_zoom}")
+        # 从预设列表中找下一个更大的缩放值
+        next_zoom = self._find_next_larger_zoom(current_percent)
+
+        if next_zoom is not None:
+            new_zoom = next_zoom / 100.0
+            logger.info(f"[zoom_in] 下一个预设缩放: {new_zoom} ({next_zoom}%)")
+        else:
+            # 如果没有预设值，使用计算值
+            new_zoom = min(current_zoom * 1.2, 64.0)
+            logger.info(f"[zoom_in] 使用计算缩放: {new_zoom}")
 
         success, message = self.parent.pdf_processor.set_zoom(new_zoom)
         if success:
@@ -37,15 +42,20 @@ class ViewController:
     def zoom_out(self):
         """缩小"""
         current_zoom = self.parent.pdf_processor.get_zoom()
-        new_zoom = max(current_zoom / 1.2, 0.25)
+        current_percent = int(current_zoom * 100)
 
-        logger.info(f"[zoom_out] 当前缩放: {current_zoom}, 新缩放: {new_zoom}")
+        logger.info(f"[zoom_out] 当前缩放: {current_zoom} ({current_percent}%)")
 
-        # 获取最接近的预设缩放值
-        closest_zoom = self._find_closest_zoom_level(int(new_zoom * 100))
-        if closest_zoom is not None:
-            new_zoom = closest_zoom / 100.0
-            logger.info(f"[zoom_out] 调整为预设缩放: {new_zoom}")
+        # 从预设列表中找下一个更小的缩放值
+        next_zoom = self._find_next_smaller_zoom(current_percent)
+
+        if next_zoom is not None:
+            new_zoom = next_zoom / 100.0
+            logger.info(f"[zoom_out] 下一个预设缩放: {new_zoom} ({next_zoom}%)")
+        else:
+            # 如果没有预设值，使用计算值
+            new_zoom = max(current_zoom / 1.2, 0.08)
+            logger.info(f"[zoom_out] 使用计算缩放: {new_zoom}")
 
         success, message = self.parent.pdf_processor.set_zoom(new_zoom)
         if success:
@@ -75,9 +85,74 @@ class ViewController:
         if not preset_zooms:
             return None
 
+        # 排序预设缩放值
+        preset_zooms.sort()
+
         # 找到最接近的预设值
         closest = min(preset_zooms, key=lambda x: abs(x - target_percent))
         return closest
+
+    def _find_next_smaller_zoom(self, current_percent):
+        """查找比当前缩放更小的预设值"""
+        if not hasattr(self.parent, 'zoom_combo'):
+            return None
+
+        # 获取所有预设的缩放比例
+        preset_zooms = []
+        for i in range(self.parent.zoom_combo.count()):
+            text = self.parent.zoom_combo.itemText(i)
+            if '%' in text:
+                try:
+                    preset_zooms.append(int(text.rstrip('%')))
+                except ValueError:
+                    continue
+
+        if not preset_zooms:
+            return None
+
+        # 排序预设缩放值
+        preset_zooms.sort()
+
+        # 找到所有比当前值小的预设值
+        smaller_zooms = [z for z in preset_zooms if z < current_percent]
+
+        if not smaller_zooms:
+            # 没有更小的了，返回最小值
+            return min(preset_zooms)
+
+        # 返回最大的那个较小的值（最接近当前值）
+        return max(smaller_zooms)
+
+    def _find_next_larger_zoom(self, current_percent):
+        """查找比当前缩放更大的预设值"""
+        if not hasattr(self.parent, 'zoom_combo'):
+            return None
+
+        # 获取所有预设的缩放比例
+        preset_zooms = []
+        for i in range(self.parent.zoom_combo.count()):
+            text = self.parent.zoom_combo.itemText(i)
+            if '%' in text:
+                try:
+                    preset_zooms.append(int(text.rstrip('%')))
+                except ValueError:
+                    continue
+
+        if not preset_zooms:
+            return None
+
+        # 排序预设缩放值
+        preset_zooms.sort()
+
+        # 找到所有比当前值大的预设值
+        larger_zooms = [z for z in preset_zooms if z > current_percent]
+
+        if not larger_zooms:
+            # 没有更大的了，返回最大值
+            return max(preset_zooms)
+
+        # 返回最小的那个较大的值（最接近当前值）
+        return min(larger_zooms)
 
     def fit_to_width(self, container_width=None):
         """适应宽度"""
