@@ -32,19 +32,19 @@ class HistoryManager:
 
     def add_file_to_history(self, file_path, page_count=0):
         """添加文件到历史记录（同时更新最近项目和分类记录）"""
-        logger.info(f"开始添加文件到历史记录: {file_path}, page_count={page_count}")
+        logger.info(f"[add_file_to_history] 开始添加文件到历史记录: {file_path}, page_count={page_count}")
 
         if not file_path:
-            logger.warning("file_path 为空，跳过添加")
+            logger.warning("[add_file_to_history] file_path 为空，跳过添加")
             return
 
         if not os.path.exists(file_path):
-            logger.warning(f"文件不存在: {file_path}")
+            logger.warning(f"[add_file_to_history] 文件不存在: {file_path}")
             return
 
         # 检查是否为临时文件
         if self._is_temp_file(file_path):
-            logger.info(f"跳过临时文件: {file_path}")
+            logger.info(f"[add_file_to_history] 跳过临时文件: {file_path}")
             return
 
         filename = os.path.basename(file_path)
@@ -52,13 +52,13 @@ class HistoryManager:
 
         # 获取分类信息
         category_info = self._get_category_for_file(file_path)
-        logger.info(f"文件分类: {category_info}")
+        logger.info(f"[add_file_to_history] 文件分类: {category_info}")
 
         # 添加到数据库
         category_id = db.get_or_create_category(category_info['name'], category_info['path'])
         db.add_or_update_file(file_path, filename, category_id, page_count)
 
-        logger.info(f"已添加文件到历史记录: {filename} (分类: {category_info['name']}, 路径: {category_info['path']})")
+        logger.info(f"[add_file_to_history] 已添加/更新文件到历史记录: {filename} (分类: {category_info['name']}, 路径: {category_info['path']})")
 
     def _is_temp_file(self, file_path):
         """检查是否为临时文件"""

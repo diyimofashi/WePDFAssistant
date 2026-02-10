@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout,
                              QStackedWidget,
                              QLabel, QMessageBox, QAction,
                              QSizePolicy, QFileDialog)
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 import os
 
 from app.core.processing.pdf_processor import PDFProcessor
@@ -142,6 +142,18 @@ class PDFEditorWidget(QWidget):
                 self.file_opened.emit(file_path)
                 logger.info(f"文件打开成功: {file_path}")
 
+                # 异步添加文件到历史记录（不阻塞UI）
+                if hasattr(self, 'history_manager') and self.history_manager:
+                    try:
+                        total_pages = self.pdf_processor.get_total_pages()
+                        logger.debug(f"[open_pdf] 准备添加到历史记录: file_path={file_path}, total_pages={total_pages}")
+                        # 使用QTimer延迟执行，确保不阻塞渲染
+                        QTimer.singleShot(100, lambda: self._async_add_to_history(file_path, total_pages))
+                    except Exception as e:
+                        logger.error(f"准备添加历史记录失败: {e}")
+                        import traceback
+                        traceback.print_exc()
+
                 # 更新工具栏的总页数标签
                 if hasattr(self, 'toolbar_total_pages_label') and self.pdf_processor:
                     try:
@@ -186,7 +198,6 @@ class PDFEditorWidget(QWidget):
                         self.scroll_area.update_content()
 
                         # 延迟滚动到第一页
-                        from PyQt5.QtCore import QTimer
                         QTimer.singleShot(200, lambda: self.scroll_area.scroll_to_page(0) if hasattr(self.scroll_area, 'scroll_to_page') else None)
 
                         # 根据设置决定是否显示缩略图
@@ -246,6 +257,21 @@ class PDFEditorWidget(QWidget):
         except Exception as e:
             logger.error(f"打开文件失败: {e}")
             QMessageBox.critical(self, "错误", f"打开文件时出错: {str(e)}")
+
+    def _async_add_to_history(self, file_path, page_count):
+        """异步添加文件到历史记录"""
+        try:
+            logger.debug(f"[_async_add_to_history] 准备添加到历史记录: file_path={file_path}, page_count={page_count}")
+            if hasattr(self, 'history_manager') and self.history_manager:
+                self.history_manager.add_file_to_history(file_path, page_count)
+                logger.info(f"[_async_add_to_history] 已异步添加到历史记录: {os.path.basename(file_path)}")
+                # 如果欢迎界面正在显示，刷新历史记录
+                if hasattr(self, 'welcome_widget') and self.welcome_widget:
+                    self.welcome_widget.refresh_history()
+            else:
+                logger.warning("[_async_add_to_history] history_manager 未初始化，无法添加历史记录")
+        except Exception as e:
+            logger.error(f"异步添加历史记录失败: {e}")
 
     def _check_thumbnail_panel(self):
         """检查缩略图面板状态（用于调试）"""
