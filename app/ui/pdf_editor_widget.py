@@ -22,6 +22,8 @@ from app.managers.merge_manager import MergeManager
 from app.ui.welcome_widget import WelcomeWidget
 from app.utils.logger import get_logger
 from app.config.settings import AppSettings
+from app.managers.ocr_plugin_manager import ocr_plugin_manager
+from app.config.ocr_plugin_config import ocr_config_manager
 
 
 logger = get_logger('pdf_editor_widget')
@@ -51,6 +53,10 @@ class PDFEditorWidget(QWidget):
         self.merge_manager = MergeManager(self)
         self.history_manager = HistoryManager(self)
         self.context_menu_manager = ContextMenuManager(self)
+
+        # 设置OCR管理器引用（使用全局实例）
+        self.ocr_plugin_manager = ocr_plugin_manager
+        self.ocr_config_manager = ocr_config_manager
 
         # 初始化UI
         self.init_ui()
@@ -326,6 +332,74 @@ class PDFEditorWidget(QWidget):
             self.show_pdf_viewer()
         else:
             self.show_welcome()
+
+    def show_context_menu_at(self, position):
+        """在指定位置显示右键菜单
+
+        Args:
+            position: 鼠标位置 (QPoint)
+        """
+        if hasattr(self, 'context_menu_manager'):
+            # 创建一个模拟的鼠标事件
+            global_pos = self.mapToGlobal(position)
+            from PyQt5.QtGui import QContextMenuEvent
+            event = QContextMenuEvent(
+                QContextMenuEvent.Mouse,
+                position,
+                global_pos
+            )
+            self.context_menu_manager.show_context_menu(event)
+            logger.debug(f"在位置 {position} 显示右键菜单")
+
+    # === 为 ContextMenuManager 兼容性添加的属性 ===
+    @property
+    def virtual_scroll(self):
+        """兼容属性：虚拟滚动区域"""
+        return self.scroll_area if hasattr(self, 'scroll_area') else None
+
+    @property
+    def thumbnail_list(self):
+        """兼容属性：缩略图列表"""
+        return self.thumbnail_panel if hasattr(self, 'thumbnail_panel') else None
+
+    @property
+    def show_thumbnails(self):
+        """兼容属性：是否显示缩略图"""
+        if hasattr(self, 'thumbnail_panel'):
+            return self.thumbnail_panel.isVisible()
+        return False
+
+    def update_preview(self):
+        """更新预览"""
+        if hasattr(self, 'scroll_area') and hasattr(self.scroll_area, 'update_content'):
+            # 清除pages_data以强制重新获取页数
+            if hasattr(self.scroll_area, 'pages_data'):
+                self.scroll_area.pages_data = []
+            self.scroll_area.update_content()
+            logger.debug("更新预览完成")
+
+    def show_message(self, message):
+        """显示消息（兼容方法）"""
+        logger.info(message)
+        # 尝试将消息显示在父窗口的状态栏
+        parent = self.parent()
+        while parent:
+            if hasattr(parent, 'status_bar'):
+                parent.status_bar.showMessage(message, 3000)  # 显示3秒
+                break
+            parent = parent.parent()
+
+    def update_toolbar_total_pages(self):
+        """更新工具栏的总页数显示"""
+        if hasattr(self, 'toolbar_total_pages_label') and self.pdf_processor:
+            try:
+                total_pages = self.pdf_processor.get_total_pages()
+                self.toolbar_total_pages_label.setText(f"/ {total_pages}")
+                logger.debug(f"更新工具栏总页数: {total_pages}")
+            except Exception as e:
+                logger.error(f"更新工具栏总页数显示失败: {e}")
+                if hasattr(self, 'toolbar_total_pages_label'):
+                    self.toolbar_total_pages_label.setText("/ 0")
 
     def update_tab_title(self, title):
         """更新标签页标题"""
@@ -689,6 +763,22 @@ class PDFEditorWidget(QWidget):
     def show_search_panel(self):
         """搜索"""
         self.search_manager.show_search_panel()
+
+    def show_search_dialog(self):
+        """显示搜索对话框（兼容方法）"""
+        self.search_manager.show_search_panel()
+
+    def show_ocr_dialog(self):
+        """显示OCR对话框"""
+        # TODO: 实现OCR对话框
+        logger.warning("show_ocr_dialog 功能暂未实现")
+        QMessageBox.information(self, "提示", "OCR识别功能暂未实现")
+
+    def get_selected_text(self):
+        """获取选中的文本（兼容方法）"""
+        if hasattr(self, 'scroll_area') and hasattr(self.scroll_area, 'get_selected_text'):
+            return self.scroll_area.get_selected_text()
+        return None
 
     # === 设置菜单方法 ===
     def show_ui_settings(self):

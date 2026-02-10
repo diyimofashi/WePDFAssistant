@@ -406,9 +406,13 @@ class ContextMenuBuilder:
     def _copy_text(self, text):
         """复制文本到剪贴板"""
         clipboard = QApplication.clipboard()
-        clipboard.setText(text)
-        self.main_window.show_message("✅ 文本已复制到剪贴板")
-        logger.debug(f"复制文本: {text[:50]}...")
+        if clipboard:
+            clipboard.setText(text)
+            self.main_window.show_message("✅ 文本已复制到剪贴板")
+            logger.debug(f"复制文本: {text[:50]}...")
+        else:
+            self.main_window.show_message("❌ 无法访问剪贴板")
+            logger.error("无法获取剪贴板实例")
     
     def _search_text(self, text):
         """搜索文本"""
@@ -586,13 +590,31 @@ class ContextMenuBuilder:
 
     def _insert_blank_page(self, page_num):
         """插入空白页"""
+        logger.debug(f"[_insert_blank_page] 开始，page_num={page_num}（0-based），将传给page_editor的页码={page_num + 1}（1-based）")
+        logger.debug(f"[_insert_blank_page] self.main_window={self.main_window}, type={type(self.main_window)}")
+        logger.debug(f"[_insert_blank_page] hasattr(pdf_processor)={hasattr(self.main_window, 'pdf_processor')}")
+        if hasattr(self.main_window, 'pdf_processor'):
+            logger.debug(f"[_insert_blank_page] pdf_processor={self.main_window.pdf_processor}")
+            if hasattr(self.main_window.pdf_processor, 'fitz_document'):
+                logger.debug(f"[_insert_blank_page] fitz_document={self.main_window.pdf_processor.fitz_document}")
+        
         if hasattr(self.main_window, 'pdf_processor') and self.main_window.pdf_processor.fitz_document:
             page_editor = self._get_page_editor()
+            logger.debug(f"[_insert_blank_page] page_editor={page_editor}")
             if page_editor:
                 success, message = page_editor.insert_blank_page(page_num + 1)
+                logger.debug(f"[_insert_blank_page] 插入结果：success={success}, message={message}")
                 if success:
                     self.main_window.show_message(message)
                     self.main_window.update_preview()
+                    self.main_window.load_thumbnails()
+                    # 更新工具栏总页数
+                    if hasattr(self.main_window, 'update_toolbar_total_pages'):
+                        self.main_window.update_toolbar_total_pages()
+                    # 清除虚拟滚动缓存
+                    if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
+                        self.main_window.virtual_scroll.clear_cache()
+                    logger.debug(f"[_insert_blank_page] 界面更新完成")
                 else:
                     self.main_window.show_message(f"❌ {message}")
             else:
@@ -622,6 +644,9 @@ class ContextMenuBuilder:
                     self.main_window.show_message(message)
                     self.main_window.update_preview()
                     self.main_window.load_thumbnails()
+                    # 更新工具栏总页数
+                    if hasattr(self.main_window, 'update_toolbar_total_pages'):
+                        self.main_window.update_toolbar_total_pages()
                     # 清除虚拟滚动缓存
                     if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
                         self.main_window.virtual_scroll.clear_cache()
@@ -665,6 +690,9 @@ class ContextMenuBuilder:
                 self.main_window.show_message(message)
                 self.main_window.update_preview()
                 self.main_window.load_thumbnails()
+                # 更新工具栏总页数
+                if hasattr(self.main_window, 'update_toolbar_total_pages'):
+                    self.main_window.update_toolbar_total_pages()
                 # 清除虚拟滚动缓存
                 if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
                     self.main_window.virtual_scroll.clear_cache()
@@ -680,6 +708,9 @@ class ContextMenuBuilder:
                     self.main_window.show_message(message)
                     self.main_window.update_preview()
                     self.main_window.load_thumbnails()
+                    # 更新工具栏总页数
+                    if hasattr(self.main_window, 'update_toolbar_total_pages'):
+                        self.main_window.update_toolbar_total_pages()
                     # 清除虚拟滚动缓存
                     if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
                         self.main_window.virtual_scroll.clear_cache()
@@ -733,6 +764,9 @@ class ContextMenuBuilder:
                     # 更新预览和缩略图
                     self.main_window.update_preview()
                     self.main_window.load_thumbnails()
+                    # 更新工具栏总页数
+                    if hasattr(self.main_window, 'update_toolbar_total_pages'):
+                        self.main_window.update_toolbar_total_pages()
                     # 延迟一段时间，确保所有UI更新完成，然后滚动到目标页面
                     QTimer.singleShot(500, lambda: self._force_scroll_to_page(target_page))
                 else:

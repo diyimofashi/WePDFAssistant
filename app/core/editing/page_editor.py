@@ -435,8 +435,11 @@ class PageEditor(QObject):
             # 获取当前总页数
             total_pages = len(self.pdf_processor.fitz_document)
 
+            # 允许在最后一页后插入，所以条件是 insert_position >= 0 and insert_position <= total_pages
+            # 例如：有1页时，page_num=1表示在第1页后插入，insert_position=1，total_pages=1
+            # 此时应该允许插入，新页面将插入到索引1的位置
             if insert_position < 0 or insert_position > total_pages:
-                return False, f"页码超出范围：{page_num}"
+                return False, f"页码超出范围：{page_num}，当前文档共{total_pages}页"
 
             # 记录操作前的状态用于撤销
             operation_data = {
@@ -444,7 +447,10 @@ class PageEditor(QObject):
             }
 
             # 使用fitz在指定位置插入空白页（A4大小）
-            new_page = self.pdf_processor.fitz_document.new_page(insert_position, width=595, height=842)
+            # pno参数指定在哪个页码前插入，-1表示在末尾插入
+            logger.debug(f"[insert_blank_page] 准备插入空白页，insert_position={insert_position}, total_pages={total_pages}")
+            new_page = self.pdf_processor.fitz_document.new_page(pno=insert_position, width=595, height=842)
+            logger.debug(f"[insert_blank_page] 空白页已创建，当前文档总页数: {len(self.pdf_processor.fitz_document)}")
 
             # 更新状态
             self.is_modified = True
@@ -799,7 +805,8 @@ class PageEditor(QObject):
                         img_width, img_height = new_img_width, new_img_height
 
                 # 使用fitz在指定位置创建标准尺寸的新页面
-                new_page = self.pdf_processor.fitz_document.new_page(insert_position, width=page_width, height=page_height)
+                # pno参数指定在哪个页码前插入，-1表示在末尾插入
+                new_page = self.pdf_processor.fitz_document.new_page(width=page_width, height=page_height, pno=insert_position)
 
                 # 水平居中（在可用宽度内居中）
                 x_offset = margin_x + (available_width - img_width) / 2
