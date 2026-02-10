@@ -14,6 +14,7 @@ from app.core.ocr.ocr_plugin_interface import OCRResult
 from app.core.ocr.ocr_plugin_interface import OCRErrorCode
 from base64 import b64encode
 from app.ui.screenshot_result_dialog import ScreenshotOCRResultDialog
+from app.config.settings import AppSettings
 
 logger = get_logger(__name__)
 
@@ -635,14 +636,16 @@ class ContextMenuBuilder:
             self.main_window.show_message("❌ 未打开PDF文档")
             return
 
+        last_open_dir = AppSettings.get_last_open_dir()
         file_path, _ = QFileDialog.getOpenFileName(
             self.main_window,
             "选择要插入的PDF文件",
-            "",
+            last_open_dir,
             "PDF文件 (*.pdf)"
         )
 
         if file_path:
+            AppSettings.set_last_open_dir(file_path)
             page_editor = self._get_page_editor()
             if page_editor:
                 success, message = page_editor.insert_pdf_page(page_num + 1, file_path)
@@ -676,10 +679,11 @@ class ContextMenuBuilder:
             return
 
         # 统一使用文件选择对话框让用户选择要插入的图片
+        last_open_dir = AppSettings.get_last_open_dir()
         file_path, _ = QFileDialog.getOpenFileName(
             self.main_window,
             "选择要插入的图片",
-            "",
+            last_open_dir,
             "图片文件 (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.tif *.webp)"
         )
 
@@ -688,6 +692,8 @@ class ContextMenuBuilder:
         if not file_path:
             logger.debug("用户未选择图片文件")
             return
+        
+        AppSettings.set_last_open_dir(file_path)
 
         # 尝试使用page_editor插入图片
         page_editor = self._get_page_editor()
