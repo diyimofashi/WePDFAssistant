@@ -296,19 +296,17 @@ class WelcomeWidget(QWidget):
                 background-color: white;
             }
             QListWidget::item {
-                border: 1px solid #e0e0e0;
+                border: none;
                 border-radius: 4px;
-                padding: 5px;
-                background-color: white;
+                padding: 2px;
+                background-color: transparent;
                 text-align: center;
             }
             QListWidget::item:hover {
-                border: 2px solid #0078d4;
-                background-color: #f0f8ff;
+                background-color: transparent;
             }
             QListWidget::item:selected {
-                border: 2px solid #0078d4;
-                background-color: #e8f4fc;
+                background-color: transparent;
             }
         """)
 
@@ -409,6 +407,9 @@ class WelcomeWidget(QWidget):
         self.file_list.clear()
         self.thumbnail_cache.clear()  # 只清空内存缓存，不清空持久化缓存
 
+        # 添加"打开文档"项作为第一个项
+        self._add_open_document_item()
+
         if not recent_files:
             item = QListWidgetItem("暂无最近打开的文件")
             item.setFlags(Qt.NoItemFlags)
@@ -434,6 +435,9 @@ class WelcomeWidget(QWidget):
         self.file_list_title.setText(f"📄 {category_name}")
         self.file_list.clear()
         self.thumbnail_cache.clear()  # 只清空内存缓存
+
+        # 添加"打开文档"项作为第一个项
+        self._add_open_document_item()
 
         categories = self.history_manager.get_categories()
         # 查找对应的分类数据
@@ -472,6 +476,9 @@ class WelcomeWidget(QWidget):
         self.file_list.clear()
         self.thumbnail_cache.clear()  # 只清空内存缓存
 
+        # 添加"打开文档"项作为第一个项
+        self._add_open_document_item()
+
         monthly_groups = self._group_files_by_month()
         files = monthly_groups.get(month, [])
 
@@ -495,6 +502,9 @@ class WelcomeWidget(QWidget):
         self.file_list_title.setText("📄 所有分类文件")
         self.file_list.clear()
         self.thumbnail_cache = {}
+
+        # 添加"打开文档"项作为第一个项
+        self._add_open_document_item()
 
         categories = self.history_manager.get_categories()
         all_files = []
@@ -521,6 +531,69 @@ class WelcomeWidget(QWidget):
         from PyQt5.QtCore import QTimer
         QTimer.singleShot(100, lambda: self._start_thumbnail_generation(all_files))
 
+    def _add_open_document_item(self):
+        """添加"打开文档"项到列表"""
+        item = QListWidgetItem()
+        item.setData(Qt.UserRole, {'type': 'open_document'})
+        item.setSizeHint(QSize(210, 310))
+        # 禁用 item 的边框和背景，完全由内部 widget 控制
+        item.setFlags(Qt.ItemIsEnabled)
+
+        # 创建一个按钮样式的 widget，可以点击
+        from PyQt5.QtWidgets import QPushButton
+        item_widget = QPushButton()
+        item_widget.setFixedSize(206, 306)
+        item_widget.setToolTip("点击打开文档")
+        item_widget.setCursor(Qt.PointingHandCursor)
+        item_widget.setStyleSheet("""
+            QPushButton {
+                background-color: #f0f8ff;
+                border: 2px dashed #0078d4;
+                border-radius: 4px;
+                margin: 0px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #e0f0ff;
+                border: 2px solid #0078d4;
+            }
+        """)
+        item_widget.clicked.connect(self._open_document_dialog)
+
+        # 创建内部布局
+        inner_widget = QWidget(item_widget)
+        inner_widget.setGeometry(5, 5, 200, 300)
+        inner_layout = QVBoxLayout(inner_widget)
+        inner_layout.setAlignment(Qt.AlignCenter)
+        inner_layout.setSpacing(5)
+        inner_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 创建打开文档的图标区域
+        icon_label = QLabel()
+        icon_label.setFixedSize(180, 200)
+        icon_label.setAlignment(Qt.AlignCenter)
+        icon_label.setText("📂\n\n打开文档")
+        icon_label.setStyleSheet("""
+            QLabel {
+                background-color: transparent;
+                color: #0078d4;
+                font-size: 16px;
+                font-weight: bold;
+            }
+        """)
+        inner_layout.addWidget(icon_label)
+
+        name_label = QLabel("点击选择文件")
+        name_label.setWordWrap(True)
+        name_label.setAlignment(Qt.AlignCenter)
+        name_label.setMaximumWidth(180)
+        name_label.setStyleSheet("font-size: 12px; color: #666;")
+        inner_layout.addWidget(name_label)
+
+        self.file_list.addItem(item)
+        self.file_list.setItemWidget(item, item_widget)
+        logger.debug("打开文档项已添加到列表")
+
     def _add_file_item(self, record):
         """添加文件项到列表"""
         file_path = record.get('path', '')
@@ -541,13 +614,24 @@ class WelcomeWidget(QWidget):
         item.setSizeHint(QSize(210, 310))  # 设置固定大小，与 gridSize 匹配
 
         item_widget = QWidget()
-        item_widget.setFixedSize(210, 310)
+        item_widget.setFixedSize(206, 306)
         item_widget.setToolTip(file_path)  # 设置 tooltip 显示完整路径
+        item_widget.setStyleSheet("""
+            QWidget {
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+                background-color: white;
+            }
+            QWidget:hover {
+                border: 2px solid #0078d4;
+                background-color: #f0f8ff;
+            }
+        """)
 
         item_layout = QVBoxLayout(item_widget)
         item_layout.setAlignment(Qt.AlignCenter)  # 垂直和水平都居中
         item_layout.setSpacing(5)
-        item_layout.setContentsMargins(0, 0, 0, 0)  # 无边距
+        item_layout.setContentsMargins(2, 2, 2, 2)  # 留出边框空间
 
         # 文件类型标签（红色加粗）
         file_ext = os.path.splitext(filename)[1].upper().lstrip('.')
@@ -670,9 +754,46 @@ class WelcomeWidget(QWidget):
     def _on_file_item_double_clicked(self, item):
         """双击文件项"""
         record = item.data(Qt.UserRole)
-        if record:
-            file_path = record.get('path', '')
+        if not record:
+            return
+
+        # 检查是否是"打开文档"项
+        if record.get('type') == 'open_document':
+            self._open_document_dialog()
+            return
+
+        file_path = record.get('path', '')
+        if file_path:
             self.file_open_requested.emit(file_path)
+
+    def _open_document_dialog(self):
+        """打开文件选择对话框"""
+        from PyQt5.QtWidgets import QFileDialog
+        from app.config.settings import AppSettings
+
+        last_dir = AppSettings.get_last_open_dir()
+
+        # 弹出文件选择对话框
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self, "选择文件", last_dir,
+            "所有支持的文件 (*.pdf *.jpg *.jpeg *.png *.bmp *.gif *.tiff *.tif *.webp *.ico);;PDF文件 (*.pdf);;图片文件 (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;所有文件 (*.*)"
+        )
+
+        # 如果用户没有选择文件，直接返回
+        if not file_paths:
+            logger.info("用户取消了文件选择")
+            return
+
+        # 保存最后打开的目录
+        AppSettings.set_last_open_dir(file_paths[0])
+
+        # 打开第一个文件（在新标签页中打开）
+        file_path = file_paths[0]
+        if os.path.exists(file_path):
+            self.file_open_requested.emit(file_path)
+        else:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "文件不存在", f"文件不存在: {file_path}")
 
     def refresh_history(self):
         """刷新历史记录显示"""
