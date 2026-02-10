@@ -1,7 +1,7 @@
 """多标签页主窗口"""
 
 from PyQt5.QtWidgets import (QMainWindow, QTabWidget, QMessageBox,
-                             QStatusBar, QWidget)
+                             QStatusBar, QWidget, QPushButton)
 from PyQt5.QtCore import QTimer
 import os
 
@@ -299,18 +299,22 @@ class TabbedMainWindow(QMainWindow):
         # 检查未保存的更改
         if editor.has_unsaved_changes():
             file_name = os.path.basename(editor.file_path) if editor.file_path else "未命名"
-            reply = QMessageBox.question(
-                self,
-                "保存",
-                f"文件 '{file_name}' 有未保存的更改，是否保存？",
-                QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
-                QMessageBox.Save
-            )
-
-            if reply == QMessageBox.Save:
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("保存")
+            msg_box.setText(f"文件 '{file_name}' 有未保存的更改，是否保存？")
+            msg_box.setIcon(QMessageBox.Question)
+            
+            save_btn = msg_box.addButton("保存", QMessageBox.AcceptRole)
+            discard_btn = msg_box.addButton("不保存", QMessageBox.DestructiveRole)
+            cancel_btn = msg_box.addButton("取消", QMessageBox.RejectRole)
+            msg_box.setDefaultButton(save_btn)
+            
+            reply = msg_box.exec_()
+            
+            if msg_box.clickedButton() == save_btn:
                 if not editor.save_file():
                     return  # 保存失败，不关闭
-            elif reply == QMessageBox.Cancel:
+            elif msg_box.clickedButton() == cancel_btn:
                 return  # 取消关闭
 
         # 关闭编辑器
@@ -480,22 +484,26 @@ class TabbedMainWindow(QMainWindow):
 
         if unsaved_tabs:
             # 有未保存的更改
-            reply = QMessageBox.question(
-                self,
-                "退出",
-                f"有 {len(unsaved_tabs)} 个文件有未保存的更改，是否保存？",
-                QMessageBox.SaveAll | QMessageBox.Discard | QMessageBox.Cancel,
-                QMessageBox.SaveAll
-            )
-
-            if reply == QMessageBox.SaveAll:
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("退出")
+            msg_box.setText(f"有 {len(unsaved_tabs)} 个文件有未保存的更改，是否保存？")
+            msg_box.setIcon(QMessageBox.Question)
+            
+            save_all_btn = msg_box.addButton("保存所有", QMessageBox.AcceptRole)
+            discard_btn = msg_box.addButton("不保存", QMessageBox.DestructiveRole)
+            cancel_btn = msg_box.addButton("取消", QMessageBox.RejectRole)
+            msg_box.setDefaultButton(save_all_btn)
+            
+            reply = msg_box.exec_()
+            
+            if msg_box.clickedButton() == save_all_btn:
                 # 保存所有
                 for index, file_name in unsaved_tabs:
                     editor = self.tab_widget.widget(index)
                     if not editor.save_file():
                         event.ignore()
                         return
-            elif reply == QMessageBox.Cancel:
+            elif msg_box.clickedButton() == cancel_btn:
                 event.ignore()
                 return
 

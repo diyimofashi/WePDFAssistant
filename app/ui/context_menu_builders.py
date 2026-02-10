@@ -434,6 +434,9 @@ class ContextMenuBuilder:
                 if success:
                     self.main_window.show_message(message)
                     self.main_window.update_preview()
+                    # 标记为未保存
+                    if hasattr(self.main_window, 'mark_unsaved'):
+                        self.main_window.mark_unsaved()
                 else:
                     self.main_window.show_message(f"❌ {message}")
             else:
@@ -611,6 +614,9 @@ class ContextMenuBuilder:
                     # 更新工具栏总页数
                     if hasattr(self.main_window, 'update_toolbar_total_pages'):
                         self.main_window.update_toolbar_total_pages()
+                    # 标记为未保存
+                    if hasattr(self.main_window, 'mark_unsaved'):
+                        self.main_window.mark_unsaved()
                     # 清除虚拟滚动缓存
                     if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
                         self.main_window.virtual_scroll.clear_cache()
@@ -647,6 +653,9 @@ class ContextMenuBuilder:
                     # 更新工具栏总页数
                     if hasattr(self.main_window, 'update_toolbar_total_pages'):
                         self.main_window.update_toolbar_total_pages()
+                    # 标记为未保存
+                    if hasattr(self.main_window, 'mark_unsaved'):
+                        self.main_window.mark_unsaved()
                     # 清除虚拟滚动缓存
                     if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
                         self.main_window.virtual_scroll.clear_cache()
@@ -693,6 +702,9 @@ class ContextMenuBuilder:
                 # 更新工具栏总页数
                 if hasattr(self.main_window, 'update_toolbar_total_pages'):
                     self.main_window.update_toolbar_total_pages()
+                # 标记为未保存
+                if hasattr(self.main_window, 'mark_unsaved'):
+                    self.main_window.mark_unsaved()
                 # 清除虚拟滚动缓存
                 if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
                     self.main_window.virtual_scroll.clear_cache()
@@ -711,6 +723,9 @@ class ContextMenuBuilder:
                     # 更新工具栏总页数
                     if hasattr(self.main_window, 'update_toolbar_total_pages'):
                         self.main_window.update_toolbar_total_pages()
+                    # 标记为未保存
+                    if hasattr(self.main_window, 'mark_unsaved'):
+                        self.main_window.mark_unsaved()
                     # 清除虚拟滚动缓存
                     if hasattr(self.main_window, 'virtual_scroll') and self.main_window.virtual_scroll:
                         self.main_window.virtual_scroll.clear_cache()
@@ -767,6 +782,9 @@ class ContextMenuBuilder:
                     # 更新工具栏总页数
                     if hasattr(self.main_window, 'update_toolbar_total_pages'):
                         self.main_window.update_toolbar_total_pages()
+                    # 标记为未保存
+                    if hasattr(self.main_window, 'mark_unsaved'):
+                        self.main_window.mark_unsaved()
                     # 延迟一段时间，确保所有UI更新完成，然后滚动到目标页面
                     QTimer.singleShot(500, lambda: self._force_scroll_to_page(target_page))
                 else:
