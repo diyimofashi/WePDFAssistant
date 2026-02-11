@@ -2,7 +2,7 @@
   "last_open_dir": "D:/FNPData/OMR",
   "log_level": "DEBUG",
   "ocr_highlight_mode": false,
-  "file_list_panel_visible": true,
+  "file_list_panel_visible": false,
   "file_list_panel_width": 800,
   "use_a4_scaling": true,
   "_sqlite_migrated": true,

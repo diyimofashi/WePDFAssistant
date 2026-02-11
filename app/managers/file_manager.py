@@ -510,6 +510,7 @@ class FileManager:
             if success:
                 self._play_success_sound()
                 self.parent.show_message("✅ 更改已保存到原文件")
+                QMessageBox.information(self.parent, "保存成功", "✅ 更改已成功保存到原文件")
                 self.parent.update_save_actions_state()
                 self.parent.load_thumbnails()
             else:
@@ -556,6 +557,7 @@ class FileManager:
             if success:
                 self._play_success_sound()
                 self.parent.show_message("✅ 文件已保存")
+                QMessageBox.information(self.parent, "保存成功", "✅ 文件已成功保存")
                 AppSettings.set_last_save_dir(os.path.dirname(output_path))
                 # 不需要重新打开，save_pdf 已经更新了文档状态
             else:
@@ -563,6 +565,7 @@ class FileManager:
         elif success:
             self._play_success_sound()
             self.parent.show_message("✅ 文件已保存")
+            QMessageBox.information(self.parent, "保存成功", "✅ 文件已成功保存到原位置")
             # 不需要重新打开文件，save_pdf 已经更新了文档状态
         else:
             QMessageBox.critical(self.parent, "保存失败", message)
@@ -587,6 +590,7 @@ class FileManager:
         if success:
             self._play_success_sound()
             self.parent.show_message("✅ 文件已加密保存")
+            QMessageBox.information(self.parent, "保存成功", "✅ 文件已加密保存")
             AppSettings.set_last_save_dir(os.path.dirname(file_path))
 
             if is_from_image_doc:
@@ -709,6 +713,7 @@ class FileManager:
             AppSettings.set_last_save_dir(os.path.dirname(file_path))
             self._play_success_sound()
             self.parent.show_message("✅ 文档保存成功")
+            QMessageBox.information(self.parent, "保存成功", "✅ 文档已成功保存")
             self.parent.update_save_actions_state()
 
             # 只有非临时文档才需要重新打开
@@ -772,8 +777,9 @@ class FileManager:
         success, message = self.parent.pdf_processor.encrypt_pdf(password, file_path)
         if success:
             self._play_success_sound()
+            self.parent.show_message("✅ 文件已加密保存")
+            QMessageBox.information(self.parent, "保存成功", "✅ 文件已加密保存")
             AppSettings.set_last_save_dir(os.path.dirname(file_path))
-            QMessageBox.information(self.parent, "保存成功", message)
 
             if is_from_image_doc:
                 # 如果是从图片打开的文档，更新状态为已保存的PDF

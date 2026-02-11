@@ -326,6 +326,7 @@ class PDFEditorWidget(QWidget):
                 self.update_tab_title(os.path.basename(save_path))
                 self.file_saved.emit(save_path)
                 logger.info(f"文件保存成功: {save_path}")
+                QMessageBox.information(self, "保存成功", "✅ 文件已成功保存")
                 return True
             else:
                 QMessageBox.warning(self, "保存失败", f"无法保存文件: {save_path}\n{message}")
