@@ -4,6 +4,8 @@
 
 import sys
 import os
+import time
+from collections import deque
 # 添加项目根目录到Python路径，解决模块导入问题
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
@@ -17,10 +19,11 @@ from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QPoint, QRect
 from .ocr_page_label import OCRPageLabel
 import traceback
 from .screenshot_ocr_widget import ScreenshotOCRWidget
+import math
 
 
 class VirtualScrollArea(QScrollArea):
-    """虚拟滚动区域 - 只渲染可视区域的页面"""
+    """虚拟滚动区域 - 只渲染可视区域的页面（增强版：智能预测+动态调整）"""
 
     # 信号定义
     page_visible = pyqtSignal(int)  # 页面变为可见
@@ -41,13 +44,27 @@ class VirtualScrollArea(QScrollArea):
         self.page_positions = []  # 每页的起始位置
 
         # 性能优化参数
-        self.buffer_size = 2  # 可见区域上下各预渲染的页数
-        self.render_delay = 200  # 增加渲染延迟到200ms
+        self.base_buffer_size = 2  # 基础缓冲区大小
+        self.buffer_size = 2  # 当前缓冲区大小（动态调整）
+        self.render_delay = 200  # 渲染延迟
+
+        # 智能预测参数
+        self.last_scroll_position = 0
+        self.scroll_velocity = 0  # 滚动速度（像素/秒）
+        self.scroll_direction = 0  # 滚动方向: -1=向上, 0=静止, 1=向下
+        self.last_scroll_time = 0
+        self.scroll_history = deque(maxlen=5)  # 滚动历史，用于预测
 
         # 延迟渲染定时器
         self.render_timer = QTimer()
         self.render_timer.setSingleShot(True)
         self.render_timer.timeout.connect(self._delayed_render)
+
+        # 快速滚动检测
+        self.is_fast_scrolling = False
+        self.fast_scroll_timer = QTimer()
+        self.fast_scroll_timer.setSingleShot(True)
+        self.fast_scroll_timer.timeout.connect(self._on_fast_scroll_end)
 
         # 截图OCR模式相关
         self.screenshot_mode = False  # 是否在截图OCR模式
@@ -76,6 +93,37 @@ class VirtualScrollArea(QScrollArea):
 
         # 连接滚动事件
         self.verticalScrollBar().valueChanged.connect(self._on_scroll_changed)
+
+    def _on_scroll_changed(self, value):
+        """滚动位置变化 - 智能预测和动态调整"""
+        current_time = time.time()
+
+        # 计算滚动速度和方向
+        if self.last_scroll_time > 0:
+            time_delta = current_time - self.last_scroll_time
+            if time_delta > 0:
+                self.scroll_velocity = abs(value - self.last_scroll_position) / time_delta
+                self.scroll_direction = 1 if value > self.last_scroll_position else (-1 if value < self.last_scroll_position else 0)
+
+        self.last_scroll_position = value
+        self.last_scroll_time = current_time
+
+        # 记录滚动历史
+        self.scroll_history.append((value, current_time))
+
+        # 检测快速滚动
+        if abs(self.scroll_velocity) > 2000:  # 超过2000像素/秒视为快速滚动
+            self.is_fast_scrolling = True
+            self.fast_scroll_timer.start(500)  # 500秒后恢复 normal 模式
+            # 快速滚动时增加缓冲区
+            self.buffer_size = min(self.base_buffer_size + 3, 6)
+            logger.debug(f"快速滚动检测: 速度={self.scroll_velocity:.0f}像素/秒")
+        else:
+            # 根据缩放级别动态调整缓冲区
+            self._adjust_buffer_size()
+
+        # 触发延迟渲染
+        self.render_timer.start(self.render_delay)
         
     def get_container_size(self):
         """获取容器的实际可用尺寸"""
@@ -452,53 +500,76 @@ class VirtualScrollArea(QScrollArea):
             logger.error(traceback.format_exc())
     
     def get_visible_range(self):
-        """获取当前可见的页面范围"""
+        """获取当前可见的页面范围（增强版：智能预测）"""
         if not self.pages_data:
             return 0, 0
-            
+
         scroll_pos = self.verticalScrollBar().value()
         viewport_height = self.viewport().height()
-        
+
         start_pos = scroll_pos
         end_pos = scroll_pos + viewport_height
-        
+
         start_page = 0
         end_page = len(self.pages_data) - 1
-        
-        # 找到起始页面
+
+        # 找到起始页面（第一个与视口有交集的页面）
         for i, pos in enumerate(self.page_positions):
-            if pos <= end_pos:
+            page_bottom = pos + self.page_heights[i] + 35  # 加上页面间距
+            if page_bottom >= start_pos:
                 start_page = i
-            else:
                 break
-                
-        # 找到结束页面
+
+        # 找到结束页面（最后一个与视口有交集的页面）
         for i in range(len(self.page_positions) - 1, -1, -1):
-            # 调整容差值以匹配页面间隔的增加
-            if self.page_positions[i] + self.page_heights[i] + 40 >= start_pos:  # 增加容差到40像素
+            if self.page_positions[i] <= end_pos:
                 end_page = i
-            else:
                 break
-                
+
         # 扩展可见范围（包含缓冲区）
-        buffer_size = getattr(self, 'buffer_size', 2)  # 减小缓冲区到1页
-        current_zoom = self.get_current_zoom()
-        logger.debug(f"当前缩放: {current_zoom}")
-        if current_zoom < 0.3:  # 小缩放时使用更大的缓冲区
-            buffer_size = 8
-        elif current_zoom < 0.5:  # 中缩放时使用较小的缓冲区
-            buffer_size = 4
-        else:
-            buffer_size = 2
-        logger.debug(f"缓冲区大小: {buffer_size}")
-        start_page = max(0, start_page - buffer_size)
-        end_page = min(len(self.pages_data) - 1, end_page + buffer_size)
-        
-        logger.debug(f"可见范围: {start_page} - {end_page}")
+        buffer_size = getattr(self, 'buffer_size', 2)
+
+        # 根据滚动方向智能调整预加载策略
+        if self.scroll_direction == 1:  # 向下滚动
+            # 增加下方预加载，减少上方
+            start_page = max(0, start_page - buffer_size // 2)
+            end_page = min(len(self.pages_data) - 1, end_page + buffer_size)
+        elif self.scroll_direction == -1:  # 向上滚动
+            # 增加上方预加载，减少下方
+            start_page = max(0, start_page - buffer_size)
+            end_page = min(len(self.pages_data) - 1, end_page + buffer_size // 2)
+        else:  # 静止
+            start_page = max(0, start_page - buffer_size)
+            end_page = min(len(self.pages_data) - 1, end_page + buffer_size)
+
+        logger.debug(f"可见范围: {start_page} - {end_page}, 方向: {self.scroll_direction}, 缓冲区: {buffer_size}")
         return start_page, end_page
-        
+
     def _on_scroll_changed(self, value):
-        """滚动事件处理"""
+        """滚动事件处理 - 智能预测和动态调整"""
+        current_time = time.time()
+
+        # 计算滚动速度和方向
+        if self.last_scroll_time > 0:
+            time_delta = current_time - self.last_scroll_time
+            if time_delta > 0:
+                self.scroll_velocity = abs(value - self.last_scroll_position) / time_delta
+                self.scroll_direction = 1 if value > self.last_scroll_position else (-1 if value < self.last_scroll_position else 0)
+
+        self.last_scroll_position = value
+        self.last_scroll_time = current_time
+
+        # 检测快速滚动
+        if abs(self.scroll_velocity) > 2000:  # 超过2000像素/秒视为快速滚动
+            self.is_fast_scrolling = True
+            self.fast_scroll_timer.start(500)  # 500秒后恢复 normal 模式
+            # 快速滚动时增加缓冲区
+            self.buffer_size = min(self.base_buffer_size + 3, 6)
+            logger.debug(f"快速滚动检测: 速度={self.scroll_velocity:.0f}像素/秒")
+        else:
+            # 根据缩放级别动态调整缓冲区
+            self._adjust_buffer_size()
+
         # 使用延迟渲染避免频繁更新
         self.render_timer.start(self.render_delay)
         
@@ -582,10 +653,45 @@ class VirtualScrollArea(QScrollArea):
             logger.error(traceback.format_exc())
             return None
 
-            
+
     def _delayed_render(self):
         """延迟渲染可见页面"""
         self._render_visible_pages()
+
+    def _adjust_buffer_size(self):
+        """根据缩放级别和滚动方向动态调整缓冲区"""
+        # 获取父窗口以访问PDF处理器
+        parent = self.parent()
+        pdf_processor = None
+        while parent and not hasattr(parent, 'pdf_processor'):
+            parent = parent.parent()
+        if parent and hasattr(parent, 'pdf_processor'):
+            pdf_processor = parent.pdf_processor
+
+        if pdf_processor:
+            current_zoom = pdf_processor.get_zoom()  # 获取用户视角的缩放
+
+            # 根据缩放级别调整缓冲区
+            if current_zoom < 0.3:
+                # 小缩放：页面内容少，可以预渲染更多页
+                self.buffer_size = min(self.base_buffer_size + 6, 8)
+            elif current_zoom < 0.5:
+                # 中等缩放
+                self.buffer_size = min(self.base_buffer_size + 3, 6)
+            elif current_zoom < 1.0:
+                # 正常缩放
+                self.buffer_size = self.base_buffer_size
+            else:
+                # 大缩放：页面内容多，减少缓冲区以节省内存
+                self.buffer_size = max(1, self.base_buffer_size - 1)
+
+            logger.debug(f"动态调整缓冲区: zoom={current_zoom:.2f}, buffer_size={self.buffer_size}")
+
+    def _on_fast_scroll_end(self):
+        """快速滚动结束"""
+        self.is_fast_scrolling = False
+        self._adjust_buffer_size()  # 恢复正常的缓冲区大小
+        logger.debug("快速滚动结束，恢复正常渲染模式")
         
     def _render_page(self, page_num):
         """渲染单个页面"""
@@ -616,27 +722,34 @@ class VirtualScrollArea(QScrollArea):
         if not self.pages_data:
             logger.debug("没有页面数据，无法渲染")
             return
-            
+
         # 获取可见范围
         start_page, end_page = self.get_visible_range()
-        
-        # 找出需要新渲染的页面
+
+        # 新的可见页面集合
         new_visible_pages = set(range(start_page, end_page + 1))
-        
-        # 渲染新可见的页面，按顺序渲染
-        for page_num in sorted(new_visible_pages):
-            if page_num not in self.visible_pages:
-                self._render_page(page_num)
-            # 额外检查：即使页面已在visible_pages中，也检查是否需要重新渲染
-            elif page_num not in self.rendered_pages:
-                self._render_page(page_num)
-                
-        # 隐藏不再可见的页面
-        for page_num in list(self.visible_pages):
+
+        logger.debug(f"[_render_visible_pages] 可见范围: {start_page}-{end_page}, 当前可见: {self.visible_pages}, 已渲染: {set(self.rendered_pages.keys())}")
+
+        # 步骤1: 渲染所有需要显示但尚未渲染的页面
+        pages_to_render = new_visible_pages - set(self.rendered_pages.keys())
+        for page_num in sorted(pages_to_render):
+            self._render_page(page_num)
+            logger.debug(f"[_render_visible_pages] 渲染页面 {page_num}")
+
+        # 步骤2: 显示所有在可见范围内的已渲染页面
+        for page_num in new_visible_pages:
+            if page_num in self.rendered_pages:
+                self.rendered_pages[page_num].show()
+                logger.debug(f"[_render_visible_pages] 显示页面 {page_num}")
+
+        # 步骤3: 隐藏不再可见的已渲染页面
+        for page_num in self.visible_pages:
             if page_num not in new_visible_pages:
                 self._hide_page(page_num)
-                
-        # 更新可见页面集合
+                logger.debug(f"[_render_visible_pages] 隐藏页面 {page_num}")
+
+        # 步骤4: 更新可见页面集合
         self.visible_pages = new_visible_pages
         
     def _hide_page(self, page_num):

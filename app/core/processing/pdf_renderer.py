@@ -6,6 +6,8 @@ import fitz  # PyMuPDF - 用于PDF页面渲染
 import sys
 import time
 import shutil
+from collections import deque
+import threading
 
 # 添加项目根目录到Python路径，解决模块导入问题
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,7 +18,7 @@ from app.utils.logger import get_logger
 logger = get_logger('pdf_renderer')
 
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QObject, pyqtSignal, QThread, QMutex, QMutexLocker, QTimer
 from PyQt5.QtCore import Qt as QtCore
 
 import traceback
@@ -26,40 +28,230 @@ from .pdf_conversion import PDFConversion
 from ..editing.page_editor import PageEditor
 from .pdf_operations import PDFOperations
 
-# 简化的异步加载器占位类
-class AsyncPageRenderer:
-    """简化版异步页面渲染器占位"""
-    def __init__(self, *args, **kwargs):
-        pass
 
-    def isRunning(self):
-        return False
+class AsyncPageRenderer(QThread):
+    """异步页面渲染器 - 支持优先级队列和渐进式渲染"""
+
+    # 信号定义
+    page_rendered = pyqtSignal(int, QPixmap, float)  # 页码, 图片, 质量(0-1)
+    rendering_finished = pyqtSignal()
+    error_occurred = pyqtSignal(str)
+
+    def __init__(self, pdf_renderer):
+        super().__init__()
+        self.pdf_renderer = pdf_renderer
+        self.render_queue = deque()  # 渲染队列
+        self.priority_queue = []  # 优先级队列 (优先级, 页码)
+        self.queue_mutex = QMutex()
+        self.is_running = False
+        self.is_cancelled = False
+
+        # 渲染参数
+        self.base_quality = 1.0  # 基础质量
+        self.preview_quality = 0.3  # 预览质量
+        self.high_quality_threshold = 2.0  # 停留超过2秒升级为高质量
+
+        # 渲染超时设置
+        self.render_timeout = 5000  # 单页渲染超时5秒
+
+    def add_render_task(self, page_num, quality=1.0, priority=0):
+        """添加渲染任务
+
+        Args:
+            page_num: 页码
+            quality: 渲染质量 (0-1)
+            priority: 优先级 (0=最高, 越大越低)
+        """
+        with QMutexLocker(self.queue_mutex):
+            # 检查是否已在队列中
+            for i, (p, pn, q) in enumerate(self.priority_queue):
+                if pn == page_num:
+                    # 更新优先级和质量
+                    self.priority_queue[i] = (priority, page_num, max(q, quality))
+                    # 按优先级排序
+                    self.priority_queue.sort(key=lambda x: x[0])
+                    return
+
+            # 添加新任务
+            self.priority_queue.append((priority, page_num, quality))
+            self.priority_queue.sort(key=lambda x: x[0])
+            logger.debug(f"添加渲染任务: 页码={page_num}, 质量={quality}, 优先级={priority}")
+
+    def cancel_page(self, page_num):
+        """取消指定页面的渲染"""
+        with QMutexLocker(self.queue_mutex):
+            self.priority_queue = [(p, pn, q) for p, pn, q in self.priority_queue if pn != page_num]
+
+    def cancel_all(self):
+        """取消所有渲染任务"""
+        with QMutexLocker(self.queue_mutex):
+            self.priority_queue.clear()
+        self.is_cancelled = True
+
+    def run(self):
+        """渲染主循环"""
+        self.is_running = True
+        self.is_cancelled = False
+
+        while self.is_running and not self.is_cancelled:
+            try:
+                # 获取下一个任务
+                task = None
+                with QMutexLocker(self.queue_mutex):
+                    if self.priority_queue:
+                        task = self.priority_queue.pop(0)
+
+                if not task:
+                    self.msleep(50)  # 空闲时等待50ms
+                    continue
+
+                priority, page_num, quality = task
+
+                # 执行渲染
+                try:
+                    pixmap = self._render_page(page_num, quality)
+                    if pixmap:
+                        self.page_rendered.emit(page_num, pixmap, quality)
+                    logger.debug(f"完成渲染: 页码={page_num}, 质量={quality}")
+
+                except Exception as e:
+                    logger.error(f"渲染页码{page_num}失败: {e}")
+                    self.error_occurred.emit(f"渲染页码{page_num}失败: {str(e)}")
+
+            except Exception as e:
+                logger.error(f"渲染循环错误: {e}")
+
+        self.is_running = False
+        self.rendering_finished.emit()
+
+    def _render_page(self, page_num, quality):
+        """渲染单个页面"""
+        if not self.pdf_renderer.fitz_document:
+            return None
+
+        try:
+            # 根据质量调整缩放因子
+            original_zoom = self.pdf_renderer.zoom_factor
+            adjusted_zoom = original_zoom * quality
+
+            # 获取页面
+            page = self.pdf_renderer.fitz_document[page_num]
+            page_rect = page.rect
+            page_width = page_rect.width
+            page_height = page_rect.height
+
+            # A4纸标准尺寸
+            A4_WIDTH = 595
+
+            # 计算缩放因子
+            if self.pdf_renderer.use_a4_scaling:
+                a4_scale = A4_WIDTH / page_width
+                zoom = a4_scale * adjusted_zoom
+                render_width = int(A4_WIDTH * adjusted_zoom)
+                render_height = int(page_height * zoom)
+            else:
+                zoom = adjusted_zoom
+                render_width = int(page_width * zoom)
+                render_height = int(page_height * zoom)
+
+            # 检查缓存
+            cached_pixmap = self.pdf_renderer.render_cache.get_rendered_page(
+                page_num, zoom, (render_width, render_height)
+            )
+            if cached_pixmap:
+                return cached_pixmap
+
+            # 渲染页面
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(
+                matrix=mat,
+                alpha=False,
+                colorspace=fitz.csRGB,
+                annots=True,
+                clip=page.rect
+            )
+
+            # 转换为QPixmap
+            if hasattr(pix, 'samples') and pix.samples is not None:
+                image = QImage(
+                    pix.samples,
+                    pix.width,
+                    pix.height,
+                    pix.width * 3,
+                    QImage.Format_RGB888
+                )
+                pixmap = QPixmap.fromImage(image)
+            else:
+                img_data = pix.tobytes("ppm")
+                pixmap = QPixmap()
+                pixmap.loadFromData(img_data)
+
+            # 缓存结果
+            self.pdf_renderer.render_cache.put_rendered_page(
+                page_num, zoom, (render_width, render_height), pixmap
+            )
+
+            return pixmap
+
+        except Exception as e:
+            logger.error(f"渲染页面{page_num}失败: {e}")
+            return None
+
+
+class AsyncThumbnailLoader(QThread):
+    """异步缩略图加载器 - 支持批量加载和进度报告"""
+
+    thumbnail_ready = pyqtSignal(int, QPixmap)  # 页码, 图片
+    thumbnail_progress = pyqtSignal(int, int)  # 当前, 总数
+    loading_finished = pyqtSignal()
+    error_occurred = pyqtSignal(str)
+
+    def __init__(self, pdf_renderer, start_page=0, end_page=None, thumbnail_size=(200, 234)):
+        super().__init__()
+        self.pdf_renderer = pdf_renderer
+        self.start_page = start_page
+        self.end_page = end_page
+        self.thumbnail_size = thumbnail_size
+        self.is_cancelled = False
+
+    def run(self):
+        """加载缩略图"""
+        if not self.pdf_renderer.fitz_document:
+            self.error_occurred.emit("文档未打开")
+            return
+
+        try:
+            total_pages = len(self.pdf_renderer.fitz_document)
+            end_page = self.end_page if self.end_page is not None else total_pages
+            end_page = min(end_page, total_pages)
+
+            for page_num in range(self.start_page, end_page):
+                if self.is_cancelled:
+                    break
+
+                try:
+                    thumbnail = self.pdf_renderer.render_thumbnail(
+                        page_num,
+                        self.thumbnail_size[0],
+                        self.thumbnail_size[1]
+                    )
+                    if thumbnail:
+                        self.thumbnail_ready.emit(page_num, thumbnail)
+
+                    self.thumbnail_progress.emit(page_num - self.start_page, end_page - self.start_page)
+                    self.msleep(10)  # 短暂延迟，避免阻塞UI
+
+                except Exception as e:
+                    logger.error(f"加载缩略图{page_num}失败: {e}")
+
+            self.loading_finished.emit()
+
+        except Exception as e:
+            self.error_occurred.emit(f"加载缩略图失败: {str(e)}")
 
     def cancel(self):
-        pass
-
-    def wait(self):
-        pass
-
-    def start(self):
-        pass
-
-class AsyncThumbnailLoader:
-    """简化版异步缩略图加载器占位"""
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def isRunning(self):
-        return False
-
-    def cancel(self):
-        pass
-
-    def wait(self):
-        pass
-
-    def start(self):
-        pass
+        """取消加载"""
+        self.is_cancelled = True
 
 
 class PDFRenderer(QObject):
@@ -93,6 +285,11 @@ class PDFRenderer(QObject):
         # 异步加载器
         self.thumbnail_loader = None
         self.page_renderer = None
+
+        # 渐进式渲染相关
+        self.page_render_timers = {}  # 页面渲染计时器
+        self.render_quality_map = {}  # 页面渲染质量映射
+        self.visible_pages = set()  # 当前可见页面集合
 
         # 新的缓存系统
         self.render_cache = RenderCache(max_memory_mb=200, max_items=50)
@@ -281,35 +478,120 @@ class PDFRenderer(QObject):
             logger.error(f"渲染页面失败: {e}")
             return False
 
-    def render_pages_async(self, page_nums, width=800, height=1000):
-        """异步渲染多个页面"""
+    def render_pages_async(self, page_nums, quality=1.0, priority=0):
+        """异步渲染多个页面
+
+        Args:
+            page_nums: 页码列表
+            quality: 渲染质量 (0-1)
+            priority: 优先级 (0=最高, 越大越低)
+        """
         if not self.fitz_document:
             return False
-        
+
         try:
-            # 取消之前的渲染任务
-            if self.page_renderer and self.page_renderer.isRunning():
-                self.page_renderer.cancel()
-                self.page_renderer.wait()
-            
-            # 创建异步渲染器
-            self.page_renderer = AsyncPageRenderer(
-                self.fitz_document, page_nums, self.zoom_factor, (width, height)
-            )
-            
-            # 连接信号
-            self.page_renderer.page_rendered.connect(
-                lambda page_num, pixmap: self._on_page_rendered(page_num, pixmap, (width, height))
-            )
-            
-            # 开始异步渲染
-            self.page_renderer.start()
-            
+            # 创建异步渲染器（如果尚未创建）
+            if self.page_renderer is None or not self.page_renderer.isRunning():
+                self.page_renderer = AsyncPageRenderer(self)
+                self.page_renderer.page_rendered.connect(self._on_async_page_rendered)
+                self.page_renderer.rendering_finished.connect(self._on_async_rendering_finished)
+                self.page_renderer.error_occurred.connect(self._on_async_error)
+                self.page_renderer.start()
+
+            # 添加渲染任务
+            for page_num in page_nums:
+                self.page_renderer.add_render_task(page_num, quality, priority)
+
             return True
-            
+
         except Exception as e:
             logger.error(f"启动异步渲染失败: {e}")
             return False
+
+    def render_visible_pages_async(self, visible_pages, buffer_pages=0):
+        """异步渲染可见区域和缓冲区的页面（渐进式渲染）
+
+        Args:
+            visible_pages: 可见页面集合
+            buffer_pages: 缓冲区页数（上下各buffer_pages页）
+        """
+        if not self.fitz_document:
+            return False
+
+        total_pages = len(self.fitz_document)
+
+        # 构建渲染任务列表
+        render_tasks = []
+
+        # 可见页面使用低质量优先渲染
+        for page_num in visible_pages:
+            if 0 <= page_num < total_pages:
+                render_tasks.append((page_num, self.page_renderer.preview_quality, 0))  # 最高优先级
+                # 启动高质量渲染计时器
+                self._schedule_high_quality_render(page_num)
+
+        # 缓冲区页面使用低质量渲染
+        for page_num in visible_pages:
+            for offset in range(1, buffer_pages + 1):
+                # 向前预加载
+                prev_page = page_num - offset
+                if prev_page >= 0:
+                    render_tasks.append((prev_page, self.page_renderer.preview_quality, offset))
+
+                # 向后预加载
+                next_page = page_num + offset
+                if next_page < total_pages:
+                    render_tasks.append((next_page, self.page_renderer.preview_quality, offset))
+
+        # 添加渲染任务
+        for page_num, quality, priority in render_tasks:
+            self.render_pages_async([page_num], quality, priority)
+
+        # 更新可见页面集合
+        self.visible_pages = visible_pages.copy()
+
+        return True
+
+    def _schedule_high_quality_render(self, page_num):
+        """延迟调度高质量渲染"""
+        # 取消之前的计时器
+        if page_num in self.page_render_timers:
+            self.page_render_timers[page_num].stop()
+            self.page_render_timers[page_num].deleteLater()
+
+        # 创建新的计时器
+        timer = QTimer()
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda: self._upgrade_to_high_quality(page_num))
+        timer.start(int(self.page_renderer.high_quality_threshold * 1000))
+        self.page_render_timers[page_num] = timer
+
+    def _upgrade_to_high_quality(self, page_num):
+        """升级为高质量渲染"""
+        if self.page_renderer and self.page_renderer.isRunning():
+            self.page_renderer.add_render_task(page_num, self.page_renderer.base_quality, 0)
+            logger.debug(f"升级高质量渲染: 页码={page_num}")
+
+    def _on_async_page_rendered(self, page_num, pixmap, quality):
+        """异步渲染完成回调"""
+        # 更新渲染质量映射
+        self.render_quality_map[page_num] = quality
+
+        # 清理计时器
+        if page_num in self.page_render_timers:
+            self.page_render_timers[page_num].stop()
+            del self.page_render_timers[page_num]
+
+        # 发送渲染完成信号
+        self.page_rendered.emit(pixmap)
+
+    def _on_async_rendering_finished(self):
+        """异步渲染完成"""
+        logger.debug("异步渲染队列完成")
+
+    def _on_async_error(self, error_msg):
+        """异步渲染错误"""
+        logger.error(error_msg)
 
     def _on_page_rendered(self, page_num, pixmap, render_size):
         """页面渲染完成回调"""
@@ -707,24 +989,30 @@ class PDFRenderer(QObject):
             logger.error(f"渲染缩略图失败: {e}")
             return None
 
-    def load_thumbnails_async(self, start_page=0, end_page=None):
-        """异步加载缩略图"""
+    def load_thumbnails_async(self, start_page=0, end_page=None, thumbnail_size=(200, 234)):
+        """异步加载缩略图
+
+        Args:
+            start_page: 起始页码
+            end_page: 结束页码（None表示到末尾）
+            thumbnail_size: 缩略图尺寸 (宽, 高)
+        """
         if not self.fitz_document:
             return False
-        
+
         try:
             total_pages = len(self.fitz_document)
             if end_page is None:
                 end_page = total_pages
-            
+
             # 取消之前的缩略图加载任务
             if self.thumbnail_loader and self.thumbnail_loader.isRunning():
                 self.thumbnail_loader.cancel()
                 self.thumbnail_loader.wait()
-            
+
             # 创建异步缩略图加载器
-            self.thumbnail_loader = AsyncThumbnailLoader(self.fitz_document)
-            
+            self.thumbnail_loader = AsyncThumbnailLoader(self, start_page, end_page, thumbnail_size)
+
             # 连接信号
             self.thumbnail_loader.thumbnail_ready.connect(self._on_thumbnail_ready)
             self.thumbnail_loader.thumbnail_progress.connect(
@@ -732,12 +1020,14 @@ class PDFRenderer(QObject):
                     int(current / total * 100), f"加载缩略图 {current}/{total}"
                 )
             )
-            
+            self.thumbnail_loader.loading_finished.connect(lambda: self.loading_finished.emit(True, "缩略图加载完成"))
+            self.thumbnail_loader.error_occurred.connect(lambda msg: logger.error(msg))
+
             # 开始异步加载
             self.thumbnail_loader.start()
-            
+
             return True
-            
+
         except Exception as e:
             logger.error(f"启动异步缩略图加载失败: {e}")
             return False
@@ -1133,7 +1423,7 @@ class PDFRenderer(QObject):
         return self._file_id
 
     def open_pdf(self, file_path, async_mode=False, password=None):
-        """打开PDF文件或图片文件"""
+        """打开PDF文件或图片文件（优化版 - 延迟加载）"""
         try:
             if not os.path.exists(file_path):
                 self.loading_finished.emit(False, f"文件不存在: {file_path}")
@@ -1143,14 +1433,15 @@ class PDFRenderer(QObject):
             is_image = self._is_image_file(file_path)
 
             # 关闭现有文档
-            if self.fitz_document:
-                self.fitz_document.close()
+            self._close_document()
 
             # 更新文件ID（用于缓存键）
             self._file_id = self._generate_file_id(file_path)
 
             # 如果是图片文件，创建临时PDF
             if is_image:
+                self.loading_progress.emit(10, "正在创建PDF文档...")
+
                 # 创建新的PDF文档，使用A4纸规格
                 new_doc = fitz.open()
                 try:
@@ -1171,6 +1462,7 @@ class PDFRenderer(QObject):
                     )
 
                     # 插入图片到指定区域（自动适应）
+                    self.loading_progress.emit(30, "正在插入图片...")
                     page.insert_image(image_rect, filename=file_path)
 
                     # 设置为新文档
@@ -1192,21 +1484,40 @@ class PDFRenderer(QObject):
                     self.loading_finished.emit(False, f"打开图片失败: {str(e)}")
                     return False, f"打开图片失败: {str(e)}"
             else:
-                # PDF文件，直接打开
+                # PDF文件，使用延迟加载策略
+                self.loading_progress.emit(10, "正在打开PDF文档...")
+
+                # 打开文档但不立即加载所有页面
                 self.fitz_document = fitz.open(file_path)
                 self.pdf_document = self.fitz_document  # 同步更新别名
                 self.current_file = file_path
                 self.current_page = 0
 
+                # 处理密码
+                if password and self.fitz_document:
+                    self.loading_progress.emit(20, "正在验证密码...")
+                    if not self.fitz_document.authenticate(password):
+                        self.loading_finished.emit(False, "密码错误")
+                        return False, "密码错误"
+
+                # 延迟加载：只读取元数据，不立即渲染页面
+                self.loading_progress.emit(50, "正在读取文档信息...")
+                total_pages = len(self.fitz_document)
+
+                # 预取第一页的元数据（不渲染）
+                if total_pages > 0:
+                    first_page = self.fitz_document[0]
+                    page_rect = first_page.rect
+                    logger.debug(f"文档总页数: {total_pages}, 第一页尺寸: {page_rect.width}x{page_rect.height}")
+
+                self.loading_progress.emit(90, "正在准备渲染...")
+
                 # 标记为PDF文件
                 self.is_from_image = False
                 self.original_image_path = None
 
-                # 处理密码
-                if password and self.fitz_document:
-                    if not self.fitz_document.authenticate(password):
-                        self.loading_finished.emit(False, "密码错误")
-                        return False, "密码错误"
+                # 清理之前的渲染状态
+                self._cleanup_render_state()
 
                 self.loading_finished.emit(True, f"成功打开文件: {os.path.basename(file_path)}")
                 return True, f"成功打开文件: {os.path.basename(file_path)}"
@@ -1215,6 +1526,44 @@ class PDFRenderer(QObject):
             logger.error(f"打开PDF文件时出错: {e}")
             self.loading_finished.emit(False, f"打开文件失败: {str(e)}")
             return False, f"打开文件失败: {str(e)}"
+
+    def _close_document(self):
+        """安全关闭当前文档"""
+        # 取消所有异步渲染任务
+        if self.page_renderer and self.page_renderer.isRunning():
+            self.page_renderer.cancel_all()
+            self.page_renderer.wait()
+
+        if self.thumbnail_loader and self.thumbnail_loader.isRunning():
+            self.thumbnail_loader.cancel()
+            self.thumbnail_loader.wait()
+
+        # 清理渲染状态
+        self._cleanup_render_state()
+
+        # 关闭文档
+        if self.fitz_document:
+            try:
+                self.fitz_document.close()
+            except Exception as e:
+                logger.error(f"关闭文档失败: {e}")
+            finally:
+                self.fitz_document = None
+                self.pdf_document = None
+
+    def _cleanup_render_state(self):
+        """清理渲染状态"""
+        # 停止所有渲染计时器
+        for timer in self.page_render_timers.values():
+            timer.stop()
+            timer.deleteLater()
+        self.page_render_timers.clear()
+
+        # 清理渲染质量映射
+        self.render_quality_map.clear()
+
+        # 清理可见页面集合
+        self.visible_pages.clear()
 
     def open_multiple_images(self, image_paths, async_mode=False, source_directory=None):
         """打开多个图片文件，创建多页PDF"""
@@ -1677,6 +2026,20 @@ class PDFRenderer(QObject):
     def force_cleanup(self):
         """强制清理资源"""
         try:
+            # 取消所有异步任务
+            if hasattr(self, 'page_renderer') and self.page_renderer:
+                if self.page_renderer.isRunning():
+                    self.page_renderer.cancel_all()
+                    self.page_renderer.wait()
+
+            if hasattr(self, 'thumbnail_loader') and self.thumbnail_loader:
+                if self.thumbnail_loader.isRunning():
+                    self.thumbnail_loader.cancel()
+                    self.thumbnail_loader.wait()
+
+            # 清理渲染状态
+            self._cleanup_render_state()
+
             # 清理缓存
             if hasattr(self, 'render_cache'):
                 self.render_cache.clear_all()
