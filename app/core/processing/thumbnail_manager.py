@@ -510,9 +510,16 @@ class ThumbnailManager(QListWidget):
             return
         
         # 确认删除
-        reply = QMessageBox.question(
-            self, "确认删除", f"确定要删除第{page_num}页吗？",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("确认删除")
+        msg_box.setText(f"确定要删除第{page_num}页吗？")
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        # 设置按钮文本为中文
+        msg_box.setButtonText(QMessageBox.Yes, "是")
+        msg_box.setButtonText(QMessageBox.No, "否")
+        reply = msg_box.exec_()
         
         if reply == QMessageBox.Yes:
             success, message = self.page_editor.delete_page(page_num)

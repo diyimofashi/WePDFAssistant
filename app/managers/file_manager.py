@@ -516,13 +516,16 @@ class FileManager:
                 QMessageBox.critical(self.parent, "保存失败", message)
         else:
             # 询问是否要加密保存
-            reply = QMessageBox.question(
-                self.parent,
-                "保存方式",
-                "是否要加密保存PDF文件？",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
+            msg_box = QMessageBox(self.parent)
+            msg_box.setWindowTitle("保存方式")
+            msg_box.setText("是否要加密保存PDF文件？")
+            msg_box.setIcon(QMessageBox.Question)
+            msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            msg_box.setDefaultButton(QMessageBox.No)
+            # 设置按钮文本为中文
+            msg_box.setButtonText(QMessageBox.Yes, "是")
+            msg_box.setButtonText(QMessageBox.No, "否")
+            reply = msg_box.exec_()
 
             if reply == QMessageBox.Yes:
                 self.save_with_encryption(self.parent.pdf_processor.current_file)
@@ -606,13 +609,16 @@ class FileManager:
             return False, "没有打开的文档"
 
         # 询问是否要加密保存
-        reply = QMessageBox.question(
-            self.parent,
-            "另存为",
-            "是否要加密保存PDF文件？",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        msg_box = QMessageBox(self.parent)
+        msg_box.setWindowTitle("另存为")
+        msg_box.setText("是否要加密保存PDF文件？")
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        # 设置按钮文本为中文
+        msg_box.setButtonText(QMessageBox.Yes, "是")
+        msg_box.setButtonText(QMessageBox.No, "否")
+        reply = msg_box.exec_()
 
         if reply == QMessageBox.Yes:
             return self.save_as_with_encryption()
@@ -826,13 +832,16 @@ class FileManager:
             self.parent.pdf_processor.page_editor and
             self.parent.pdf_processor.page_editor.has_unsaved_changes()):
 
-            reply = QMessageBox.question(
-                self.parent,
-                "确认放弃更改",
-                "确定要放弃所有未保存的更改吗？",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
+            msg_box = QMessageBox(self.parent)
+            msg_box.setWindowTitle("确认放弃更改")
+            msg_box.setText("确定要放弃所有未保存的更改吗？")
+            msg_box.setIcon(QMessageBox.Question)
+            msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            msg_box.setDefaultButton(QMessageBox.No)
+            # 设置按钮文本为中文
+            msg_box.setButtonText(QMessageBox.Yes, "是")
+            msg_box.setButtonText(QMessageBox.No, "否")
+            reply = msg_box.exec_()
 
             if reply == QMessageBox.Yes:
                 success, message = self.parent.pdf_processor.page_editor.discard_changes()

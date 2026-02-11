@@ -705,10 +705,16 @@ class OCRSettingsDialog(QDialog):
             
         current_plugin_name = self.tab_widget.tabText(current_tab_index)
         
-        reply = QMessageBox.question(self, "确认重置", 
-                                   f"确定要将 {current_plugin_name} 的OCR设置重置为默认值吗？",
-                                   QMessageBox.Yes | QMessageBox.No,
-                                   QMessageBox.No)
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("确认重置")
+        msg_box.setText(f"确定要将 {current_plugin_name} 的OCR设置重置为默认值吗？")
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        # 设置按钮文本为中文
+        msg_box.button(QMessageBox.Yes).setText("是")
+        msg_box.button(QMessageBox.No).setText("否")
+        reply = msg_box.exec_()
         
         if reply == QMessageBox.Yes:
             try:

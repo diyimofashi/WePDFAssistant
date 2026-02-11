@@ -362,13 +362,16 @@ class MergeDialog(QDialog):
             QMessageBox.warning(self, "提示", "请先选择要删除的文件")
             return
             
-        reply = QMessageBox.question(
-            self,
-            "确认删除",
-            f"确定要删除选中的 {len(selected_items)} 个文件吗?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("确认删除")
+        msg_box.setText(f"确定要删除选中的 {len(selected_items)} 个文件吗?")
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        # 设置按钮文本为中文
+        msg_box.button(QMessageBox.Yes).setText("是")
+        msg_box.button(QMessageBox.No).setText("否")
+        reply = msg_box.exec_()
         
         if reply == QMessageBox.Yes:
             # 从后往前删除,避免索引错乱
@@ -386,13 +389,16 @@ class MergeDialog(QDialog):
         if not self.file_list:
             return
             
-        reply = QMessageBox.question(
-            self,
-            "确认清除",
-            "确定要清除所有文件吗?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("确认清除")
+        msg_box.setText("确定要清除所有文件吗?")
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        # 设置按钮文本为中文
+        msg_box.button(QMessageBox.Yes).setText("是")
+        msg_box.button(QMessageBox.No).setText("否")
+        reply = msg_box.exec_()
         
         if reply == QMessageBox.Yes:
             self.file_list_widget.clear()

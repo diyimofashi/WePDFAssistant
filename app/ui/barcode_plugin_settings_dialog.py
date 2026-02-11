@@ -1719,10 +1719,16 @@ class BarcodeSettingsDialog(QDialog):
     
     def reset_settings(self):
         """重置设置"""
-        reply = QMessageBox.question(self, "确认重置", 
-                                   "确定要将所有设置重置为默认值吗？",
-                                   QMessageBox.Yes | QMessageBox.No,
-                                   QMessageBox.No)
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("确认重置")
+        msg_box.setText("确定要将所有设置重置为默认值吗？")
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        # 设置按钮文本为中文
+        msg_box.setButtonText(QMessageBox.Yes, "是")
+        msg_box.setButtonText(QMessageBox.No, "否")
+        reply = msg_box.exec_()
         
         if reply == QMessageBox.Yes:
             try:

@@ -271,13 +271,16 @@ class HistoryDialog(QDialog):
             QMessageBox.warning(self, "警告", "请先选择要删除的映射")
             return
 
-        reply = QMessageBox.question(
-            self,
-            "确认删除",
-            f"确定要删除选中的 {len(selected_items)} 个映射吗？",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("确认删除")
+        msg_box.setText(f"确定要删除选中的 {len(selected_items)} 个映射吗？")
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        # 设置按钮文本为中文
+        msg_box.setButtonText(QMessageBox.Yes, "是")
+        msg_box.setButtonText(QMessageBox.No, "否")
+        reply = msg_box.exec_()
 
         if reply == QMessageBox.Yes:
             for item in selected_items:
@@ -305,13 +308,16 @@ class HistoryDialog(QDialog):
         if not category_name:
             return
 
-        reply = QMessageBox.question(
-            self,
-            "确认清空",
-            f"确定要清空分类 '{category_name}' 的所有文件记录吗？",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("确认清空")
+        msg_box.setText(f"确定要清空分类 '{category_name}' 的所有文件记录吗？")
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        # 设置按钮文本为中文
+        msg_box.setButtonText(QMessageBox.Yes, "是")
+        msg_box.setButtonText(QMessageBox.No, "否")
+        reply = msg_box.exec_()
 
         if reply == QMessageBox.Yes:
             self.history_manager.clear_category(category_name)

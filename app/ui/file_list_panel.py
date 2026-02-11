@@ -1112,13 +1112,16 @@ class FileListPanel(QDockWidget):
             if len(files) > 5:
                 file_names += f"\n... 还有 {len(files) - 5} 个文件"
 
-            reply = QMessageBox.question(
-                self,
-                "确认移动",
-                f"确定要移动 {len(files)} 个文件到 '{target_path}' 吗？\n\n{file_names}",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("确认移动")
+            msg_box.setText(f"确定要移动 {len(files)} 个文件到 '{target_path}' 吗？\n\n{file_names}")
+            msg_box.setIcon(QMessageBox.Question)
+            msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            msg_box.setDefaultButton(QMessageBox.No)
+            # 设置按钮文本为中文
+            msg_box.setButtonText(QMessageBox.Yes, "是")
+            msg_box.setButtonText(QMessageBox.No, "否")
+            reply = msg_box.exec_()
 
             if reply == QMessageBox.Yes:
                 try:
@@ -1268,13 +1271,16 @@ class FileListPanel(QDockWidget):
         else:
             message = f"确定要删除 {len(files)} 个文件吗？\n\n{file_names}\n\n此操作不可恢复！"
 
-        reply = QMessageBox.question(
-            self,
-            "确认删除",
-            message,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("确认删除")
+        msg_box.setText(message)
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        # 设置按钮文本为中文
+        msg_box.setButtonText(QMessageBox.Yes, "是")
+        msg_box.setButtonText(QMessageBox.No, "否")
+        reply = msg_box.exec_()
 
         if reply == QMessageBox.Yes:
             try:

@@ -7,6 +7,7 @@ import traceback
 from PyQt5.QtWidgets import QMenu, QAction
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QFileDialog, QMessageBox
+from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtCore import QTimer
 from app.utils.logger import get_logger
 from app.core.editing.page_editor import PageEditor
@@ -228,6 +229,11 @@ class ContextMenuBuilder:
         export_action.triggered.connect(lambda: self._export_page_as_image(page_num))
         actions.append(export_action)
 
+        # 导出当前页为PDF
+        export_pdf_action = QAction("导出为PDF", self.main_window)
+        export_pdf_action.triggered.connect(lambda: self._export_page_as_pdf(page_num))
+        actions.append(export_pdf_action)
+
         # 提取页面文本
         extract_action = QAction("提取文本", self.main_window)
         extract_action.triggered.connect(lambda: self._extract_page_text(page_num))
@@ -303,6 +309,11 @@ class ContextMenuBuilder:
         export_action = QAction("导出为图片", self.main_window)
         export_action.triggered.connect(lambda: self._export_page_as_image(page_num))
         actions.append(export_action)
+
+        # 导出为PDF
+        export_pdf_action = QAction("导出为PDF", self.main_window)
+        export_pdf_action.triggered.connect(lambda: self._export_page_as_pdf(page_num))
+        actions.append(export_pdf_action)
 
         # 提取文本
         extract_action = QAction("提取文本", self.main_window)
@@ -490,11 +501,28 @@ class ContextMenuBuilder:
                     self.main_window,
                     "保存图片",
                     default_path,
-                    "PNG图片 (*.png);;JPEG图片 (*.jpg);;所有文件 (*.*)"
+                    "PNG图片 (*.png);;JPEG图片 (*.jpg);;所有文件 (*.*)",
+                    options=QFileDialog.Option.DontConfirmOverwrite
                 )
 
                 if file_path:
                     logger.debug(f"导出图片：用户选择路径={file_path}")
+                    # 检查文件是否已存在，如果存在则询问是否覆盖
+                    if os.path.exists(file_path):
+                        msg_box = QMessageBox(self.main_window)
+                        msg_box.setWindowTitle("确认覆盖")
+                        msg_box.setText(f"文件已存在：\n{file_path}\n\n是否覆盖？")
+                        msg_box.setIcon(QMessageBox.Question)
+                        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                        msg_box.setDefaultButton(QMessageBox.No)
+                        # 设置按钮文本为中文
+                        msg_box.button(QMessageBox.Yes).setText("是")
+                        msg_box.button(QMessageBox.No).setText("否")
+                        reply = msg_box.exec_()
+                        if reply != QMessageBox.Yes:
+                            logger.debug("用户取消覆盖")
+                            return
+                    
                     page = self.main_window.pdf_processor.fitz_document.load_page(page_num)
                     pix = page.get_pixmap()
                     if file_path.lower().endswith('.jpg') or file_path.lower().endswith('.jpeg'):
@@ -508,13 +536,16 @@ class ContextMenuBuilder:
                     logger.debug(f"导出页面{page_num}为图片成功: {file_path}")
                     
                     # 询问是否打开保存目录
-                    reply = QMessageBox.question(
-                        self.main_window,
-                        "打开目录",
-                        f"图片已保存到：\n{file_path}\n\n是否打开保存目录？",
-                        QMessageBox.Yes | QMessageBox.No,
-                        QMessageBox.No
-                    )
+                    msg_box = QMessageBox(self.main_window)
+                    msg_box.setWindowTitle("打开目录")
+                    msg_box.setText(f"图片已保存到：\n{file_path}\n\n是否打开保存目录？")
+                    msg_box.setIcon(QMessageBox.Question)
+                    msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                    msg_box.setDefaultButton(QMessageBox.No)
+                    # 设置按钮文本为中文
+                    msg_box.button(QMessageBox.Yes).setText("是")
+                    msg_box.button(QMessageBox.No).setText("否")
+                    reply = msg_box.exec_()
                     
                     if reply == QMessageBox.Yes:
                         try:
@@ -539,6 +570,121 @@ class ContextMenuBuilder:
                 logger.error(f"导出页面{page_num}为图片失败: {e}")
                 logger.error(traceback.format_exc())
                 self.main_window.show_message(f"❌ 导出图片失败: {str(e)}")
+        else:
+            self.main_window.show_message("❌ 未打开PDF文档")
+    
+    def _export_page_as_pdf(self, page_num):
+        """导出页面为PDF"""
+        if hasattr(self.main_window, 'pdf_processor') and self.main_window.pdf_processor.fitz_document:
+            try:
+                # 获取当前文件名，如果不存在则使用默认名称
+                current_file = getattr(self.main_window.pdf_processor, 'current_file', None)
+                if current_file:
+                    # 提取文件名（不带扩展名）
+                    file_base = os.path.splitext(os.path.basename(current_file))[0]
+                    default_name = f"{file_base}_page_{page_num + 1}.pdf"
+                else:
+                    default_name = f"page_{page_num + 1}.pdf"
+                
+                # 获取保存目录，优先使用last_save_dir，其次使用last_open_dir，最后使用用户家目录
+                last_save_dir = AppSettings.get_last_save_dir()
+                last_open_dir = AppSettings.get_last_open_dir()
+                
+                logger.debug(f"导出PDF：last_save_dir={last_save_dir}, last_open_dir={last_open_dir}, default_name={default_name}")
+                
+                # 确定要使用的目录
+                target_dir = None
+                if last_save_dir and os.path.isdir(last_save_dir):
+                    target_dir = last_save_dir
+                    logger.debug(f"导出PDF：使用last_save_dir目录: {target_dir}")
+                elif last_open_dir and os.path.isdir(last_open_dir):
+                    target_dir = last_open_dir
+                    logger.debug(f"导出PDF：last_save_dir不可用，使用last_open_dir目录: {target_dir}")
+                else:
+                    target_dir = os.path.expanduser("~")
+                    logger.debug(f"导出PDF：使用用户家目录: {target_dir}")
+                
+                # 规范化路径（确保使用正确的路径分隔符）
+                target_dir = os.path.normpath(target_dir)
+                
+                # 提供完整路径作为默认路径
+                default_path = os.path.join(target_dir, default_name)
+                default_path = os.path.normpath(default_path)
+                logger.debug(f"导出PDF：默认保存路径={default_path}")
+                
+                file_path, _ = QFileDialog.getSaveFileName(
+                    self.main_window,
+                    "保存PDF",
+                    default_path,
+                    "PDF文件 (*.pdf);;所有文件 (*.*)",
+                    options=QFileDialog.Option.DontConfirmOverwrite
+                )
+
+                if file_path:
+                    logger.debug(f"导出PDF：用户选择路径={file_path}")
+                    # 检查文件是否已存在，如果存在则询问是否覆盖
+                    if os.path.exists(file_path):
+                        msg_box = QMessageBox(self.main_window)
+                        msg_box.setWindowTitle("确认覆盖")
+                        msg_box.setText(f"文件已存在：\n{file_path}\n\n是否覆盖？")
+                        msg_box.setIcon(QMessageBox.Question)
+                        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                        msg_box.setDefaultButton(QMessageBox.No)
+                        # 设置按钮文本为中文
+                        msg_box.button(QMessageBox.Yes).setText("是")
+                        msg_box.button(QMessageBox.No).setText("否")
+                        reply = msg_box.exec_()
+                        if reply != QMessageBox.Yes:
+                            logger.debug("用户取消覆盖")
+                            return
+                    
+                    # 创建新文档并插入指定页面
+                    doc = self.main_window.pdf_processor.fitz_document
+                    new_doc = fitz.open()
+                    new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
+                    new_doc.save(file_path)
+                    new_doc.close()
+
+                    # 保存成功后才更新last_save_dir
+                    AppSettings.set_last_save_dir(file_path)
+                    self.main_window.show_message(f"✅ 第{page_num + 1}页已导出为PDF")
+                    logger.debug(f"导出页面{page_num}为PDF成功: {file_path}")
+                    
+                    # 询问是否打开保存目录
+                    msg_box = QMessageBox(self.main_window)
+                    msg_box.setWindowTitle("打开目录")
+                    msg_box.setText(f"PDF已保存到：\n{file_path}\n\n是否打开保存目录？")
+                    msg_box.setIcon(QMessageBox.Question)
+                    msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                    msg_box.setDefaultButton(QMessageBox.No)
+                    # 设置按钮文本为中文
+                    msg_box.button(QMessageBox.Yes).setText("是")
+                    msg_box.button(QMessageBox.No).setText("否")
+                    reply = msg_box.exec_()
+                    
+                    if reply == QMessageBox.Yes:
+                        try:
+                            # 打开文件所在目录
+                            import subprocess
+                            directory = os.path.dirname(file_path)
+                            if os.path.exists(directory):
+                                if sys.platform == "win32":
+                                    os.startfile(directory)
+                                elif sys.platform == "darwin":
+                                    subprocess.Popen(["open", directory])
+                                else:
+                                    subprocess.Popen(["xdg-open", directory])
+                                logger.debug(f"已打开目录：{directory}")
+                            else:
+                                logger.warning(f"目录不存在：{directory}")
+                        except Exception as e:
+                            logger.error(f"打开目录失败：{e}")
+                else:
+                    logger.debug("导出PDF：用户取消了保存")
+            except Exception as e:
+                logger.error(f"导出页面{page_num}为PDF失败: {e}")
+                logger.error(traceback.format_exc())
+                self.main_window.show_message(f"❌ 导出PDF失败: {str(e)}")
         else:
             self.main_window.show_message("❌ 未打开PDF文档")
     
@@ -825,12 +971,16 @@ class ContextMenuBuilder:
                 self.main_window.show_message(f"❌ 页码无效: {page_num}")
                 return
 
-        reply = QMessageBox.question(
-            self.main_window,
-            "确认删除",
-            f"确定要删除第{page_num + 1}页吗？",
-            QMessageBox.Yes | QMessageBox.No
-        )
+        msg_box = QMessageBox(self.main_window)
+        msg_box.setWindowTitle("确认删除")
+        msg_box.setText(f"确定要删除第{page_num + 1}页吗？")
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        # 设置按钮文本为中文
+        msg_box.button(QMessageBox.Yes).setText("是")
+        msg_box.button(QMessageBox.No).setText("否")
+        reply = msg_box.exec_()
 
         if reply == QMessageBox.Yes:
             page_editor = self._get_page_editor()

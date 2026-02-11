@@ -352,14 +352,17 @@ class ShortcutSettingsDialog(QDialog):
             # 检查冲突
             conflict = self.check_shortcut_conflict(new_shortcut, exclude_action_id=action_id)
             if conflict:
-                reply = QMessageBox.question(
-                    self,
-                    "快捷键冲突",
-                    f"快捷键「{new_shortcut}」已被「{conflict['category']}/{conflict['name']}」使用。\n"
-                    f"是否继续？继续后将覆盖该功能的快捷键。",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No
-                )
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle("快捷键冲突")
+                msg_box.setText(f"快捷键「{new_shortcut}」已被「{conflict['category']}/{conflict['name']}」使用。\n"
+                                f"是否继续？继续后将覆盖该功能的快捷键。")
+                msg_box.setIcon(QMessageBox.Question)
+                msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                msg_box.setDefaultButton(QMessageBox.No)
+                # 设置按钮文本为中文
+                msg_box.button(QMessageBox.Yes).setText("是")
+                msg_box.button(QMessageBox.No).setText("否")
+                reply = msg_box.exec_()
 
                 if reply == QMessageBox.No:
                     return
@@ -381,13 +384,16 @@ class ShortcutSettingsDialog(QDialog):
 
     def _on_reset_clicked(self):
         """恢复默认按钮点击事件"""
-        reply = QMessageBox.question(
-            self,
-            "确认重置",
-            "确定要将所有快捷键恢复为默认值吗？",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("确认重置")
+        msg_box.setText("确定要将所有快捷键恢复为默认值吗？")
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        # 设置按钮文本为中文
+        msg_box.button(QMessageBox.Yes).setText("是")
+        msg_box.button(QMessageBox.No).setText("否")
+        reply = msg_box.exec_()
 
         if reply == QMessageBox.Yes:
             # 重置所有快捷键

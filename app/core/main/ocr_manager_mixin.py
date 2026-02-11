@@ -204,13 +204,16 @@ class OCRManagerMixin:
                 return
             
             # 确认是否要处理所有页面
-            reply = QMessageBox.question(
-                self, 
-                "确认", 
-                f"将对所有 {total_pages} 页执行OCR识别，这可能需要较长时间。\n\n是否继续？",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("确认")
+            msg_box.setText(f"将对所有 {total_pages} 页执行OCR识别，这可能需要较长时间。\n\n是否继续？")
+            msg_box.setIcon(QMessageBox.Question)
+            msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            msg_box.setDefaultButton(QMessageBox.No)
+            # 设置按钮文本为中文
+            msg_box.setButtonText(QMessageBox.Yes, "是")
+            msg_box.setButtonText(QMessageBox.No, "否")
+            reply = msg_box.exec_()
             
             if reply == QMessageBox.No:
                 return
