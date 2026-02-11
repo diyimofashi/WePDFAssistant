@@ -326,5 +326,5 @@ class ViewController:
     
     def update_thumbnail_selection(self, current_page):
         """更新缩略图选中状态"""
-        if self.parent.thumbnail_manager:
+        if hasattr(self.parent, 'thumbnail_manager') and self.parent.thumbnail_manager:
             self.parent.thumbnail_manager.update_thumbnail_selection(current_page)

@@ -813,8 +813,8 @@ class PDFEditorWidget(QWidget):
     # === 设置菜单方法 ===
     def show_ui_settings(self):
         """界面设置"""
-        logger.warning("界面设置功能暂未实现")
-        QMessageBox.information(self, "提示", "界面设置功能暂未实现")
+        from app.ui.ui_settings_dialog import show_ui_settings_dialog
+        show_ui_settings_dialog(self)
 
     def show_shortcut_settings(self):
         """快捷键设置"""
