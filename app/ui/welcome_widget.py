@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QGridLayout, QScrollArea,
     QSplitter, QSizePolicy, QTreeWidget, QTreeWidgetItem,
-    QListWidget, QListWidgetItem, QToolButton
+    QListWidget, QListWidgetItem, QToolButton, QMenu, QMessageBox
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QThread, QSettings
 from PyQt5.QtGui import QFont, QPixmap, QImage
@@ -289,6 +289,8 @@ class WelcomeWidget(QWidget):
         self.file_list.setWordWrap(True)
         self.file_list.setTextElideMode(Qt.ElideRight)
         self.file_list.itemDoubleClicked.connect(self._on_file_item_double_clicked)
+        self.file_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.file_list.customContextMenuRequested.connect(self._show_file_context_menu)
         self.file_list.setStyleSheet("""
             QListWidget {
                 border: 1px solid #ccc;
@@ -817,6 +819,64 @@ class WelcomeWidget(QWidget):
         if self.thumbnail_thread and self.thumbnail_thread.isRunning():
             self.thumbnail_thread.stop()
             logger.debug("缩略图生成线程已停止")
+
+    def _show_file_context_menu(self, position):
+        """显示文件项的右键菜单"""
+        item = self.file_list.itemAt(position)
+        if not item:
+            return
+
+        record = item.data(Qt.UserRole)
+        if not record:
+            return
+
+        # 检查是否是"打开文档"项，不显示删除菜单
+        if record.get('type') == 'open_document':
+            return
+
+        file_path = record.get('path', '')
+        filename = record.get('filename', '')
+
+        # 创建右键菜单
+        menu = QMenu(self)
+
+        # 添加"打开"选项
+        open_action = menu.addAction("📂 打开文件")
+        open_action.triggered.connect(lambda: self.file_open_requested.emit(file_path))
+
+        # 添加分隔线
+        menu.addSeparator()
+
+        # 添加"从历史记录中删除"选项
+        delete_action = menu.addAction("🗑️ 从历史记录中删除")
+        delete_action.triggered.connect(lambda: self._delete_file_from_history(file_path, filename))
+
+        # 显示菜单
+        menu.exec_(self.file_list.mapToGlobal(position))
+
+    def _delete_file_from_history(self, file_path, filename):
+        """从历史记录中删除文件"""
+        # 确认对话框
+        reply = QMessageBox.question(
+            self,
+            "确认删除",
+            f"确定要从历史记录中删除此文件吗？\n\n文件名: {filename}\n路径: {file_path}\n\n注意：此操作仅从历史记录中移除，不会删除实际文件。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                self.history_manager.remove_file_from_recent(file_path)
+                logger.info(f"已从历史记录中删除文件: {file_path}")
+
+                # 刷新当前视图
+                self.refresh_history()
+
+                QMessageBox.information(self, "删除成功", "文件已从历史记录中删除")
+            except Exception as e:
+                logger.error(f"删除历史记录失败: {e}")
+                QMessageBox.warning(self, "删除失败", f"删除历史记录失败: {e}")
 
     def closeEvent(self, event):
         """关闭事件处理"""

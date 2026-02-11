@@ -143,6 +143,13 @@ class PDFEditorWidget(QWidget):
         Args:
             file_path: 要打开的文件路径
         """
+        # 如果当前显示的是欢迎界面，优先在当前标签页打开文件
+        if self.content_stack.currentWidget() == self.welcome_widget:
+            self.open_pdf(file_path)
+            logger.debug(f"在当前标签页打开历史文件: {file_path}")
+            return
+
+        # 如果当前已显示PDF，则请求主窗口在新标签页打开（避免覆盖当前文件）
         # 查找主窗口
         parent = self.parent()
         while parent and not hasattr(parent, 'open_file_in_new_tab'):
