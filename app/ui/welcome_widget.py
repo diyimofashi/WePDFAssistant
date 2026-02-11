@@ -220,10 +220,41 @@ class WelcomeWidget(QWidget):
         layout.setContentsMargins(0, 0, 5, 0)
         layout.setSpacing(5)
 
-        # 标题
+        # 标题（带刷新按钮）
+        title_widget = QWidget()
+        title_layout = QHBoxLayout(title_widget)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(5)
+
         title_label = QLabel("📁 目录分类")
         title_label.setStyleSheet("font-weight: bold; font-size: 12px; padding: 5px;")
-        layout.addWidget(title_label)
+        title_layout.addWidget(title_label)
+
+        # 刷新按钮
+        refresh_button = QPushButton("🔄")
+        refresh_button.setFixedSize(24, 24)
+        refresh_button.setToolTip("刷新目录列表")
+        refresh_button.setCursor(Qt.PointingHandCursor)
+        refresh_button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+                font-size: 14px;
+                padding: 0;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+                border-radius: 12px;
+            }
+            QPushButton:pressed {
+                background-color: #d0d0d0;
+            }
+        """)
+        refresh_button.clicked.connect(self._load_directory_tree)
+        title_layout.addWidget(refresh_button)
+
+        title_layout.addStretch()
+        layout.addWidget(title_widget)
 
         # 创建树形控件
         self.directory_tree = QTreeWidget()
@@ -233,6 +264,8 @@ class WelcomeWidget(QWidget):
         )
         self.directory_tree.setHeaderHidden(True)
         self.directory_tree.itemClicked.connect(self._on_tree_item_clicked)
+        self.directory_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.directory_tree.customContextMenuRequested.connect(self._show_directory_context_menu)
         self.directory_tree.setStyleSheet("""
             QTreeWidget {
                 border: 1px solid #ccc;
@@ -617,7 +650,6 @@ class WelcomeWidget(QWidget):
 
         item_widget = QWidget()
         item_widget.setFixedSize(206, 306)
-        item_widget.setToolTip(file_path)  # 设置 tooltip 显示完整路径
         item_widget.setStyleSheet("""
             QWidget {
                 border: 1px solid #e0e0e0;
@@ -650,7 +682,6 @@ class WelcomeWidget(QWidget):
         """)
         type_label.setFixedSize(50, 24)
         type_label.setAlignment(Qt.AlignCenter)
-        type_label.setToolTip(file_path)  # 设置 tooltip 显示完整路径
 
         thumbnail_label = QLabel()
         thumbnail_label.setFixedSize(180, 240)  # 与 iconSize 一致
@@ -677,19 +708,44 @@ class WelcomeWidget(QWidget):
         type_label.move(5, 5)
         type_label.setAttribute(Qt.WA_TransparentForMouseEvents, False)
 
+        # 创建删除按钮（右上角）
+        delete_button = QPushButton("×")
+        delete_button.setFixedSize(24, 24)
+        delete_button.setCursor(Qt.PointingHandCursor)
+        delete_button.setToolTip("从历史记录中删除")
+        delete_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0.9);
+                border: 1px solid #dc3545;
+                border-radius: 12px;
+                color: #dc3545;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #dc3545;
+                color: white;
+            }
+            QPushButton:pressed {
+                background-color: #c82333;
+            }
+        """)
+        delete_button.clicked.connect(lambda: self._delete_file_from_history(file_path, filename))
+        delete_button.setParent(thumbnail_label)
+        delete_button.move(151, 5)  # 右上角位置
+
         item_layout.addWidget(thumbnail_label)
 
         name_label = QLabel(filename[:20] + "..." if len(filename) > 20 else filename)
         name_label.setWordWrap(True)
         name_label.setAlignment(Qt.AlignCenter)
         name_label.setMaximumWidth(180)  # 与缩略图宽度一致
-        name_label.setToolTip(file_path)  # 设置 tooltip 显示完整路径
-        name_label.setStyleSheet("font-size: 12px;")
+        name_label.setStyleSheet("font-size: 12px; border: none; background-color: transparent;")
         item_layout.addWidget(name_label)
 
         info_label = QLabel(f"{time_str}")
         info_label.setAlignment(Qt.AlignCenter)
-        info_label.setStyleSheet("font-size: 12px; color: #666;")
+        info_label.setStyleSheet("font-size: 12px; color: #666; border: none; background-color: transparent;")
         item_layout.addWidget(info_label)
 
         self.file_list.addItem(item)
@@ -867,16 +923,111 @@ class WelcomeWidget(QWidget):
 
         if reply == QMessageBox.Yes:
             try:
+                # 临时阻塞信号，避免刷新时触发点击事件
+                self.directory_tree.blockSignals(True)
+
+                # 获取文件所属目录信息
+                file_dir = os.path.dirname(file_path)
+
                 self.history_manager.remove_file_from_recent(file_path)
                 logger.info(f"已从历史记录中删除文件: {file_path}")
 
-                # 刷新当前视图
-                self.refresh_history()
+                # 检查目录是否为空，如果为空则删除目录
+                from app.managers.history_db import get_database
+                db = get_database()
+                categories = db.get_all_categories()
+
+                # 查找对应的目录
+                category = None
+                for cat in categories:
+                    if os.path.normpath(cat['path']) == os.path.normpath(file_dir):
+                        category = cat
+                        break
+
+                category_deleted = False
+                if category:
+                    # 检查目录下是否还有其他文件
+                    files = db.get_files_by_category(category['id'])
+                    if len(files) == 0:
+                        # 目录为空，删除目录
+                        db.delete_category(category['id'])
+                        category_deleted = True
+                        logger.info(f"目录为空，已删除目录: {category['name']} ({category['path']})")
+
+                # 如果当前正在查看的分类被删除了，切换到最近项目
+                if category_deleted and isinstance(self.current_category, str) and not self.current_category.startswith(('recent', 'month_', 'all_categories')):
+                    self._load_directory_tree()
+                    self._load_recent_files_to_list()
+                else:
+                    self.refresh_history()
+
+                # 恢复信号
+                self.directory_tree.blockSignals(False)
 
                 QMessageBox.information(self, "删除成功", "文件已从历史记录中删除")
             except Exception as e:
+                self.directory_tree.blockSignals(False)
                 logger.error(f"删除历史记录失败: {e}")
                 QMessageBox.warning(self, "删除失败", f"删除历史记录失败: {e}")
+
+    def _show_directory_context_menu(self, position):
+        """显示目录项的右键菜单"""
+        item = self.directory_tree.itemAt(position)
+        if not item:
+            return
+
+        data = item.data(0, Qt.UserRole)
+        if not data:
+            return
+
+        type_ = data.get('type')
+
+        # 只对分类显示删除菜单
+        if type_ != 'category':
+            return
+
+        category_name = data.get('name')
+        category_path = data.get('path')
+
+        # 创建右键菜单
+        menu = QMenu(self)
+        delete_action = menu.addAction("🗑️ 删除目录")
+        delete_action.triggered.connect(lambda: self._delete_category(category_name, category_path))
+
+        # 显示菜单
+        menu.exec_(self.directory_tree.mapToGlobal(position))
+
+    def _delete_category(self, category_name, category_path):
+        """删除目录及其所有文件记录"""
+        # 确认对话框
+        reply = QMessageBox.question(
+            self,
+            "确认删除目录",
+            f"确定要删除目录及其所有文件记录吗？\n\n目录名: {category_name}\n路径: {category_path}\n\n注意：此操作仅从历史记录中移除，不会删除实际文件。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                # 临时阻塞信号，避免刷新时触发点击事件
+                self.directory_tree.blockSignals(True)
+
+                self.history_manager.clear_category(f"{category_name}|||{category_path}")
+                logger.info(f"已删除目录及其所有文件: {category_name} ({category_path})")
+
+                # 刷新目录树，并切换到"最近项目"视图
+                self._load_directory_tree()
+                self._load_recent_files_to_list()
+
+                # 恢复信号
+                self.directory_tree.blockSignals(False)
+
+                QMessageBox.information(self, "删除成功", "目录及其所有文件已从历史记录中删除")
+            except Exception as e:
+                self.directory_tree.blockSignals(False)
+                logger.error(f"删除目录失败: {e}")
+                QMessageBox.warning(self, "删除失败", f"删除目录失败: {e}")
 
     def closeEvent(self, event):
         """关闭事件处理"""

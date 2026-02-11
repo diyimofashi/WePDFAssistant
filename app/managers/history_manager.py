@@ -181,7 +181,7 @@ class HistoryManager:
         logger.info("已清除所有最近文件记录")
 
     def clear_category(self, category_key_or_name):
-        """清空指定分类的文件记录（支持分类键或分类名）"""
+        """清空并删除指定分类（支持分类键或分类名）"""
         db = get_database()
 
         # 如果传入的是分类键（格式: "name|||path"）
@@ -191,7 +191,8 @@ class HistoryManager:
             category = db.get_category_by_path(category_path)
             if category:
                 db.clear_category_files(category['id'])
-                logger.info(f"已清除分类 '{category['name']}' 的文件记录")
+                db.delete_category(category['id'])
+                logger.info(f"已删除分类 '{category['name']}'")
                 return
         else:
             # 如果传入的是分类名，查找对应的分类
@@ -199,7 +200,8 @@ class HistoryManager:
             for category in categories:
                 if category['name'] == category_key_or_name:
                     db.clear_category_files(category['id'])
-                    logger.info(f"已清除分类 '{category['name']}' 的文件记录")
+                    db.delete_category(category['id'])
+                    logger.info(f"已删除分类 '{category['name']}'")
                     return
 
         logger.warning(f"未找到分类 '{category_key_or_name}'")
