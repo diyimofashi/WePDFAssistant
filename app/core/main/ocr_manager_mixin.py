@@ -823,7 +823,7 @@ class OCRManagerMixin:
         执行截图OCR识别
 
         Args:
-            selection_rect: 选区矩形（相对于页面的坐标）
+            selection_rect: 选区矩形（屏幕坐标）
             page_index: 页面索引
         """
         try:
@@ -859,8 +859,8 @@ class OCRManagerMixin:
                     QMessageBox.critical(self, "OCR初始化失败", f"插件初始化失败: {init_result.message}")
                     return
 
-            # 获取选区图像数据
-            image_data = self._get_selection_image_data(page_index, selection_rect)
+            # 获取选区图像数据（使用屏幕截图）
+            image_data = self._get_screenshot_image_data(selection_rect)
             if not image_data:
                 QMessageBox.critical(self, "错误", "无法获取选区图像数据")
                 return
@@ -931,47 +931,41 @@ class OCRManagerMixin:
             logger.error(traceback.format_exc())
             QMessageBox.critical(self, "错误", f"执行截图OCR时发生异常: {str(e)}")
 
-    def _get_selection_image_data(self, page_index, selection_rect):
+    def _get_screenshot_image_data(self, selection_rect):
         """
-        获取选区图像数据
+        通过屏幕截图获取选区图像数据
 
         Args:
-            page_index: 页面索引
-            selection_rect: 选区矩形（相对于页面的坐标）
+            selection_rect: 选区矩形（屏幕坐标）
 
         Returns:
             bytes: 图像数据（PNG格式）
         """
         try:
-            if not self.pdf_processor.fitz_document:
-                logger.error("PDF文档未打开")
-                return None
+            from PyQt5.QtGui import QPixmap
+            from PyQt5.QtCore import QBuffer, QIODevice
 
-            # 检查页面索引
-            if page_index < 0 or page_index >= len(self.pdf_processor.fitz_document):
-                logger.error(f"页面索引超出范围: {page_index}")
-                return None
+            # 获取整个屏幕
+            screen = QApplication.primaryScreen()
 
-            # 获取页面
-            page = self.pdf_processor.fitz_document[page_index]
+            # 截取选区
+            pixmap = screen.grabWindow(0, selection_rect.x(), selection_rect.y(),
+                                      selection_rect.width(), selection_rect.height())
 
-            # 计算PDF文档中的实际坐标（需要除以缩放因子）
-            zoom_factor = self.pdf_processor.zoom_factor
-            pdf_rect = fitz.Rect(
-                selection_rect.x() / zoom_factor,
-                selection_rect.y() / zoom_factor,
-                selection_rect.right() / zoom_factor,
-                selection_rect.bottom() / zoom_factor
-            )
+            # 转换为PNG格式的字节数据
+            buffer = QBuffer()
+            buffer.open(QIODevice.ReadWrite)
+            pixmap.save(buffer, "PNG")
+            img_data = bytes(buffer.data())
 
-            logger.debug(f"[_get_selection_image_data] 页面: {page_index}, 选区: {selection_rect}, PDF坐标: {pdf_rect}, 缩放: {zoom_factor}")
+            logger.debug(f"[_get_screenshot_image_data] 成功获取屏幕截图，大小: {len(img_data)} 字节，选区: {selection_rect}")
 
-            # 使用与显示相同的缩放比例渲染选区
-            mat = fitz.Matrix(zoom_factor, zoom_factor)
-            pix = page.get_pixmap(clip=pdf_rect, matrix=mat, alpha=False)
+            return img_data
 
-            # 转换为PNG格式
-            img_data = pix.tobytes("png")
+        except Exception as e:
+            logger.error(f"获取屏幕截图时出错: {e}")
+            logger.error(traceback.format_exc())
+            return None
 
             logger.debug(f"[_get_selection_image_data] 成功获取图像数据，大小: {len(img_data)} 字节")
 

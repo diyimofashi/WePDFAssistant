@@ -24,12 +24,13 @@ from app.utils.logger import get_logger
 from app.config.settings import AppSettings
 from app.managers.ocr_plugin_manager import ocr_plugin_manager
 from app.config.ocr_plugin_config import ocr_config_manager
+from app.core.main.ocr_manager_mixin import OCRManagerMixin
 
 
 logger = get_logger('pdf_editor_widget')
 
 
-class PDFEditorWidget(QWidget):
+class PDFEditorWidget(QWidget, OCRManagerMixin):
     """独立的PDF编辑器组件，包含完整的UI"""
 
     # 信号定义
@@ -57,6 +58,13 @@ class PDFEditorWidget(QWidget):
         # 设置OCR管理器引用（使用全局实例）
         self.ocr_plugin_manager = ocr_plugin_manager
         self.ocr_config_manager = ocr_config_manager
+
+        # 加载所有OCR插件（如果尚未加载）
+        if not self.ocr_plugin_manager.plugins:
+            logger.info("加载OCR插件...")
+            load_results = self.ocr_plugin_manager.load_all_plugins()
+            loaded_count = sum(1 for result in load_results.values() if result)
+            logger.info(f"OCR插件加载完成: {loaded_count}/{len(load_results)} 个插件")
 
         # 初始化UI
         self.init_ui()
@@ -112,6 +120,8 @@ class PDFEditorWidget(QWidget):
         self.scroll_area = VirtualScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setMouseTracking(True)
+        # 为OCR功能提供virtual_scroll_area属性
+        self.virtual_scroll_area = self.scroll_area
         # 连接页面变更信号，用于更新工具栏页码显示
         self.scroll_area.page_changed.connect(self._on_scroll_page_changed)
         self.main_splitter.addWidget(self.scroll_area)
@@ -838,10 +848,7 @@ class PDFEditorWidget(QWidget):
         from app.ui.ocr_settings_dialog import show_ocr_settings_dialog
         show_ocr_settings_dialog(self)
 
-    def start_screenshot_ocr_mode(self):
-        """截图OCR"""
-        logger.warning("截图OCR功能暂未实现")
-        QMessageBox.information(self, "提示", "截图OCR功能暂未实现")
+
 
     def perform_ocr_on_current_page(self):
         """对当前页执行OCR"""
@@ -1069,6 +1076,15 @@ class PDFEditorWidget(QWidget):
             }
         """)
         self.tool_bar.addWidget(self.toolbar_total_pages_label)
+
+        self.tool_bar.addSeparator()
+
+        # OCR功能
+        screenshot_ocr_btn = QAction("📷 截图OCR", self)
+        screenshot_ocr_btn.setToolTip("截图OCR识别 (Alt+S)")
+        screenshot_ocr_btn.setShortcut("Alt+S")
+        screenshot_ocr_btn.triggered.connect(self.start_screenshot_ocr_mode)
+        self.tool_bar.addAction(screenshot_ocr_btn)
 
         self.tool_bar.addSeparator()
 

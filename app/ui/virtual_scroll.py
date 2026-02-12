@@ -1037,21 +1037,12 @@ class VirtualScrollArea(QScrollArea):
             self.disable_screenshot_ocr_mode()
             return
 
-        # 获取页面的实际几何位置
-        page_geometry = page_label.geometry()
-        logger.debug(f"[enable_screenshot_ocr_mode] 页面标签几何（相对于父容器）: {page_geometry}")
-
-        # 获取页面标签在视口中的位置（使用 mapTo 从页面标签的(0,0)映射到视口）
-        page_viewport_pos = page_label.mapTo(self.viewport(), QPoint(0, 0))
-        page_geometry_in_viewport = QRect(
-            page_viewport_pos.x(),
-            page_viewport_pos.y(),
-            page_geometry.width(),
-            page_geometry.height()
-        )
-        logger.debug(f"[enable_screenshot_ocr_mode] 页面标签在视口中的位置: {page_geometry_in_viewport}")
-
         # 创建截图选区组件，覆盖整个虚拟滚动区域
+        if not hasattr(self, 'screenshot_widget_layout'):
+            # 首次创建布局
+            self.screenshot_widget_layout = QVBoxLayout(self.viewport())
+            self.screenshot_widget_layout.setContentsMargins(0, 0, 0, 0)
+            self.screenshot_widget_layout.setSpacing(0)
         
         self.screenshot_widget = ScreenshotOCRWidget(self.viewport())
 
@@ -1059,16 +1050,11 @@ class VirtualScrollArea(QScrollArea):
         viewport_geometry = self.viewport().geometry()
         self.screenshot_widget.setGeometry(viewport_geometry)
 
-        # 将选区组件添加到视口中
-        layout = QVBoxLayout(self.viewport())
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(self.screenshot_widget)
+        # 将选区组件添加到布局中
+        self.screenshot_widget_layout.addWidget(self.screenshot_widget)
 
-        # 存储页面标签位置和视口滚动偏移，用于坐标转换
+        # 存储页面标签引用
         self.screenshot_widget.page_label = page_label
-        self.screenshot_widget.page_geometry = page_geometry_in_viewport  # 使用相对于视口的几何位置
-        self.screenshot_widget.viewport_offset = (self.horizontalScrollBar().value(), self.verticalScrollBar().value())
 
         # 连接信号
         self.screenshot_widget.selection_finished.connect(self._on_selection_finished)
@@ -1118,74 +1104,34 @@ class VirtualScrollArea(QScrollArea):
 
         # 在删除截图组件前，先提取需要的信息
         page_label = None
-        page_geometry = None
-        viewport_offset = (0, 0)
         if self.screenshot_widget:
             page_label = getattr(self.screenshot_widget, 'page_label', None)
-            page_geometry = getattr(self.screenshot_widget, 'page_geometry', None)
-            viewport_offset = getattr(self.screenshot_widget, 'viewport_offset', (0, 0))
 
         # 退出截图模式
         self.disable_screenshot_ocr_mode()
 
         # 调用主窗口的截图OCR处理
         if main_window and hasattr(main_window, 'perform_screenshot_ocr'):
-            if page_label and page_geometry:
-                logger.debug(f"[_on_selection_finished] 页面几何（相对于视口）: {page_geometry}")
-                logger.debug(f"[_on_selection_finished] 选区矩形（相对于视口）: {selection_rect}")
+            if page_label:
+                # 将视口坐标转换为屏幕坐标
+                # 视口坐标 + 视口在屏幕上的位置 = 屏幕坐标
+                viewport_global_pos = self.viewport().mapToGlobal(QPoint(0, 0))
 
-                # 视口坐标 → 页面标签坐标
-                # 选区在视口中的位置
-                selection_x = selection_rect.x()
-                selection_y = selection_rect.y()
-
-                # 页面标签在视口中的位置
-                page_x_in_viewport = page_geometry.x()
-                page_y_in_viewport = page_geometry.y()
-
-                # 计算选区相对于页面标签的坐标
-                page_relative_x = selection_x - page_x_in_viewport
-                page_relative_y = selection_y - page_y_in_viewport
-
-                # 创建相对于页面标签的矩形
-                page_rect = QRect(
-                    page_relative_x,
-                    page_relative_y,
+                # 创建屏幕坐标的选区矩形
+                screen_rect = QRect(
+                    viewport_global_pos.x() + selection_rect.x(),
+                    viewport_global_pos.y() + selection_rect.y(),
                     selection_rect.width(),
                     selection_rect.height()
                 )
 
-                logger.debug(f"[_on_selection_finished] 转换后的页面坐标: {page_rect}")
-                logger.debug(f"[_on_selection_finished] 页面标签尺寸: {page_geometry.width()}x{page_geometry.height()}")
-                logger.debug(f"[_on_selection_finished] 选区范围: x={page_rect.x()}, y={page_rect.y()}, right={page_rect.right()}, bottom={page_rect.bottom()}")
+                logger.debug(f"[_on_selection_finished] 视口全局位置: ({viewport_global_pos.x()}, {viewport_global_pos.y()})")
+                logger.debug(f"[_on_selection_finished] 转换后的屏幕坐标: {screen_rect}")
 
-                # 检查选区是否在页面范围内
-                # 使用更宽松的检查：只要选区有交集即可，不要求完全在范围内
-                tolerance = 5  # 允许5像素的误差
-                page_width = page_geometry.width()
-                page_height = page_geometry.height()
-
-                # 检查选区是否与页面有重叠
-                has_overlap = not (page_rect.right() < -tolerance or
-                                 page_rect.bottom() < -tolerance or
-                                 page_rect.x() > page_width + tolerance or
-                                 page_rect.y() > page_height + tolerance)
-
-                if has_overlap:
-                    # 限制选区在页面范围内
-                    clamped_x = max(0, min(page_rect.x(), page_width))
-                    clamped_y = max(0, min(page_rect.y(), page_height))
-                    clamped_width = max(1, min(page_rect.width(), page_width - clamped_x))
-                    clamped_height = max(1, min(page_rect.height(), page_height - clamped_y))
-                    clamped_rect = QRect(clamped_x, clamped_y, clamped_width, clamped_height)
-
-                    logger.debug(f"[_on_selection_finished] 限制后的选区: {clamped_rect}")
-                    main_window.perform_screenshot_ocr(clamped_rect, page_index)
-                else:
-                    logger.warning(f"[_on_selection_finished] 选区超出页面范围")
-                    QMessageBox.warning(None, "提示", "选区超出页面范围，请重新选择")
+                # 直接使用屏幕坐标进行OCR
+                main_window.perform_screenshot_ocr(screen_rect, page_index)
             else:
-                logger.warning("[_on_selection_finished] 无法获取页面标签或几何信息")
+                logger.warning("[_on_selection_finished] 无法获取页面标签")
         else:
             logger.warning("[_on_selection_finished] 主窗口引用无效或没有截图OCR处理方法")
 
