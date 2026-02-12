@@ -743,13 +743,45 @@ class PDFEditorWidget(QWidget):
     # === 工具菜单方法 ===
     def import_images(self):
         """导入图片"""
-        logger.warning("导入图片功能暂未实现")
-        QMessageBox.information(self, "提示", "导入图片功能暂未实现")
+        from PyQt5.QtWidgets import QFileDialog
+
+        # 选择图片文件
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "选择图片文件",
+            "",
+            "图片文件 (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.tif *.webp *.ico);;所有文件 (*.*)"
+        )
+
+        if not file_paths:
+            return
+
+        # 调用 pdf_processor 导入图片
+        success, message = self.pdf_processor.import_images(file_paths)
+        if success:
+            # 标记为未保存，因为文档被修改了
+            self.mark_unsaved()
+            # 更新界面（重新计算页面数据并渲染）
+            self.update_preview()
+            # 更新工具栏总页数
+            self.update_toolbar_total_pages()
+            # 更新缩略图
+            if self.thumbnail_panel.isVisible():
+                self.thumbnail_manager.load_thumbnails()
+            QMessageBox.information(self, "成功", message)
+        else:
+            QMessageBox.warning(self, "导入失败", f"导入图片失败: {message}")
 
     def convert_pdf_to_images(self):
         """转为图片"""
-        logger.warning("转为图片功能暂未实现")
-        QMessageBox.information(self, "提示", "转为图片功能暂未实现")
+        if not self.pdf_processor.fitz_document:
+            QMessageBox.information(self, "提示", "📝 请先打开PDF文件")
+            return
+
+        from app.ui.convert_to_images_dialog import ConvertToImagesDialog
+        dialog = ConvertToImagesDialog(self, self.pdf_processor)
+        dialog.exec_()
+
 
     def split_pdf(self):
         """分割PDF"""
@@ -761,8 +793,8 @@ class PDFEditorWidget(QWidget):
 
     def show_ocr_settings(self):
         """OCR设置"""
-        logger.warning("OCR设置功能暂未实现")
-        QMessageBox.information(self, "提示", "OCR设置功能暂未实现")
+        from app.ui.ocr_settings_dialog import show_ocr_settings_dialog
+        show_ocr_settings_dialog(self)
 
     def start_screenshot_ocr_mode(self):
         """截图OCR"""
@@ -771,8 +803,30 @@ class PDFEditorWidget(QWidget):
 
     def perform_ocr_on_current_page(self):
         """对当前页执行OCR"""
-        logger.warning("对当前页执行OCR功能暂未实现")
-        QMessageBox.information(self, "提示", "对当前页执行OCR功能暂未实现")
+        if not self.pdf_processor.fitz_document:
+            QMessageBox.warning(self, "警告", "请先打开PDF文件")
+            return
+
+        from app.managers.ocr_plugin_manager import ocr_plugin_manager
+        from app.config.ocr_plugin_config import ocr_config_manager
+
+        current_plugin_name = ocr_config_manager.get_current_plugin()
+        if not current_plugin_name:
+            QMessageBox.warning(self, "警告", "请先在OCR设置中选择一个OCR插件")
+            return
+
+        # 获取当前页面
+        current_page = self.pdf_processor.get_current_page() - 1  # 转为0基
+
+        try:
+            result = ocr_plugin_manager.perform_ocr(self.pdf_processor, current_page)
+            if result['success']:
+                QMessageBox.information(self, "OCR识别成功", f"识别到文字: {result['text'][:200]}...")
+            else:
+                QMessageBox.warning(self, "OCR识别失败", result['message'])
+        except Exception as e:
+            logger.error(f"OCR识别失败: {e}")
+            QMessageBox.warning(self, "OCR识别失败", f"OCR识别失败: {str(e)}")
 
     def perform_ocr_on_all_pages(self):
         """对全部页面执行OCR"""
