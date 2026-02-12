@@ -517,6 +517,10 @@ class BarcodeSplitDialog(QDialog):
             filter_config = self.current_config.filter_config
             output_config = self.current_config.output_config
             
+            # 阻止所有复选框的信号，避免加载配置时触发循环
+            for barcode_type, checkbox in self.barcode_type_checkboxes.items():
+                checkbox.blockSignals(True)
+            
             # 条码类型
             # 特殊处理：如果启用了所有类型
             detector = BarcodeDetector()
@@ -527,15 +531,19 @@ class BarcodeSplitDialog(QDialog):
             for barcode_type, checkbox in self.barcode_type_checkboxes.items():
                 if barcode_type == "ALL_TYPES":
                     checkbox.setChecked(is_all_types_enabled)
-                    # 如果启用了所有类型，禁用其他复选框
-                    if is_all_types_enabled:
-                        for bt, cb in self.barcode_type_checkboxes.items():
-                            if bt != "ALL_TYPES":
-                                cb.setEnabled(False)
                 else:
-                    # 只有在未启用所有类型时才设置具体类型的选中状态
-                    if not is_all_types_enabled:
+                    if is_all_types_enabled:
+                        # 如果启用了所有类型，选中所有具体类型
+                        checkbox.setChecked(True)
+                    else:
+                        # 否则只根据配置设置选中状态
                         checkbox.setChecked(barcode_type in filter_config.enabled_types)
+                    # 始终启用所有复选框
+                    checkbox.setEnabled(True)
+            
+            # 恢复所有复选框的信号
+            for barcode_type, checkbox in self.barcode_type_checkboxes.items():
+                checkbox.blockSignals(False)
             
             # 过滤规则
             self.min_length_spin.setValue(filter_config.min_length)
@@ -761,38 +769,64 @@ class BarcodeSplitDialog(QDialog):
     def _on_all_types_toggled(self, checked):
         """当"所有类型"复选框状态改变时"""
         logger.debug(f"所有类型复选框状态改变: {checked}")
-        
-        # 如果选中了"所有类型"，禁用其他复选框
+
+        # 临时断开所有具体类型复选框的信号
+        for barcode_type, checkbox in self.barcode_type_checkboxes.items():
+            if barcode_type != "ALL_TYPES":
+                checkbox.blockSignals(True)
+
+        # 如果选中了"所有类型"，启用并选中所有其他复选框
         if checked:
             for barcode_type, checkbox in self.barcode_type_checkboxes.items():
                 if barcode_type != "ALL_TYPES":
-                    checkbox.setEnabled(False)
-                    checkbox.setChecked(False)  # 取消选中其他类型
+                    checkbox.setEnabled(True)
+                    checkbox.setChecked(True)  # 选中所有类型
         else:
-            # 如果取消选中"所有类型"，启用其他复选框
+            # 如果取消选中"所有类型"，取消所有其他复选框的选中状态
             for barcode_type, checkbox in self.barcode_type_checkboxes.items():
                 if barcode_type != "ALL_TYPES":
                     checkbox.setEnabled(True)
+                    checkbox.setChecked(False)
+
+        # 恢复所有具体类型复选框的信号
+        for barcode_type, checkbox in self.barcode_type_checkboxes.items():
+            if barcode_type != "ALL_TYPES":
+                checkbox.blockSignals(False)
     
     def _on_specific_type_toggled(self, checked):
         """当具体类型复选框状态改变时"""
         logger.debug(f"具体类型复选框状态改变: {checked}")
-        
-        # 如果选中了某个具体类型，取消选中"所有类型"
-        if checked:
-            all_types_checkbox = self.barcode_type_checkboxes.get("ALL_TYPES")
-            if all_types_checkbox and all_types_checkbox.isChecked():
-                all_types_checkbox.setChecked(False)
-        
-        # 检查是否没有任何类型被选中
-        any_selected = any(
-            checkbox.isChecked() 
+
+        # 临时断开"所有类型"复选框的信号
+        all_types_checkbox = self.barcode_type_checkboxes.get("ALL_TYPES")
+        if all_types_checkbox:
+            all_types_checkbox.blockSignals(True)
+
+        # 检查所有具体类型的选中状态
+        all_specific_checked = all(
+            checkbox.isChecked()
             for barcode_type, checkbox in self.barcode_type_checkboxes.items()
             if barcode_type != "ALL_TYPES"
         )
-        
+        any_selected = any(
+            checkbox.isChecked()
+            for barcode_type, checkbox in self.barcode_type_checkboxes.items()
+            if barcode_type != "ALL_TYPES"
+        )
+
+        # 如果所有具体类型都被选中，自动选中"所有类型"
+        if all_specific_checked and all_types_checkbox:
+            all_types_checkbox.setChecked(True)
+        # 如果取消了某个具体类型的选中，取消"所有类型"的选中状态
+        elif not checked and all_types_checkbox and all_types_checkbox.isChecked():
+            all_types_checkbox.setChecked(False)
         # 如果没有任何具体类型被选中，自动选中"所有类型"
-        if not any_selected and not self.barcode_type_checkboxes.get("ALL_TYPES", QCheckBox()).isChecked():
-            all_types_checkbox = self.barcode_type_checkboxes.get("ALL_TYPES")
-            if all_types_checkbox:
-                all_types_checkbox.setChecked(True)
+        elif not any_selected and all_types_checkbox:
+            all_types_checkbox.setChecked(True)
+        # 否则取消"所有类型"的选中状态
+        elif all_types_checkbox and all_types_checkbox.isChecked():
+            all_types_checkbox.setChecked(False)
+
+        # 恢复"所有类型"复选框的信号
+        if all_types_checkbox:
+            all_types_checkbox.blockSignals(False)

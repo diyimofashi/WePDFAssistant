@@ -207,9 +207,25 @@ class SplitDialog(QDialog):
         self.setWindowTitle("PDF拆分工具")
         self.setFixedSize(700, 650)
         self.setModal(True)
-        
+
+        # 设置 QGroupBox 样式，确保标题不被遮挡
+        self.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #ccc;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 15px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+        """)
+
         layout = QVBoxLayout()
-        
+
         # 拆分模式选择和参数
         mode_group = QGroupBox("📋 拆分设置")
         mode_layout = QVBoxLayout()

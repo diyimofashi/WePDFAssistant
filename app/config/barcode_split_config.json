@@ -12,10 +12,10 @@
       "exclude_regex": ""
     },
     "output_config": {
-      "output_dir": "D:/FNPData/abbyy/hke",
+      "output_dir": "D:/FNPData/abbyy/hke\\30MB for test",
       "use_barcode_filename": true,
       "filename_template": "{barcode}_{index}",
-      "duplicate_handling": "merge",
+      "duplicate_handling": "separate",
       "multi_barcode_handling": "first"
     },
     "last_used": true
