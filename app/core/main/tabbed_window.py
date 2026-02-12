@@ -9,6 +9,7 @@ from app.ui.custom_tab_bar import CustomTabBar
 from app.ui.pdf_editor_widget import PDFEditorWidget
 from app.ui.welcome_widget import WelcomeWidget
 from app.managers.history_manager import HistoryManager
+from app.managers.shortcut_manager import ShortcutManager
 from app.utils.logger import get_logger
 
 
@@ -26,6 +27,10 @@ class TabbedMainWindow(QMainWindow):
         self.setWindowTitle("PDFAssistant - 多标签页模式")
         self.resize(1400, 900)
         logger.info("窗口标题和大小设置完成")
+
+        # 初始化快捷键管理器
+        self.shortcut_manager = ShortcutManager(self)
+        logger.info("快捷键管理器初始化完成")
 
         # 标签页容器
         self.tab_widget = QTabWidget()

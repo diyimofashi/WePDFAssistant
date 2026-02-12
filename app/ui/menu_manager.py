@@ -10,10 +10,40 @@ logger = get_logger('menu_manager')
 
 class MenuManager(QObject):
     """菜单管理器 - 负责创建和管理应用菜单"""
-    
+
     def __init__(self, parent_window):
         super().__init__()
         self.parent = parent_window
+        self.shortcuts_registered = False  # 标记是否已注册快捷键
+
+    def register_shortcuts(self):
+        """注册所有菜单动作的快捷键到快捷键管理器"""
+        if self.shortcuts_registered:
+            return
+
+        # 尝试获取快捷键管理器
+        shortcut_manager = None
+        if hasattr(self.parent, 'shortcut_manager'):
+            shortcut_manager = self.parent.shortcut_manager
+        elif self.parent.parent() and hasattr(self.parent.parent(), 'shortcut_manager'):
+            shortcut_manager = self.parent.parent().shortcut_manager
+        elif self.parent.window() and hasattr(self.parent.window(), 'shortcut_manager'):
+            shortcut_manager = self.parent.window().shortcut_manager
+
+        if not shortcut_manager:
+            logger.warning("快捷键管理器未找到，跳过快捷键注册")
+            return
+
+        # 注册跳转页面动作
+        if hasattr(self.parent, 'jump_to_page'):
+            jump_action = QAction("🔢 跳转页面", self.parent)
+            jump_action.triggered.connect(self.parent.jump_to_page)
+            shortcut_manager.register_action("nav.jump_page", jump_action)
+            logger.debug("已注册快捷键: nav.jump_page")
+
+        self.shortcuts_registered = True
+        logger.info("菜单快捷键注册完成")
+
         
     def create_menubar(self, menubar=None):
         """创建菜单栏
@@ -38,6 +68,9 @@ class MenuManager(QObject):
 
         # 帮助菜单
         self._create_help_menu(menubar)
+
+        # 注册快捷键
+        self.register_shortcuts()
 
         return menubar
     
@@ -151,6 +184,28 @@ class MenuManager(QObject):
         actual_size_action.triggered.connect(self.parent.toggle_actual_size)
         view_menu.addAction(actual_size_action)
         self.parent.actual_size_action = actual_size_action
+
+        # 导航操作
+        view_menu.addSeparator()
+
+        # 上一页
+        prev_page_action = QAction("⬅️ 上一页", self.parent)
+        prev_page_action.setShortcut("PgUp")
+        prev_page_action.triggered.connect(self.parent.previous_page)
+        view_menu.addAction(prev_page_action)
+
+        # 下一页
+        next_page_action = QAction("➡️ 下一页", self.parent)
+        next_page_action.setShortcut("PgDown")
+        next_page_action.triggered.connect(self.parent.next_page)
+        view_menu.addAction(next_page_action)
+
+        # 跳转页面
+        jump_page_action = QAction("🔢 跳转页面", self.parent)
+        jump_page_action.setShortcut("Ctrl+G")
+        jump_page_action.triggered.connect(self.parent.jump_to_page)
+        view_menu.addAction(jump_page_action)
+
         
     def _create_settings_menu(self, menubar):
         """创建设置菜单"""

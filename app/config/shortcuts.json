@@ -1,0 +1,160 @@
+{
+  "shortcuts": {
+    "file.open": {
+      "name": "打开文件",
+      "default": "Ctrl+O",
+      "current": "Ctrl+O",
+      "category": "文件操作"
+    },
+    "file.save": {
+      "name": "保存文件",
+      "default": "Ctrl+S",
+      "current": "Ctrl+S",
+      "category": "文件操作"
+    },
+    "file.save_as": {
+      "name": "另存为",
+      "default": "Ctrl+Shift+S",
+      "current": "Ctrl+Shift+S",
+      "category": "文件操作"
+    },
+    "file.exit": {
+      "name": "退出",
+      "default": "Ctrl+Q",
+      "current": "Ctrl+Q",
+      "category": "文件操作"
+    },
+    "edit.undo": {
+      "name": "撤销",
+      "default": "Ctrl+Z",
+      "current": "Ctrl+Z",
+      "category": "编辑操作"
+    },
+    "edit.redo": {
+      "name": "重做",
+      "default": "Ctrl+Y",
+      "current": "Ctrl+Y",
+      "category": "编辑操作"
+    },
+    "edit.copy": {
+      "name": "复制",
+      "default": "Ctrl+C",
+      "current": "Ctrl+C",
+      "category": "编辑操作"
+    },
+    "view.zoom_in": {
+      "name": "放大",
+      "default": "Ctrl++",
+      "current": "Ctrl++",
+      "category": "视图操作"
+    },
+    "view.zoom_out": {
+      "name": "缩小",
+      "default": "Ctrl+-",
+      "current": "Ctrl+-",
+      "category": "视图操作"
+    },
+    "view.fit_width": {
+      "name": "适合宽度",
+      "default": "Ctrl+W",
+      "current": "Ctrl+W",
+      "category": "视图操作"
+    },
+    "view.fit_page": {
+      "name": "适合页面",
+      "default": "Ctrl+1",
+      "current": "Ctrl+1",
+      "category": "视图操作"
+    },
+    "view.toggle_thumbnails": {
+      "name": "显示/隐藏缩略图",
+      "default": "Ctrl+T",
+      "current": "Ctrl+T",
+      "category": "视图操作"
+    },
+    "nav.prev_page": {
+      "name": "上一页",
+      "default": "PgUp",
+      "current": "PgUp",
+      "category": "导航操作"
+    },
+    "nav.next_page": {
+      "name": "下一页",
+      "default": "PgDown",
+      "current": "PgDown",
+      "category": "导航操作"
+    },
+    "nav.first_page": {
+      "name": "第一页",
+      "default": "Ctrl+Home",
+      "current": "Ctrl+Home",
+      "category": "导航操作"
+    },
+    "nav.last_page": {
+      "name": "最后一页",
+      "default": "Ctrl+End",
+      "current": "Ctrl+End",
+      "category": "导航操作"
+    },
+    "nav.jump_page": {
+      "name": "跳转到页面",
+      "default": "Ctrl+G",
+      "current": "Ctrl+G",
+      "category": "导航操作"
+    },
+    "tools.search": {
+      "name": "搜索",
+      "default": "Ctrl+F",
+      "current": "Ctrl+F",
+      "category": "工具"
+    },
+    "tools.screenshot_ocr": {
+      "name": "截图OCR",
+      "default": "Alt+S",
+      "current": "Alt+S",
+      "category": "工具"
+    },
+    "tools.ocr_settings": {
+      "name": "OCR设置",
+      "default": "Ctrl+Shift+O",
+      "current": "Ctrl+Shift+O",
+      "category": "工具"
+    },
+    "tools.barcode_split": {
+      "name": "条码拆分",
+      "default": "Ctrl+Shift+B",
+      "current": "Ctrl+Shift+B",
+      "category": "工具"
+    },
+    "tools.upload": {
+      "name": "上传文档",
+      "default": "Ctrl+U",
+      "current": "Ctrl+U",
+      "category": "工具"
+    },
+    "tools.download": {
+      "name": "下载文档",
+      "default": "Ctrl+Shift+D",
+      "current": "Ctrl+Shift+D",
+      "category": "工具"
+    },
+    "tools.shortcuts": {
+      "name": "快捷键设置",
+      "default": "Ctrl+K",
+      "current": "Ctrl+K",
+      "category": "工具"
+    },
+    "convert.export_image": {
+      "name": "导出为图片",
+      "default": "Ctrl+I",
+      "current": "Ctrl+I",
+      "category": "转换"
+    },
+    "convert.import_images": {
+      "name": "导入图片",
+      "default": "Ctrl+Shift+I",
+      "current": "Ctrl+Shift+I",
+      "category": "转换"
+    }
+  }
+}

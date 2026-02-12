@@ -188,15 +188,20 @@ class PDFEditorWidget(QWidget):
                         import traceback
                         traceback.print_exc()
 
-                # 更新工具栏的总页数标签
-                if hasattr(self, 'toolbar_total_pages_label') and self.pdf_processor:
+                # 更新工具栏的总页数标签和页码输入框最大值
+                if self.pdf_processor:
                     try:
                         total_pages = self.pdf_processor.get_total_pages()
-                        self.toolbar_total_pages_label.setText(f"/ {total_pages}")
+                        if hasattr(self, 'toolbar_total_pages_label'):
+                            self.toolbar_total_pages_label.setText(f"/ {total_pages}")
+                        if hasattr(self, 'page_spinbox'):
+                            self.page_spinbox.setMaximum(total_pages)
                     except Exception as e:
                         logger.error(f"更新工具栏总页数显示失败: {e}")
                         if hasattr(self, 'toolbar_total_pages_label'):
                             self.toolbar_total_pages_label.setText("/ 0")
+                        if hasattr(self, 'page_spinbox'):
+                            self.page_spinbox.setMaximum(99)
 
                 # 更新虚拟滚动区域内容
                 logger.debug(f"[open_pdf] 准备更新虚拟滚动区域")
@@ -419,11 +424,14 @@ class PDFEditorWidget(QWidget):
             parent = parent.parent()
 
     def update_toolbar_total_pages(self):
-        """更新工具栏的总页数显示"""
-        if hasattr(self, 'toolbar_total_pages_label') and self.pdf_processor:
+        """更新工具栏的总页数显示和页码输入框最大值"""
+        if self.pdf_processor:
             try:
                 total_pages = self.pdf_processor.get_total_pages()
-                self.toolbar_total_pages_label.setText(f"/ {total_pages}")
+                if hasattr(self, 'toolbar_total_pages_label'):
+                    self.toolbar_total_pages_label.setText(f"/ {total_pages}")
+                if hasattr(self, 'page_spinbox'):
+                    self.page_spinbox.setMaximum(total_pages)
                 logger.debug(f"更新工具栏总页数: {total_pages}")
             except Exception as e:
                 logger.error(f"更新工具栏总页数显示失败: {e}")
@@ -643,6 +651,23 @@ class PDFEditorWidget(QWidget):
         """跳转页码"""
         self.view_controller.go_to_page(page_number)
 
+    def jump_to_page(self):
+        """显示跳转页面对话框"""
+        if not self.pdf_processor.fitz_document:
+            self.show_message("❌ 没有打开的PDF文件")
+            return
+
+        from PyQt5.QtWidgets import QDialog
+        from app.ui.jump_page_dialog import JumpPageDialog
+
+        current_page = self.pdf_processor.get_current_page()
+        total_pages = self.pdf_processor.get_total_pages()
+
+        dialog = JumpPageDialog(current_page, total_pages, self)
+        if dialog.exec_() == QDialog.Accepted:
+            target_page = dialog.get_target_page()
+            self.view_controller.go_to_page(target_page)
+
     def _on_page_spinbox_changed(self, value):
         """页码框变化"""
         self.view_controller.on_page_spinbox_changed(value)
@@ -818,8 +843,32 @@ class PDFEditorWidget(QWidget):
 
     def show_shortcut_settings(self):
         """快捷键设置"""
-        logger.warning("快捷键设置功能暂未实现")
-        QMessageBox.information(self, "提示", "快捷键设置功能暂未实现")
+        try:
+            # 尝试获取主窗口的快捷键管理器
+            shortcut_manager = None
+
+            # 方法1: 如果有 shortcut_manager 属性
+            if hasattr(self, 'shortcut_manager'):
+                shortcut_manager = self.shortcut_manager
+            # 方法2: 尝试从父窗口获取（适用于多标签页模式）
+            elif self.parent() and hasattr(self.parent(), 'shortcut_manager'):
+                shortcut_manager = self.parent().shortcut_manager
+            # 方法3: 尝试从顶级窗口获取
+            elif self.window() and hasattr(self.window(), 'shortcut_manager'):
+                shortcut_manager = self.window().shortcut_manager
+
+            if not shortcut_manager:
+                logger.warning("快捷键管理器未初始化")
+                QMessageBox.warning(self, "错误", "快捷键管理器未初始化")
+                return
+
+            from app.ui.shortcut_settings_dialog import ShortcutSettingsDialog
+            dialog = ShortcutSettingsDialog(shortcut_manager, self)
+            dialog.exec_()
+
+        except Exception as e:
+            logger.error(f"显示快捷键设置对话框时出错: {e}")
+            QMessageBox.critical(self, "错误", f"打开快捷键设置失败: {str(e)}")
 
     # === 帮助菜单方法 ===
     def show_about(self):
@@ -903,6 +952,12 @@ class PDFEditorWidget(QWidget):
         next_page_btn.setShortcut("PgDown")
         next_page_btn.triggered.connect(self.next_page)
         self.tool_bar.addAction(next_page_btn)
+
+        # 跳转页面
+        jump_page_btn = QAction("🔢 跳转", self)
+        jump_page_btn.setToolTip("跳转到页面 (Ctrl+G)")
+        jump_page_btn.triggered.connect(self.jump_to_page)
+        self.tool_bar.addAction(jump_page_btn)
 
         # 页码输入框
         from PyQt5.QtWidgets import QSpinBox
