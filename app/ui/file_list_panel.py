@@ -1061,22 +1061,32 @@ class FileListPanel(QDockWidget):
             logger.error(f"下载文件失败: {result.message}")
             return
 
-        # 获取主窗口并打开文件
+        # 获取主窗口并打开文件（检查是否已打开）
         try:
             parent = self.parent_window
-            while parent and not hasattr(parent, 'pdf_processor'):
+            # 优先查找 TabbedMainWindow 主窗口
+            while parent and not hasattr(parent, 'open_file_in_new_tab'):
                 parent = parent.parent()
 
-            if parent and hasattr(parent, 'pdf_processor'):
-                success, message = parent.pdf_processor.open_pdf(local_path)
-                if not success:
-                    QMessageBox.warning(self, "打开失败", f"打开文件失败: {message}")
-                    logger.error(f"打开文件失败: {message}")
-                else:
-                    logger.info(f"已打开文件: {local_path}")
+            if parent and hasattr(parent, 'open_file_in_new_tab'):
+                # 使用主窗口的 open_file_in_new_tab，会检查文件是否已打开
+                parent.open_file_in_new_tab(local_path)
+                logger.info(f"请求主窗口打开文件: {local_path}")
             else:
-                QMessageBox.warning(self, "打开失败", "未找到主窗口，无法打开文件")
-                logger.error("未找到主窗口，无法打开文件")
+                # 如果找不到主窗口，直接在当前标签页打开
+                while parent and not hasattr(parent, 'pdf_processor'):
+                    parent = parent.parent()
+
+                if parent and hasattr(parent, 'pdf_processor'):
+                    success, message = parent.pdf_processor.open_pdf(local_path)
+                    if not success:
+                        QMessageBox.warning(self, "打开失败", f"打开文件失败: {message}")
+                        logger.error(f"打开文件失败: {message}")
+                    else:
+                        logger.info(f"已打开文件: {local_path}")
+                else:
+                    QMessageBox.warning(self, "打开失败", "未找到主窗口，无法打开文件")
+                    logger.error("未找到主窗口，无法打开文件")
         except Exception as e:
             QMessageBox.warning(self, "打开失败", f"打开文件失败: {str(e)}")
             logger.error(f"打开文件失败: {e}")
