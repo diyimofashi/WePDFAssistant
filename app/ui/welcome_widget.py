@@ -106,7 +106,7 @@ class ThumbnailCache:
 class ThumbnailGenerator(QThread):
     """缩略图生成线程"""
 
-    thumbnail_ready = pyqtSignal(str, QPixmap)
+    thumbnail_ready = pyqtSignal(str, object)  # 第二个参数可以是 QPixmap 或 str ("ENCRYPTED")
 
     def __init__(self, file_paths):
         super().__init__()
@@ -120,15 +120,22 @@ class ThumbnailGenerator(QThread):
 
             if os.path.exists(file_path):
                 try:
-                    pixmap = self._generate_thumbnail(file_path)
-                    if pixmap:
-                        self.thumbnail_ready.emit(file_path, pixmap)
+                    result = self._generate_thumbnail(file_path)
+                    if result:
+                        self.thumbnail_ready.emit(file_path, result)
                 except Exception as e:
                     logger.error(f"生成缩略图失败 {file_path}: {e}")
 
     def _generate_thumbnail(self, file_path):
         try:
             doc = fitz.open(file_path)
+
+            # 检查文档是否加密
+            if doc.needs_pass:
+                doc.close()
+                logger.info(f"文档已加密，无法生成缩略图: {file_path}")
+                return "ENCRYPTED"
+
             if len(doc) > 0:
                 page = doc[0]
                 # 降低缩放比例以提高性能，目标尺寸是180x240
@@ -141,7 +148,9 @@ class ThumbnailGenerator(QThread):
                 pixmap = QPixmap.fromImage(img)
 
                 target_size = QSize(180, 240)
+                doc.close()
                 return pixmap.scaled(target_size, Qt.KeepAspectRatio, Qt.FastTransformation)  # 使用快速缩放
+            doc.close()
         except Exception as e:
             logger.error(f"生成缩略图异常 {file_path}: {e}")
         return None
@@ -779,6 +788,25 @@ class WelcomeWidget(QWidget):
 
     def _on_thumbnail_ready(self, file_path, thumbnail):
         """缩略图生成完成的回调"""
+        # 如果是加密文档，不保存到缓存
+        if thumbnail == "ENCRYPTED":
+            # 更新UI显示为"已加密"
+            if file_path in self.thumbnail_cache:
+                label = self.thumbnail_cache[file_path]
+                if isinstance(label, QLabel):
+                    label.setText("🔒 已加密")
+                    label.setStyleSheet("""
+                        QLabel {
+                            border: 1px solid #dc3545;
+                            border-radius: 4px;
+                            background-color: #fff5f5;
+                            color: #dc3545;
+                            font-size: 14px;
+                            font-weight: bold;
+                        }
+                    """)
+            return
+
         # 保存到持久化缓存
         self.persistent_cache.set(file_path, thumbnail)
 

@@ -160,7 +160,49 @@ class PDFEditorWidget(QWidget):
     def open_pdf(self, file_path):
         """打开指定的PDF文件"""
         try:
-            success, message = self.pdf_processor.open_pdf(file_path, async_mode=True)
+            import fitz
+
+            # 检查是否加密
+            is_encrypted = False
+            try:
+                doc = fitz.open(file_path)
+                is_encrypted = doc.needs_pass
+                doc.close()
+            except Exception as e:
+                logger.warning(f"检查加密状态时出错: {e}")
+
+            password = None
+            if is_encrypted:
+                # 弹出密码输入框，支持5次尝试
+                for attempt in range(5):
+                    password = PasswordDialog.get_user_password(self, "请输入密码")
+                    if password is None:
+                        logger.info("用户取消了密码输入")
+                        self.show_welcome()
+                        return
+
+                    # 验证密码是否正确
+                    try:
+                        test_doc = fitz.open(file_path)
+                        if test_doc.authenticate(password):
+                            logger.info("密码验证成功")
+                            test_doc.close()
+                            break
+                        else:
+                            logger.warning(f"密码错误，第{attempt + 1}次尝试失败")
+                            QMessageBox.warning(self, "密码错误",
+                                             f"密码错误，请重新输入（剩余{4 - attempt}次机会）")
+                    except Exception as e:
+                        logger.error(f"密码验证时出错: {e}")
+                        QMessageBox.warning(self, "密码错误",
+                                         f"密码验证失败（剩余{4 - attempt}次机会）")
+                else:
+                    logger.error("密码尝试次数已达5次")
+                    QMessageBox.critical(self, "错误", "密码错误次数过多，无法打开文件")
+                    self.show_welcome()
+                    return
+
+            success, message = self.pdf_processor.open_pdf(file_path, async_mode=True, password=password)
             if success:
                 self.file_path = file_path
                 self.unsaved_changes = False

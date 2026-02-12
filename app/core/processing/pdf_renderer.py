@@ -278,6 +278,7 @@ class PDFRenderer(QObject):
         self.base_zoom = 2.0  # 基准缩放因子（用户看到的100%实际是200%基准）
         self.page_editor = None  # 页面编辑器
         self._file_id = None  # 文件唯一标识，用于缓存键
+        self._password = None  # 保存加密文档的密码
 
         # A4缩放设置
         self.use_a4_scaling = AppSettings.get_use_a4_scaling()  # 是否使用A4缩放
@@ -1499,6 +1500,14 @@ class PDFRenderer(QObject):
                     if not self.fitz_document.authenticate(password):
                         self.loading_finished.emit(False, "密码错误")
                         return False, "密码错误"
+                    # 保存密码，用于后续保存时保持加密状态
+                    self._password = password
+                else:
+                    # 检查文档是否需要密码（但没有提供密码）
+                    if self.fitz_document.needs_pass:
+                        self.loading_finished.emit(False, "文档需要密码")
+                        return False, "文档需要密码"
+                    self._password = None
 
                 # 延迟加载：只读取元数据，不立即渲染页面
                 self.loading_progress.emit(50, "正在读取文档信息...")
@@ -1550,6 +1559,7 @@ class PDFRenderer(QObject):
             finally:
                 self.fitz_document = None
                 self.pdf_document = None
+                self._password = None  # 清除密码
 
     def _cleanup_render_state(self):
         """清理渲染状态"""
@@ -1775,6 +1785,7 @@ class PDFRenderer(QObject):
     def save_pdf(self, file_path=None):
         """保存PDF文件"""
         temp_path = None
+        encrypted_temp_path = None
         try:
             if not self.fitz_document:
                 return False, "没有打开的文档"
@@ -1795,6 +1806,13 @@ class PDFRenderer(QObject):
                 'clean': True,
                 'garbage': 1
             }
+
+            # 如果保存的是加密文档（有密码），保持加密状态
+            if self._password:
+                save_args['encryption'] = fitz.PDF_ENCRYPT_AES_256
+                save_args['user_pw'] = self._password
+                logger.info("保存加密文档，保持加密状态")
+
             self.fitz_document.save(temp_path, **save_args)
 
             if self._is_file_locked(file_path):
@@ -1821,6 +1839,11 @@ class PDFRenderer(QObject):
             if temp_path and os.path.exists(temp_path):
                 try:
                     os.unlink(temp_path)
+                except:
+                    pass
+            if encrypted_temp_path and os.path.exists(encrypted_temp_path):
+                try:
+                    os.unlink(encrypted_temp_path)
                 except:
                     pass
 
