@@ -4,7 +4,8 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout,
                              QMenuBar, QToolBar, QSplitter,
                              QStackedWidget,
                              QLabel, QMessageBox, QAction,
-                             QSizePolicy, QFileDialog)
+                             QSizePolicy, QFileDialog, QApplication,
+                             QProgressDialog)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 import os
 
@@ -25,6 +26,8 @@ from app.config.settings import AppSettings
 from app.managers.ocr_plugin_manager import ocr_plugin_manager
 from app.config.ocr_plugin_config import ocr_config_manager
 from app.core.main.ocr_manager_mixin import OCRManagerMixin
+from app.ui.ocr_batch_thread import OCRBatchThread
+from app.ui.ocr_batch_result_dialog import OCRBatchResultDialog
 
 
 logger = get_logger('pdf_editor_widget')
@@ -852,35 +855,330 @@ class PDFEditorWidget(QWidget, OCRManagerMixin):
 
     def perform_ocr_on_current_page(self):
         """对当前页执行OCR"""
-        if not self.pdf_processor.fitz_document:
-            QMessageBox.warning(self, "警告", "请先打开PDF文件")
-            return
-
-        from app.managers.ocr_plugin_manager import ocr_plugin_manager
-        from app.config.ocr_plugin_config import ocr_config_manager
-
-        current_plugin_name = ocr_config_manager.get_current_plugin()
-        if not current_plugin_name:
-            QMessageBox.warning(self, "警告", "请先在OCR设置中选择一个OCR插件")
-            return
-
-        # 获取当前页面
-        current_page = self.pdf_processor.get_current_page() - 1  # 转为0基
-
         try:
-            result = ocr_plugin_manager.perform_ocr(self.pdf_processor, current_page)
-            if result['success']:
-                QMessageBox.information(self, "OCR识别成功", f"识别到文字: {result['text'][:200]}...")
-            else:
-                QMessageBox.warning(self, "OCR识别失败", result['message'])
+            # 检查是否有打开的文档（PDF或图片）
+            if not self.pdf_processor.fitz_document:
+                QMessageBox.warning(self, "警告", "请先打开PDF文件或图片文件")
+                return
+
+            # 获取当前页面
+            current_page = self.pdf_processor.current_page
+            if current_page < 0:
+                QMessageBox.warning(self, "警告", "请先选择一个页面")
+                return
+
+            # 获取当前使用的OCR插件
+            current_plugin_name = self.ocr_config_manager.get_current_plugin()
+            if not current_plugin_name:
+                QMessageBox.warning(self, "警告", "请先在OCR设置中选择一个OCR插件")
+                return
+
+            # 检查插件是否已加载
+            if current_plugin_name not in self.ocr_plugin_manager.plugins:
+                QMessageBox.critical(self, "错误", f"OCR插件 '{current_plugin_name}' 未加载")
+                return
+
+            # 创建进度对话框
+            progress_dialog = QProgressDialog("正在识别第 {} 页...".format(current_page + 1),
+                                          "取消", 0, 0, self)
+            progress_dialog.setWindowTitle("OCR识别")
+            progress_dialog.setWindowModality(Qt.ApplicationModal)
+            progress_dialog.setCancelButton(None)
+            progress_dialog.show()
+            QApplication.processEvents()
+
+            try:
+                # 获取插件实例
+                plugin = self.ocr_plugin_manager.plugins[current_plugin_name]
+
+                # 初始化插件（如果尚未初始化）
+                if not plugin.is_initialized:
+                    plugin_config = self.ocr_config_manager.get_plugin_config(current_plugin_name)
+                    init_result = self.ocr_plugin_manager.initialize_plugin(current_plugin_name, plugin_config)
+                    if not init_result.is_success():
+                        QMessageBox.critical(self, "OCR初始化失败", f"插件初始化失败: {init_result.message}")
+                        return
+
+                # 获取当前页面的图像数据
+                page_image_data = self.pdf_processor.get_page_image_data(current_page)
+                if not page_image_data:
+                    QMessageBox.critical(self, "错误", "无法获取页面图像数据")
+                    return
+
+                # 尝试不同的OCR识别方法
+                # 方法1: 直接使用字节数据
+                ocr_result = plugin.recognize_from_bytes(page_image_data)
+
+                # 如果方法1失败，尝试方法2: 转换为Base64字符串
+                if not ocr_result.is_success():
+                    from base64 import b64encode
+                    image_base64 = b64encode(page_image_data).decode('utf-8')
+                    # 移除可能存在的前缀
+                    if image_base64.startswith('data:image'):
+                        # 提取纯Base64数据
+                        image_base64 = image_base64.split(',')[1] if ',' in image_base64 else image_base64
+                    ocr_result = plugin.recognize_from_base64(image_base64)
+
+                # 如果方法2也失败，尝试方法3: 保存为临时文件并使用文件路径
+                if not ocr_result.is_success():
+                    import os
+                    import tempfile
+                    import uuid
+                    # 使用完整路径避免短文件名问题
+                    temp_dir = os.path.realpath(tempfile.gettempdir())
+                    temp_filename = f"ocr_temp_{uuid.uuid4().hex}.png"
+                    tmp_file_path = os.path.join(temp_dir, temp_filename)
+
+                    try:
+                        # 将图像数据写入临时文件
+                        with open(tmp_file_path, 'wb') as tmp_file:
+                            tmp_file.write(page_image_data)
+
+                        # 确保文件已正确写入
+                        if os.path.exists(tmp_file_path):
+                            ocr_result = plugin.recognize_from_file(tmp_file_path)
+                        else:
+                            logger.error(f"临时文件创建失败: {tmp_file_path}")
+                            from app.core.ocr.ocr_plugin_interface import OCRResult, OCRErrorCode
+                            ocr_result = OCRResult(
+                                code=OCRErrorCode.FILE_NOT_FOUND,
+                                message=f"临时文件创建失败: {tmp_file_path}",
+                                plugin_name=plugin.plugin_name
+                            )
+                    except Exception as file_error:
+                        logger.error(f"创建或写入临时文件时出错: {file_error}")
+                        from app.core.ocr.ocr_plugin_interface import OCRResult, OCRErrorCode
+                        ocr_result = OCRResult(
+                            code=OCRErrorCode.UNKNOWN_ERROR,
+                            message=f"创建临时文件失败: {str(file_error)}",
+                            plugin_name=plugin.plugin_name
+                        )
+                    finally:
+                        # 清理临时文件
+                        try:
+                            if os.path.exists(tmp_file_path):
+                                os.unlink(tmp_file_path)
+                        except Exception as cleanup_error:
+                            logger.warning(f"清理临时文件时出错: {cleanup_error}")
+
+                # 处理OCR结果
+                if ocr_result.is_success():
+                    # 显示OCR识别结果
+                    from app.ui.screenshot_result_dialog import ScreenshotOCRResultDialog
+                    progress_dialog.close()
+                    dialog = ScreenshotOCRResultDialog(ocr_result, self)
+                    dialog.exec_()
+                else:
+                    progress_dialog.close()
+                    QMessageBox.critical(self, "OCR识别失败", f"识别失败: {ocr_result.message}")
+
+            finally:
+                # 确保进度对话框关闭
+                if 'progress_dialog' in locals():
+                    progress_dialog.close()
+
         except Exception as e:
-            logger.error(f"OCR识别失败: {e}")
-            QMessageBox.warning(self, "OCR识别失败", f"OCR识别失败: {str(e)}")
+            logger.error(f"执行OCR时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            QMessageBox.critical(self, "错误", f"执行OCR时发生异常: {str(e)}")
 
     def perform_ocr_on_all_pages(self):
         """对全部页面执行OCR"""
-        logger.warning("对全部页面执行OCR功能暂未实现")
-        QMessageBox.information(self, "提示", "对全部页面执行OCR功能暂未实现")
+        try:
+            # 检查是否有打开的文档
+            if not self.pdf_processor.fitz_document:
+                QMessageBox.warning(self, "警告", "请先打开PDF文件")
+                return
+
+            # 获取总页数
+            total_pages = self.pdf_processor.get_total_pages()
+            if total_pages == 0:
+                QMessageBox.warning(self, "警告", "文档为空，没有可识别的页面")
+                return
+
+            # 获取当前使用的OCR插件
+            current_plugin_name = self.ocr_config_manager.get_current_plugin()
+            if not current_plugin_name:
+                QMessageBox.warning(self, "警告", "请先在OCR设置中选择一个OCR插件")
+                return
+
+            # 确认开始批量处理
+            reply = QMessageBox.question(
+                self,
+                "确认",
+                f"将对文档的所有 <b>{total_pages}</b> 页执行OCR识别\n\n"
+                f"这将实时显示识别结果，可能需要较长时间，确定要继续吗？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+
+            if reply != QMessageBox.Yes:
+                return
+
+            # 初始化批量结果字典
+            batch_result = {
+                'total_pages': total_pages,
+                'success_pages': 0,
+                'failed_pages': 0,
+                'results': {},
+                'errors': {}
+            }
+
+            # 创建并显示结果对话框（在后台线程启动前）
+            self.ocr_result_dialog = OCRBatchResultDialog(batch_result, self)
+            self.ocr_result_dialog.show()
+            QApplication.processEvents()
+
+            # 创建并启动批量处理线程
+            self.ocr_batch_thread = OCRBatchThread(
+                self.pdf_processor,
+                self.ocr_plugin_manager,
+                self.ocr_config_manager
+            )
+
+            # 连接信号
+            self.ocr_batch_thread.progress_update.connect(self._on_ocr_progress_update)
+            self.ocr_batch_thread.page_completed.connect(self._on_ocr_page_completed)
+            self.ocr_batch_thread.batch_finished.connect(self._on_ocr_batch_finished)
+            self.ocr_batch_thread.error_occurred.connect(self._on_ocr_error)
+
+            # 设置暂停/继续回调
+            self.ocr_result_dialog.set_pause_callback(self._on_ocr_pause)
+            self.ocr_result_dialog.set_resume_callback(self._on_ocr_resume)
+
+            # 启动线程
+            self.ocr_batch_thread.start()
+            logger.info(f"开始对 {total_pages} 页执行批量OCR")
+
+        except Exception as e:
+            logger.error(f"启动批量OCR时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            QMessageBox.critical(self, "错误", f"启动批量OCR失败: {str(e)}")
+
+    def _on_ocr_progress_update(self, current_page, total_pages, message):
+        """OCR进度更新"""
+        try:
+            if hasattr(self, 'ocr_result_dialog') and self.ocr_result_dialog:
+                self.ocr_result_dialog.update_progress(current_page, total_pages, message)
+        except Exception as e:
+            logger.error(f"更新OCR进度时出错: {e}")
+
+    def _on_ocr_page_completed(self, page_num, result):
+        """单页OCR完成"""
+        logger.debug(f"第 {page_num + 1} 页OCR完成，识别文本长度: {len(result.get('text', ''))}")
+
+        # 实时添加到结果对话框
+        if hasattr(self, 'ocr_result_dialog') and self.ocr_result_dialog:
+            self.ocr_result_dialog.add_page_result(page_num, result)
+
+    def _on_ocr_batch_finished(self, batch_result):
+        """批量OCR完成"""
+        try:
+            # 清理线程资源（不使用wait避免阻塞）
+            if hasattr(self, 'ocr_batch_thread'):
+                self.ocr_batch_thread.deleteLater()
+                delattr(self, 'ocr_batch_thread')
+
+            # 统计
+            success_count = batch_result['success_pages']
+            failed_count = batch_result['failed_pages']
+            total_pages = batch_result['total_pages']
+
+            # 检查是否被取消
+            is_cancelled = (success_count + failed_count) < total_pages
+            if is_cancelled:
+                logger.info(f"批量OCR已取消: 已处理 {success_count + failed_count}/{total_pages} 页")
+            else:
+                logger.info(f"批量OCR完成: 成功 {success_count}/{total_pages} 页，失败 {failed_count} 页")
+
+            # 更新结果对话框的数据
+            if hasattr(self, 'ocr_result_dialog') and self.ocr_result_dialog:
+                # 更新batch_result数据
+                self.ocr_result_dialog.batch_result = batch_result
+
+                # 设置处理完成
+                self.ocr_result_dialog.set_processing_complete()
+
+                # 填充失败页面
+                failed_results = batch_result.get('errors', {})
+                if failed_results:
+                    self.ocr_result_dialog._populate_data()
+
+                # 更新统计
+                total_pages = batch_result.get('total_pages', 0)
+                success_pages = batch_result.get('success_pages', 0)
+                failed_pages = batch_result.get('failed_pages', 0)
+                self.ocr_result_dialog.stats_label.setText(
+                    f"总页数: <b>{total_pages}</b> | "
+                    f"成功: <span style='color: green;'>{success_pages}</span> | "
+                    f"失败: <span style='color: red;'>{failed_pages}</span>"
+                )
+
+                # 显示完成/取消提示
+                from PyQt5.QtWidgets import QMessageBox
+                if is_cancelled:
+                    self.ocr_result_dialog.status_label.setText("已取消")
+                    QMessageBox.information(
+                        self.ocr_result_dialog,
+                        "已取消",
+                        f"批量OCR识别已取消！\n\n"
+                        f"已处理: {success_pages + failed_pages} 页\n"
+                        f"成功: {success_pages} 页\n"
+                        f"失败: {failed_pages} 页\n\n"
+                        f"您可以查看、复制或导出已识别的结果。"
+                    )
+                else:
+                    QMessageBox.information(
+                        self.ocr_result_dialog,
+                        "完成",
+                        f"批量OCR识别完成！\n\n"
+                        f"成功: {success_pages} 页\n"
+                        f"失败: {failed_pages} 页\n\n"
+                        f"您可以查看、复制或导出识别结果。"
+                    )
+
+        except Exception as e:
+            logger.error(f"处理批量OCR完成时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            QMessageBox.critical(self, "错误", f"处理OCR结果时出错: {str(e)}")
+
+    def _on_ocr_error(self, error_message):
+        """OCR错误"""
+        try:
+            if hasattr(self, 'ocr_result_dialog') and self.ocr_result_dialog:
+                self.ocr_result_dialog.status_label.setText(f"错误: {error_message}")
+                self.ocr_result_dialog.cancel_btn.setEnabled(False)
+
+            if hasattr(self, 'ocr_batch_thread'):
+                self.ocr_batch_thread.quit()
+                self.ocr_batch_thread.wait()
+
+            QMessageBox.critical(self, "OCR错误", error_message)
+            logger.error(f"OCR批量处理错误: {error_message}")
+
+        except Exception as e:
+            logger.error(f"处理OCR错误时出错: {e}")
+
+    def _on_ocr_pause(self):
+        """用户暂停OCR"""
+        try:
+            if hasattr(self, 'ocr_batch_thread'):
+                self.ocr_batch_thread.pause()
+            logger.info("用户暂停了批量OCR")
+        except Exception as e:
+            logger.error(f"暂停OCR时出错: {e}")
+
+    def _on_ocr_resume(self):
+        """用户继续OCR"""
+        try:
+            if hasattr(self, 'ocr_batch_thread'):
+                self.ocr_batch_thread.resume()
+            logger.info("用户继续了批量OCR")
+        except Exception as e:
+            logger.error(f"继续OCR时出错: {e}")
 
     def create_searchable_pdf(self):
         """创建可搜索PDF"""
