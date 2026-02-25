@@ -34,6 +34,14 @@
 ### 🎨 现代化界面
 简洁美观的界面设计，操作直观，学习成本低。支持多标签页浏览，可同时打开多个文档，提升工作效率。
 
+## 🖼️ 软件预览
+
+### 多标签页模式
+![多标签页模式](app/assets/ScreenShot_2026-02-25_160156_168.png)
+
+### 功能展示
+![功能展示](app/assets/ScreenShot_2026-02-25_160305_122.png)
+
 ## 📁 项目结构
 
 ```
@@ -403,9 +411,13 @@ dist/
 
 ### 联系方式
 
-![微信公众号](app/assets/wechat_contact_qrcode.png)
+![微信公众号](app/assets/wechat_gzh_qrcode.png)
 
 扫描二维码关注微信公众号，获取最新动态和问题解答。
+
+![微信](app/assets/wechat_contact_qrcode.png)
+
+扫描二维码添加微信，获取最新动态和问题解答。
 
 ### 赞助支持
 
