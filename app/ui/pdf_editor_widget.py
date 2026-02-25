@@ -1182,8 +1182,65 @@ class PDFEditorWidget(QWidget, OCRManagerMixin):
 
     def create_searchable_pdf(self):
         """创建可搜索PDF"""
-        logger.warning("创建可搜索PDF功能暂未实现")
-        QMessageBox.information(self, "提示", "创建可搜索PDF功能暂未实现")
+        try:
+            if not self.file_path:
+                QMessageBox.warning(self, "警告", "请先打开一个PDF文件")
+                return
+
+            from app.core.ocr.ocr_searchable_manager import OCRSearchableManager
+            from PyQt5.QtWidgets import QProgressDialog
+            import os
+
+            # 选择输出文件
+            file_name = os.path.basename(self.file_path)
+            name, ext = os.path.splitext(file_name)
+            default_output = f"{name}_searchable.pdf"
+
+            output_path, _ = QFileDialog.getSaveFileName(
+                self, "保存可搜索PDF", default_output, "PDF文件 (*.pdf)"
+            )
+
+            if not output_path:
+                return
+
+            # 创建进度对话框
+            progress_dialog = QProgressDialog("正在创建可搜索PDF...", "取消", 0, 100, self)
+            progress_dialog.setWindowTitle("创建可搜索PDF")
+            progress_dialog.setWindowModality(Qt.WindowModal)
+            progress_dialog.show()
+
+            def update_progress(percent, message):
+                """更新进度"""
+                progress_dialog.setValue(percent)
+                progress_dialog.setLabelText(message)
+
+            # 创建OCR可搜索PDF管理器
+            searchable_manager = OCRSearchableManager()
+
+            # 执行OCR并生成可搜索PDF
+            logger.info(f"开始创建可搜索PDF: {self.file_path} -> {output_path}")
+
+            success = searchable_manager.create_searchable_pdf(
+                input_path=self.file_path,
+                output_path=output_path,
+                progress_callback=update_progress,
+                parent=self
+            )
+
+            progress_dialog.close()
+
+            if success:
+                QMessageBox.information(
+                    self, "成功",
+                    f"可搜索PDF创建成功！\n\n输出文件：\n{output_path}"
+                )
+                logger.info(f"可搜索PDF创建成功: {output_path}")
+            else:
+                QMessageBox.warning(self, "失败", "创建可搜索PDF失败，请查看日志了解详情")
+
+        except Exception as e:
+            logger.error(f"创建可搜索PDF时出错: {e}")
+            QMessageBox.critical(self, "错误", f"创建可搜索PDF失败: {str(e)}")
 
     def toggle_ocr_debug_mode(self):
         """OCR文本层高亮模式"""
@@ -1196,18 +1253,43 @@ class PDFEditorWidget(QWidget, OCRManagerMixin):
 
     def show_storage_settings(self):
         """云存储插件设置"""
-        logger.warning("云存储插件设置功能暂未实现")
-        QMessageBox.information(self, "提示", "云存储插件设置功能暂未实现")
+        try:
+            from app.ui.storage_settings_dialog import show_storage_settings_dialog
+            show_storage_settings_dialog(self)
+        except Exception as e:
+            logger.error(f"显示云存储设置对话框时出错: {e}")
+            QMessageBox.critical(self, "错误", f"无法打开云存储设置功能: {str(e)}")
 
     def show_barcode_settings(self):
         """条码拆分"""
-        logger.warning("条码拆分功能暂未实现")
-        QMessageBox.information(self, "提示", "条码拆分功能暂未实现")
+        try:
+            # 检查是否已存在对话框实例，避免重复创建
+            if not hasattr(self, 'barcode_settings_dialog') or self.barcode_settings_dialog is None:
+                from app.ui.barcode_plugin_settings_dialog import show_barcode_settings_dialog
+                # 获取当前文件路径
+                current_file_path = self.file_path if hasattr(self, 'file_path') else None
+                show_barcode_settings_dialog(self, current_file_path)
+            else:
+                self.barcode_settings_dialog.show()
+                self.barcode_settings_dialog.raise_()
+                self.barcode_settings_dialog.activateWindow()
+        except Exception as e:
+            logger.error(f"显示条码拆分对话框时出错: {e}")
+            QMessageBox.critical(self, "错误", f"无法打开条码拆分功能: {str(e)}")
 
     def show_batch_crypto_dialog(self):
         """批量加解密"""
-        logger.warning("批量加解密功能暂未实现")
-        QMessageBox.information(self, "提示", "批量加解密功能暂未实现")
+        try:
+            # 检查是否已存在对话框实例，避免重复创建
+            if not hasattr(self, 'batch_crypto_dialog') or self.batch_crypto_dialog is None:
+                from app.ui.batch_crypto_dialog import BatchCryptoDialog
+                self.batch_crypto_dialog = BatchCryptoDialog(self)
+            self.batch_crypto_dialog.show()
+            self.batch_crypto_dialog.raise_()  # 将对话框置于前台
+            self.batch_crypto_dialog.activateWindow()  # 激活对话框窗口
+        except Exception as e:
+            logger.error(f"显示批量加解密对话框时出错: {e}")
+            QMessageBox.critical(self, "错误", f"无法打开批量加解密功能: {str(e)}")
 
     def show_search_panel(self):
         """搜索"""
@@ -1219,9 +1301,17 @@ class PDFEditorWidget(QWidget, OCRManagerMixin):
 
     def show_ocr_dialog(self):
         """显示OCR对话框"""
-        # TODO: 实现OCR对话框
-        logger.warning("show_ocr_dialog 功能暂未实现")
-        QMessageBox.information(self, "提示", "OCR识别功能暂未实现")
+        # OCR功能已集成到其他菜单项中（单页OCR、批量OCR、截图OCR）
+        # 此方法保留用于兼容性
+        logger.info("show_ocr_dialog - OCR功能请使用工具栏中的OCR按钮或菜单中的OCR选项")
+        QMessageBox.information(
+            self, "提示",
+            "OCR识别功能可通过以下方式使用：\n\n"
+            "1. 工具栏 - OCR按钮：对当前页进行OCR识别\n"
+            "2. 菜单 - OCR - 全文档OCR：批量识别所有页面\n"
+            "3. 快捷键 Alt+S：截图OCR识别\n"
+            "4. 菜单 - OCR - OCR设置：配置OCR参数"
+        )
 
     def get_selected_text(self):
         """获取选中的文本（兼容方法）"""

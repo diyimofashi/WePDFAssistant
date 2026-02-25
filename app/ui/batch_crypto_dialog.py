@@ -616,7 +616,10 @@ class BatchCryptoDialog(QDialog):
         """取消处理"""
         if self.worker:
             self.worker.cancel()
-            self.status_label.setText("正在取消处理...")
+            # 将取消信息显示在窗口标题中
+            current_index = self.tab_widget.currentIndex()
+            operation_name = "加密" if current_index == 0 else "解密"
+            self.setWindowTitle(f"批量PDF{operation_name}处理 - 正在取消处理...")
     
     def update_progress(self, progress, filename, status):
         """更新进度"""
