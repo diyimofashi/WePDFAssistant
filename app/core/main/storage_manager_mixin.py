@@ -2,7 +2,6 @@
 
 from PyQt5.QtWidgets import QMessageBox
 from app.utils.logger import get_logger
-from app.ui.storage_settings_dialog import StorageSettingsDialog
 
 logger = get_logger('storage_manager_mixin')
 
@@ -18,6 +17,9 @@ class StorageManagerMixin:
                 QMessageBox.warning(self, "错误", "云存储插件管理器未初始化")
                 return
 
+            # 动态导入存储设置对话框
+            from app.ui.storage_settings_dialog import StorageSettingsDialog
+            
             # 显示云存储插件设置对话框
             dialog = StorageSettingsDialog(self)
             if dialog.exec_() == StorageSettingsDialog.Accepted:

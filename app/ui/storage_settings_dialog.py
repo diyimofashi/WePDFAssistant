@@ -10,8 +10,6 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
                              QMessageBox, QLayout, QSizePolicy, QToolButton)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
-from app.managers.storage_plugin_manager import storage_plugin_manager
-from app.config.storage_plugin_config import storage_config_manager
 from app.utils.logger import get_logger
 
 logger = get_logger('storage_settings_dialog')
@@ -31,15 +29,20 @@ class StorageSettingsDialog(QDialog):
         self.setWindowFlags(self.windowFlags() | Qt.Dialog)
         self.setAttribute(Qt.WA_DeleteOnClose)
 
-        self.plugin_manager = storage_plugin_manager
-        self.config_manager = storage_config_manager
-
-        self.plugin_widgets = {}
-
-        self.plugin_manager.load_plugins()
-
-        self.setup_ui()
-        self.load_settings()
+        # 动态导入存储插件管理器
+        try:
+            from app.managers.storage_plugin_manager import storage_plugin_manager
+            from app.config.storage_plugin_config import storage_config_manager
+            self.plugin_manager = storage_plugin_manager
+            self.config_manager = storage_config_manager
+            self.plugin_widgets = {}
+            self.plugin_manager.load_plugins()
+            self.setup_ui()
+            self.load_settings()
+        except ImportError as e:
+            logger.error(f"加载存储插件管理器失败: {e}")
+            QMessageBox.critical(self, "错误", f"加载存储插件管理器失败: {str(e)}")
+            self.reject()
 
     def populate_plugin_combo(self):
         """填充插件选择组合框"""
@@ -686,5 +689,10 @@ class StorageSettingsDialog(QDialog):
 
 def show_storage_settings_dialog(parent=None):
     """显示云存储设置对话框"""
-    dialog = StorageSettingsDialog(parent)
-    return dialog.exec_()
+    try:
+        dialog = StorageSettingsDialog(parent)
+        return dialog.exec_()
+    except Exception as e:
+        logger.error(f"显示云存储设置对话框失败: {e}")
+        QMessageBox.critical(parent, "错误", f"显示云存储设置对话框失败: {str(e)}")
+        return QDialog.Rejected

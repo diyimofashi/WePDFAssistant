@@ -203,7 +203,7 @@ class MenuManager(QObject):
         # 跳转页面
         jump_page_action = QAction("🔢 跳转页面", self.parent)
         jump_page_action.setShortcut("Ctrl+G")
-        jump_page_action.triggered.connect(self.parent.jump_to_page)
+        jump_page_action.triggered.connect(self.parent.go_to_page)
         view_menu.addAction(jump_page_action)
 
         

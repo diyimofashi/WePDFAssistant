@@ -19,11 +19,11 @@ echo ============================================================
 echo.
 
 REM Check virtual environment
-if not exist "PDFAssistant\Scripts\activate.bat" (
+if not exist "PDFAssistant311\Scripts\activate.bat" (
     echo [Error] Virtual environment not found
     echo.
     echo Create virtual environment:
-    echo   python -m venv PDFAssistant
+    echo   python -m venv PDFAssistant311
     echo.
     pause
     exit /b 1
@@ -33,21 +33,21 @@ REM Activate virtual environment
 echo [1/5] Activating virtual environment...
 
 REM Ensure virtual environment is properly initialized
-if not exist "PDFAssistant\Scripts\python.exe" (
+if not exist "PDFAssistant311\Scripts\python.exe" (
     echo [Error] Virtual environment not properly set up
     echo.
-    echo Please run: python -m venv PDFAssistant
+    echo Please run: python -m venv PDFAssistant311
     echo.
     pause
     exit /b 1
 )
 
-call PDFAssistant\Scripts\activate.bat
+call PDFAssistant311\Scripts\activate.bat
 
 REM Check and create pyvenv.cfg if needed
-if not exist "PDFAssistant\pyvenv.cfg" (
+if not exist "PDFAssistant311\pyvenv.cfg" (
     echo [Info] Creating virtual environment configuration...
-    python -c "import venv; import os; os.makedirs('PDFAssistant', exist_ok=True); f=open('PDFAssistant\\pyvenv.cfg','w'); f.write('home = '+os.path.dirname(os.path.dirname(venv.__file__))); f.close()" 2>nul || echo [Warning] Could not create pyvenv.cfg
+    python -c "import venv; import os; os.makedirs('PDFAssistant311', exist_ok=True); f=open('PDFAssistant311\\pyvenv.cfg','w'); f.write('home = '+os.path.dirname(os.path.dirname(venv.__file__))); f.close()" 2>nul || echo [Warning] Could not create pyvenv.cfg
 )
 
 REM Check Nuitka installation
@@ -70,7 +70,7 @@ echo [4/5] Starting Nuitka compilation (this may take 10-30 minutes)...
 echo.
 
 REM Execute Nuitka compilation using build_config.py
-PDFAssistant\Scripts\python.exe -c "from build_config import execute_command, command_to_string, get_windows_command; cmd = get_windows_command(); print('[Info] Executing:', command_to_string(cmd)); exit(execute_command(cmd))"
+PDFAssistant311\Scripts\python.exe -c "from build_config import execute_command, command_to_string, get_windows_command; cmd = get_windows_command(); print('[Info] Executing:', command_to_string(cmd)); exit(execute_command(cmd))"
 
 if %errorlevel% equ 0 (
     echo [Info] Renaming PDFAssistant.exe if needed...

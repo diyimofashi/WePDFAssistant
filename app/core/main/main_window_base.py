@@ -27,8 +27,6 @@ from app.managers.split_manager import SplitManager
 from app.managers.merge_manager import MergeManager
 from app.managers.ocr_plugin_manager import OCRPluginManager
 from app.config.ocr_plugin_config import ocr_config_manager
-from app.managers.storage_plugin_manager import storage_plugin_manager
-from app.config.storage_plugin_config import storage_config_manager
 from app.managers.shortcut_manager import ShortcutManager
 from app.utils.logger import get_logger
 
@@ -124,10 +122,18 @@ class MainWindowBase(QMainWindow):
         self.ocr_plugin_manager.load_all_plugins()
 
         # 初始化存储插件管理器
-        self.storage_plugin_manager = storage_plugin_manager
-        self.storage_config_manager = storage_config_manager
-        # 自动加载所有存储插件
-        self.storage_plugin_manager.load_plugins()
+        try:
+            from app.managers.storage_plugin_manager import storage_plugin_manager
+            from app.config.storage_plugin_config import storage_config_manager
+            self.storage_plugin_manager = storage_plugin_manager
+            self.storage_config_manager = storage_config_manager
+            # 自动加载所有存储插件
+            self.storage_plugin_manager.load_plugins()
+        except ImportError as e:
+            logger = get_logger('main')
+            logger.error(f"加载存储插件管理器失败: {e}")
+            self.storage_plugin_manager = None
+            self.storage_config_manager = None
 
         # 初始化快捷键管理器
         self.shortcut_manager = ShortcutManager(self)

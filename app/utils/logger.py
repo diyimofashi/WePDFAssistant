@@ -1,9 +1,9 @@
 """
 日志配置模块
-使用picologging提供高性能日志记录
+使用标准logging模块
 """
 
-import picologging as logging
+import logging
 import os
 from datetime import datetime
 
