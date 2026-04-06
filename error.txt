@@ -1,0 +1,28 @@
+2026-04-05 23:07:00 - PyPDF.ocr_error_handler - INFO - OCR错误处理器初始化
+2026-04-05 23:07:00 - PyPDF.ocr_error_handler - INFO - OCR审计日志记录器初始化
+2026-04-05 23:07:00 - PyPDF.ocr_plugin_manager - INFO - OCR插件管理器初始化，插件目录: ['D:\\study\\PDF\\WePDFAssistant-main-exe\\dist\\plugins']
+2026-04-05 23:07:00 - PyPDF.barcode_plugin_manager - INFO - 条码插件管理器初始化，插件目录: ['D:\\study\\PDF\\WePDFAssistant-main-exe\\dist\\plugins-barcode']
+2026-04-05 23:07:00 - PyPDF.ocr_plugin_manager - INFO - OCR插件管理器初始化，插件目录: ['D:\\study\\PDF\\WePDFAssistant-main-exe\\dist\\plugins']
+2026-04-05 23:07:00 - PyPDF.ocr_plugin_manager - WARNING - 插件目录不存在: D:\study\PDF\WePDFAssistant-main-exe\dist\plugins
+2026-04-05 23:07:00 - PyPDF.main - ERROR - 加载存储插件管理器失败: No module named 'app.config.storage_plugin_config'
+2026-04-05 23:07:00 - PyPDF.main - ERROR - UI初始化过程中出现错误: 'AuroraPDF' object has no attribute 'jump_to_page'
+2026-04-05 23:07:00 - PyPDF.main - ERROR - Traceback (most recent call last):
+  File "app\core\main\main_window_base.py", line 222, in init_ui
+    self.menu_manager.create_menubar()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "app\ui\menu_manager.py", line 61, in create_menubar
+    self._create_view_menu(menubar)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "app\ui\menu_manager.py", line 206, in _create_view_menu
+    jump_page_action.triggered.connect(self.parent.jump_to_page)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'AuroraPDF' object has no attribute 'jump_to_page'. Did you mean: 'go_to_page'?
+
+2026-04-05 23:07:16 - PyPDF.file_manager - INFO - 异步加载启动成功
+2026-04-05 23:07:16 - PyPDF.history_manager - INFO - [add_file_to_history] 开始添加文件到历史记录: C:/Users/24344/Desktop/c.pdf, page_count=6
+2026-04-05 23:07:16 - PyPDF.history_manager - INFO - [add_file_to_history] 文件分类: {'name': 'Desktop', 'path': 'C:/Users/24344/Desktop'}
+2026-04-05 23:07:16 - PyPDF.history_db - INFO - 创建新分类: Desktop (C:/Users/24344/Desktop), id=1
+2026-04-05 23:07:16 - PyPDF.history_db - INFO - 添加新文件记录: c.pdf, id=1, category_id=1
+2026-04-05 23:07:17 - PyPDF.history_manager - INFO - [add_file_to_history] 已添加/更新文件到历史记录: c.pdf (分类: Desktop, 路径: C:/Users/24344/Desktop)
+2026-04-05 23:07:17 - PyPDF.main - INFO - 已异步添加到历史记录: c.pdf
+2026-04-05 23:07:17 - PyPDF.main - ERROR - 异步添加历史记录失败: [WinError 5] 拒绝访问。: 'C:\\Users\\24344\\.pypdf_cache'
